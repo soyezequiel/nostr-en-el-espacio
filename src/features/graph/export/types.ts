@@ -31,6 +31,11 @@ export interface FrozenSnapshot {
   nodes: GraphNode[]
   links: GraphLink[]
   adjacency: Record<string, string[]>
+  keywordSearch: {
+    keyword: string | null
+    totalHits: number
+    matchedNodeCount: number
+  }
   users: Map<string, FrozenUserData>
 }
 

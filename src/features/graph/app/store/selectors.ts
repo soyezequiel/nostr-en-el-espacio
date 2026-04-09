@@ -43,6 +43,16 @@ export const selectZapLayerSummary = (state: AppStore) => ({
   message: state.zapLayer.message,
 })
 
+export const selectKeywordLayerSummary = (state: AppStore) => ({
+  status: state.keywordLayer.status,
+  loadedFrom: state.keywordLayer.loadedFrom,
+  isPartial: state.keywordLayer.isPartial,
+  message: state.keywordLayer.message,
+  corpusNodeCount: state.keywordLayer.corpusNodeCount,
+  extractCount: state.keywordLayer.extractCount,
+  matchesByPubkey: state.keywordLayer.matchesByPubkey,
+})
+
 const countFollowersDiscovered = (state: AppStore, pubkey: string) => {
   let count = 0
 

@@ -5,13 +5,14 @@ import type {
   AppStoreApi,
   GraphNode,
   GraphLink,
+  KeywordMatch,
   RelayHealth,
   ZapLayerEdge,
   UiLayer,
   RelayHealthStatus as StoreRelayHealthStatus,
 } from '@/features/graph/app/store'
 import { createNostrGraphDatabase, createRepositories, type NostrGraphRepositories } from '@/features/graph/db'
-import type { ProfileRecord, ZapRecord } from '@/features/graph/db/entities'
+import type { NoteExtractRecord, ProfileRecord, ZapRecord } from '@/features/graph/db/entities'
 import { appStore } from '@/features/graph/app/store/createAppStore'
 import {
   createEventsWorkerGateway,
@@ -19,7 +20,6 @@ import {
 } from '@/features/graph/workers/browser'
 import type {
   EventsWorkerActionMap,
-  KeywordExtractInput,
   ParseContactListResult,
   ZapReceiptInput,
 } from '@/features/graph/workers/events/contracts'
@@ -54,7 +54,16 @@ const COVERAGE_RECOVERY_MESSAGE =
   'Cambia relays o prueba una pubkey curada para recuperar cobertura.'
 const ZAP_LAYER_LOADING_MESSAGE =
   'Buscando recibos de zap para los nodos explorados...'
+const KEYWORD_LAYER_LOADING_MESSAGE =
+  'Buscando notas recientes para la capa de intereses...'
+const KEYWORD_LAYER_EMPTY_MESSAGE = 'Corpus vacío, no hay notas descubiertas'
 const MAX_ZAP_RECEIPTS = 500
+const KEYWORD_LOOKBACK_WINDOW_SEC = 30 * 24 * 60 * 60
+const KEYWORD_BATCH_SIZE = 25
+const KEYWORD_BATCH_CONCURRENCY = 2
+const KEYWORD_MAX_NOTES_PER_PUBKEY = 5
+const KEYWORD_FILTER_LIMIT_FACTOR = 4
+const KEYWORD_EXTRACT_MAX_LENGTH = 500
 const NODE_DETAIL_PREVIEW_CONNECT_TIMEOUT_MS = 3_000
 const NODE_DETAIL_PREVIEW_PAGE_TIMEOUT_MS = 4_500
 const NODE_DETAIL_PREVIEW_RETRY_COUNT = 1
@@ -103,6 +112,7 @@ export interface SearchKeywordResult {
   tokens: string[]
   totalHits: number
   nodeHits: Record<string, number>
+  matchesByPubkey: Record<string, KeywordMatch[]>
 }
 
 export interface FindPathResult {
@@ -188,6 +198,11 @@ interface ActiveZapSession {
   adapter: RelayAdapterInstance
 }
 
+interface ActiveKeywordSession {
+  requestId: number
+  adapter: RelayAdapterInstance
+}
+
 interface MergedRelayEventEnvelope {
   event: Event
   relayUrls: string[]
@@ -210,6 +225,7 @@ export class AppKernel {
   private readonly now
   private activeLoadSession: ActiveLoadSession | null = null
   private activeZapSession: ActiveZapSession | null = null
+  private activeKeywordSession: ActiveKeywordSession | null = null
   private pendingRelayOverride: RelayOverrideSnapshot | null = null
   private readonly activeNodeStructurePreviewRequests = new Map<
     string,
@@ -221,9 +237,12 @@ export class AppKernel {
   >()
   private analysisFlushScheduled = false
   private analysisInFlight = false
+  private keywordCorpusInFlight = false
   private analysisScheduleVersion = 0
   private loadSequence = 0
   private zapRequestSequence = 0
+  private keywordRequestSequence = 0
+  private keywordSearchSequence = 0
 
   public constructor(dependencies: AppKernelDependencies) {
     this.store = dependencies.store
@@ -242,6 +261,7 @@ export class AppKernel {
   ): Promise<LoadRootResult> {
     this.cancelActiveLoad()
     this.cancelActiveZapLoad()
+    this.cancelActiveKeywordLoad()
 
     const loadId = this.loadSequence + 1
     this.loadSequence = loadId
@@ -347,6 +367,10 @@ export class AppKernel {
             loadId,
           )
           void this.prefetchZapLayer(this.getZapTargetPubkeys(), relayUrls)
+          void this.prefetchKeywordCorpus(
+            this.getKeywordCorpusTargetPubkeys(),
+            relayUrls,
+          )
         }
 
         return fallbackResult
@@ -384,6 +408,7 @@ export class AppKernel {
         loadId,
       )
       void this.prefetchZapLayer(this.getZapTargetPubkeys(), relayUrls)
+      void this.prefetchKeywordCorpus(this.getKeywordCorpusTargetPubkeys(), relayUrls)
 
       const hasPartialSignals =
         parsedContactList.diagnostics.length > 0 ||
@@ -703,6 +728,10 @@ export class AppKernel {
       this.loadSequence,
     )
     void this.prefetchZapLayer(this.getZapTargetPubkeys(), options.relayUrls)
+    void this.prefetchKeywordCorpus(
+      this.getKeywordCorpusTargetPubkeys(),
+      options.relayUrls,
+    )
 
     const hasPartialSignals =
       options.hasPartialSignals || nodeResult.rejectedPubkeys.length > 0
@@ -843,35 +872,117 @@ export class AppKernel {
     }
   }
 
-  public async searchKeyword(keyword: string, extracts: KeywordExtractInput[]): Promise<SearchKeywordResult> {
+  public async searchKeyword(keyword: string): Promise<SearchKeywordResult> {
+    const requestId = this.keywordSearchSequence + 1
+    this.keywordSearchSequence = requestId
     const trimmed = keyword.trim()
+    const visiblePubkeys = this.getKeywordCorpusTargetPubkeys()
+
     if (trimmed.length === 0) {
-      return { keyword: '', tokens: [], totalHits: 0, nodeHits: {} }
+      const state = this.store.getState()
+      state.setCurrentKeyword('')
+      this.applyKeywordHits({})
+      state.setKeywordMatches({})
+
+      if (state.keywordLayer.status === 'enabled') {
+        state.setKeywordLayerState({
+          message: state.keywordLayer.extractCount > 0
+            ? `${state.keywordLayer.extractCount} extractos listos para explorar.`
+            : KEYWORD_LAYER_EMPTY_MESSAGE,
+        })
+      }
+
+      return {
+        keyword: '',
+        tokens: [],
+        totalHits: 0,
+        nodeHits: {},
+        matchesByPubkey: {},
+      }
     }
 
-    this.store.getState().setCurrentKeyword(trimmed)
+    const extracts = await this.repositories.noteExtracts.findByPubkeys(visiblePubkeys)
+
+    if (this.keywordSearchSequence !== requestId) {
+      return {
+        keyword: trimmed,
+        tokens: tokenizeKeyword(trimmed),
+        totalHits: 0,
+        nodeHits: {},
+        matchesByPubkey: {},
+      }
+    }
+
+    if (extracts.length === 0) {
+      const state = this.store.getState()
+      state.setCurrentKeyword(trimmed)
+      this.applyKeywordHits({})
+      state.setKeywordMatches({})
+
+      return {
+        keyword: trimmed,
+        tokens: tokenizeKeyword(trimmed),
+        totalHits: 0,
+        nodeHits: {},
+        matchesByPubkey: {},
+      }
+    }
 
     const result = await this.eventsWorker.invoke('SEARCH_KEYWORDS', {
       keyword: trimmed,
-      extracts,
+      extracts: extracts.map((extract) => ({
+        noteId: extract.noteId,
+        pubkey: extract.pubkey,
+        text: extract.text,
+      })),
     })
 
-    const state = this.store.getState()
+    if (this.keywordSearchSequence !== requestId) {
+      return {
+        keyword: trimmed,
+        tokens: result.tokens,
+        totalHits: result.excerptMatches.length,
+        nodeHits: {},
+        matchesByPubkey: {},
+      }
+    }
+
     const nodeHits: Record<string, number> = {}
+    const matchesByPubkey: Record<string, KeywordMatch[]> = {}
 
     for (const [pubkey, count] of Object.entries(result.hitCounts)) {
       nodeHits[pubkey] = count
-      const existingNode = state.nodes[pubkey]
-      if (existingNode) {
-        state.upsertNodes([{ ...existingNode, keywordHits: count }])
-      }
     }
+
+    for (const match of result.excerptMatches) {
+      const matches = matchesByPubkey[match.pubkey] ?? []
+      matches.push({
+        noteId: match.noteId,
+        excerpt: match.excerpt,
+        matchedTokens: match.matchedTokens,
+        score: match.score,
+      })
+      matchesByPubkey[match.pubkey] = matches
+    }
+
+    const state = this.store.getState()
+    state.setCurrentKeyword(trimmed)
+    this.applyKeywordHits(nodeHits)
+    state.setKeywordMatches(matchesByPubkey)
+    state.setKeywordLayerState({
+      message:
+        result.excerptMatches.length > 0
+          ? `${result.excerptMatches.length} coincidencias en ${Object.keys(matchesByPubkey).length} nodos para "${trimmed}".`
+          : `Sin coincidencias para "${trimmed}".`,
+    })
+    logKeywordMatchesToConsole(trimmed, nodeHits, matchesByPubkey, state.nodes)
 
     return {
       keyword: trimmed,
       tokens: result.tokens,
       totalHits: result.excerptMatches.length,
       nodeHits,
+      matchesByPubkey,
     }
   }
 
@@ -887,12 +998,27 @@ export class AppKernel {
       }
     }
 
+    if (layer === 'keywords' && state.keywordLayer.status !== 'enabled') {
+      return {
+        previousLayer,
+        activeLayer: previousLayer,
+        message:
+          state.keywordLayer.message ??
+          'La capa de keywords no esta disponible todavia.',
+      }
+    }
+
     state.setActiveLayer(layer)
 
     return {
       previousLayer,
       activeLayer: layer,
-      message: layer === 'zaps' ? state.zapLayer.message : null,
+      message:
+        layer === 'zaps'
+          ? state.zapLayer.message
+          : layer === 'keywords'
+            ? state.keywordLayer.message
+            : null,
     }
   }
 
@@ -1254,7 +1380,11 @@ export class AppKernel {
     for (let iteration = 0; iteration < 20; iteration += 1) {
       await Promise.resolve()
 
-      if (!this.analysisFlushScheduled && !this.analysisInFlight) {
+      if (
+        !this.analysisFlushScheduled &&
+        !this.analysisInFlight &&
+        !this.keywordCorpusInFlight
+      ) {
         return
       }
     }
@@ -1501,6 +1631,7 @@ export class AppKernel {
   public dispose(): void {
     this.cancelActiveLoad()
     this.cancelActiveZapLoad()
+    this.cancelActiveKeywordLoad()
     this.eventsWorker.dispose()
     this.graphWorker.dispose()
   }
@@ -1613,6 +1744,11 @@ export class AppKernel {
     state.resetGraphAnalysis()
     state.resetGraph()
     state.resetZapLayer()
+    state.resetKeywordLayer()
+    state.setCurrentKeyword('')
+    if (state.activeLayer === 'keywords') {
+      state.setActiveLayer('graph')
+    }
     state.setRootNodePubkey(rootPubkey)
 
     const discoveredAt = this.now()
@@ -1754,6 +1890,297 @@ export class AppKernel {
     }
 
     return [...targetPubkeys].sort()
+  }
+
+  private getKeywordCorpusTargetPubkeys(): string[] {
+    return Object.keys(this.store.getState().nodes).sort()
+  }
+
+  private resetKeywordHits(): void {
+    const state = this.store.getState()
+    const nodesWithHits = Object.values(state.nodes).filter(
+      (node) => node.keywordHits > 0,
+    )
+
+    if (nodesWithHits.length === 0) {
+      return
+    }
+
+    state.upsertNodes(
+      nodesWithHits.map((node) => ({
+        ...node,
+        keywordHits: 0,
+      })),
+    )
+  }
+
+  private applyKeywordHits(nodeHits: Record<string, number>): void {
+    const state = this.store.getState()
+    const candidatePubkeys = new Set([
+      ...Object.keys(nodeHits),
+      ...Object.values(state.nodes)
+        .filter((node) => node.keywordHits > 0)
+        .map((node) => node.pubkey),
+    ])
+    const changedNodes: GraphNode[] = []
+
+    for (const pubkey of candidatePubkeys) {
+      const existingNode = state.nodes[pubkey]
+
+      if (!existingNode) {
+        continue
+      }
+
+      const nextHits = nodeHits[pubkey] ?? 0
+
+      if (existingNode.keywordHits === nextHits) {
+        continue
+      }
+
+      changedNodes.push({
+        ...existingNode,
+        keywordHits: nextHits,
+      })
+    }
+
+    if (changedNodes.length > 0) {
+      state.upsertNodes(changedNodes)
+    }
+  }
+
+  private async prefetchKeywordCorpus(
+    targetPubkeys: string[],
+    relayUrls: string[],
+  ): Promise<void> {
+    const normalizedTargetPubkeys = Array.from(
+      new Set(targetPubkeys.filter(Boolean)),
+    ).sort()
+    const state = this.store.getState()
+
+    if (normalizedTargetPubkeys.length === 0) {
+      this.resetKeywordHits()
+      state.resetKeywordLayer()
+      state.setCurrentKeyword('')
+      return
+    }
+
+    const requestId = this.keywordRequestSequence + 1
+    this.keywordRequestSequence = requestId
+    this.cancelActiveKeywordLoad()
+    this.keywordCorpusInFlight = true
+
+    const cachedExtracts = await this.repositories.noteExtracts.findByPubkeys(
+      normalizedTargetPubkeys,
+    )
+
+    if (this.isStaleKeywordRequest(requestId)) {
+      this.keywordCorpusInFlight = false
+      return
+    }
+
+    const cachedSummary = summarizeKeywordCorpus(cachedExtracts)
+    if (cachedSummary.extractCount > 0) {
+      state.setKeywordLayerState({
+        status: 'enabled',
+        loadedFrom: 'cache',
+        isPartial: false,
+        message: `${cachedSummary.extractCount} extractos disponibles desde cache local. Revalidando corpus...`,
+        corpusNodeCount: cachedSummary.corpusNodeCount,
+        extractCount: cachedSummary.extractCount,
+        lastUpdatedAt: this.now(),
+      })
+    } else {
+      this.resetKeywordHits()
+      state.setKeywordMatches({})
+      state.setKeywordLayerState({
+        status: 'loading',
+        loadedFrom: 'none',
+        isPartial: false,
+        message: KEYWORD_LAYER_LOADING_MESSAGE,
+        corpusNodeCount: 0,
+        extractCount: 0,
+        matchesByPubkey: {},
+        lastUpdatedAt: null,
+      })
+    }
+
+    const adapter = this.createRelayAdapter({ relayUrls })
+    this.activeKeywordSession = {
+      requestId,
+      adapter,
+    }
+
+    const liveExtractsByPubkey = new Map<string, NoteExtractRecord[]>()
+    let failedBatchCount = 0
+
+    try {
+      const batches = chunkIntoBatches(normalizedTargetPubkeys, KEYWORD_BATCH_SIZE)
+      const since = Math.max(
+        0,
+        Math.floor(this.now() / 1000) - KEYWORD_LOOKBACK_WINDOW_SEC,
+      )
+
+      await runWithConcurrencyLimit(
+        batches,
+        KEYWORD_BATCH_CONCURRENCY,
+        async (batch) => {
+          const batchResult = await collectRelayEvents(adapter, [
+            {
+              authors: batch,
+              kinds: [1],
+              since,
+              limit:
+                Math.max(
+                  KEYWORD_MAX_NOTES_PER_PUBKEY,
+                  batch.length * KEYWORD_MAX_NOTES_PER_PUBKEY * KEYWORD_FILTER_LIMIT_FACTOR,
+                ),
+            } satisfies Filter,
+          ])
+
+          if (this.isStaleKeywordRequest(requestId)) {
+            return
+          }
+
+          if (batchResult.error) {
+            failedBatchCount += 1
+            return
+          }
+
+          const mergedEvents = mergeRelayEventsById(batchResult.events)
+          await Promise.all(
+            mergedEvents.map((eventEnvelope) =>
+              this.persistRawEventEnvelope(eventEnvelope),
+            ),
+          )
+          const recordsByPubkey = buildNoteExtractRecordsByPubkey(
+            mergedEvents,
+            batch,
+            KEYWORD_MAX_NOTES_PER_PUBKEY,
+          )
+
+          await Promise.all(
+            batch.map(async (pubkey) => {
+              const records = recordsByPubkey.get(pubkey) ?? []
+              await this.repositories.noteExtracts.replaceForPubkey(pubkey, records)
+              liveExtractsByPubkey.set(pubkey, records)
+            }),
+          )
+        },
+      )
+
+      if (this.isStaleKeywordRequest(requestId)) {
+        return
+      }
+
+      const visibleExtracts =
+        liveExtractsByPubkey.size > 0
+          ? flattenNoteExtractRecords(liveExtractsByPubkey)
+          : await this.repositories.noteExtracts.findByPubkeys(normalizedTargetPubkeys)
+      const summary = summarizeKeywordCorpus(visibleExtracts)
+      const hasLiveCorpus = summary.extractCount > 0
+      const hasCacheCorpus = cachedSummary.extractCount > 0
+      const currentKeyword = this.store.getState().currentKeyword.trim()
+
+      if (hasLiveCorpus) {
+        state.setKeywordLayerState({
+          status: 'enabled',
+          loadedFrom: 'live',
+          isPartial: failedBatchCount > 0,
+          message:
+            failedBatchCount > 0
+              ? `${summary.extractCount} extractos listos con cobertura parcial de relays.`
+              : `${summary.extractCount} extractos listos para explorar.`,
+          corpusNodeCount: summary.corpusNodeCount,
+          extractCount: summary.extractCount,
+          lastUpdatedAt: this.now(),
+        })
+
+        if (currentKeyword.length > 0) {
+          await this.searchKeyword(currentKeyword)
+        } else {
+          this.resetKeywordHits()
+          state.setKeywordMatches({})
+        }
+
+        return
+      }
+
+      if (hasCacheCorpus) {
+        state.setKeywordLayerState({
+          status: 'enabled',
+          loadedFrom: 'cache',
+          isPartial: true,
+          message: `${cachedSummary.extractCount} extractos desde cache. No se pudo refrescar toda la cobertura live.`,
+          corpusNodeCount: cachedSummary.corpusNodeCount,
+          extractCount: cachedSummary.extractCount,
+          lastUpdatedAt: this.now(),
+        })
+
+        if (currentKeyword.length > 0) {
+          await this.searchKeyword(currentKeyword)
+        } else {
+          this.resetKeywordHits()
+          state.setKeywordMatches({})
+        }
+
+        return
+      }
+
+      this.resetKeywordHits()
+      state.setKeywordMatches({})
+      state.setCurrentKeyword('')
+      state.setKeywordLayerState({
+        status: 'unavailable',
+        loadedFrom: 'live',
+        isPartial: failedBatchCount > 0,
+        message:
+          failedBatchCount > 0
+            ? 'No se pudo construir el corpus de notas con los relays actuales.'
+            : KEYWORD_LAYER_EMPTY_MESSAGE,
+        corpusNodeCount: 0,
+        extractCount: 0,
+        lastUpdatedAt: this.now(),
+      })
+    } catch (error) {
+      if (!this.isStaleKeywordRequest(requestId)) {
+        if (cachedSummary.extractCount > 0) {
+          state.setKeywordLayerState({
+            status: 'enabled',
+            loadedFrom: 'cache',
+            isPartial: true,
+            message: `${cachedSummary.extractCount} extractos desde cache. No se pudo refrescar el corpus live.`,
+            corpusNodeCount: cachedSummary.corpusNodeCount,
+            extractCount: cachedSummary.extractCount,
+            lastUpdatedAt: this.now(),
+          })
+        } else {
+          this.resetKeywordHits()
+          state.setKeywordMatches({})
+          state.setCurrentKeyword('')
+          state.setKeywordLayerState({
+            status: 'unavailable',
+            loadedFrom: 'none',
+            isPartial: true,
+            message:
+              error instanceof Error && error.message.trim().length > 0
+                ? error.message
+                : 'No se pudo construir el corpus de notas con los relays actuales.',
+            corpusNodeCount: 0,
+            extractCount: 0,
+            lastUpdatedAt: this.now(),
+          })
+        }
+      }
+    } finally {
+      if (this.activeKeywordSession?.requestId === requestId) {
+        this.activeKeywordSession.adapter.close()
+        this.activeKeywordSession = null
+      }
+
+      if (this.keywordRequestSequence === requestId) {
+        this.keywordCorpusInFlight = false
+      }
+    }
   }
 
   private syncNodeProfile(pubkey: string, profile: NodeDetailProfile): void {
@@ -2027,6 +2454,7 @@ export class AppKernel {
         relayUrls,
         this.loadSequence,
       )
+      void this.prefetchKeywordCorpus(this.getKeywordCorpusTargetPubkeys(), relayUrls)
     }
   }
 
@@ -2263,12 +2691,25 @@ export class AppKernel {
     this.activeZapSession = null
   }
 
+  private cancelActiveKeywordLoad(): void {
+    if (!this.activeKeywordSession) {
+      return
+    }
+
+    this.activeKeywordSession.adapter.close()
+    this.activeKeywordSession = null
+  }
+
   private isStaleLoad(loadId: number): boolean {
     return loadId !== this.loadSequence
   }
 
   private isStaleZapRequest(requestId: number): boolean {
     return requestId !== this.zapRequestSequence
+  }
+
+  private isStaleKeywordRequest(requestId: number): boolean {
+    return requestId !== this.keywordRequestSequence
   }
 }
 
@@ -2296,6 +2737,7 @@ export interface RootLoader {
   ) => Promise<ReconfigureRelaysResult>
   revertRelayOverride: () => Promise<ReconfigureRelaysResult | null>
   expandNode: (pubkey: string) => Promise<ExpandNodeResult>
+  searchKeyword: (keyword: string) => Promise<SearchKeywordResult>
   toggleLayer: (layer: UiLayer) => ToggleLayerResult
   selectNode: (pubkey: string | null) => SelectNodeResult
   getNodeDetail: (pubkey: string) => Promise<NodeDetailProfile | null>
@@ -2626,6 +3068,17 @@ function buildNodeProfileFromNode(node: GraphNode): NodeDetailProfile {
   }
 }
 
+function tokenizeKeyword(keyword: string): string[] {
+  return [
+    ...new Set(
+      keyword
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((token) => token.length > 1),
+    ),
+  ].sort()
+}
+
 function firstString(...values: unknown[]): string | null {
   for (const value of values) {
     if (typeof value === 'string' && value.trim().length > 0) {
@@ -2634,6 +3087,149 @@ function firstString(...values: unknown[]): string | null {
   }
 
   return null
+}
+
+function chunkIntoBatches<T>(items: readonly T[], size: number): T[][] {
+  if (size <= 0) {
+    return [items.slice()]
+  }
+
+  const batches: T[][] = []
+
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size))
+  }
+
+  return batches
+}
+
+function normalizeNoteExtractText(content: string): string | null {
+  const normalized = content.replace(/\s+/g, ' ').trim()
+
+  if (normalized.length === 0) {
+    return null
+  }
+
+  return normalized.slice(0, KEYWORD_EXTRACT_MAX_LENGTH)
+}
+
+function buildNoteExtractRecordsByPubkey(
+  events: readonly MergedRelayEventEnvelope[],
+  requestedPubkeys: readonly string[],
+  maxNotesPerPubkey: number,
+): Map<string, NoteExtractRecord[]> {
+  const recordsByPubkey = new Map<string, NoteExtractRecord[]>(
+    requestedPubkeys.map((pubkey) => [pubkey, []]),
+  )
+  const requestedSet = new Set(requestedPubkeys)
+
+  const sortedEvents = events
+    .filter(
+      (envelope) => envelope.event.kind === 1 && requestedSet.has(envelope.event.pubkey),
+    )
+    .slice()
+    .sort((left, right) => {
+      if (left.event.pubkey !== right.event.pubkey) {
+        return left.event.pubkey.localeCompare(right.event.pubkey)
+      }
+
+      if (left.event.created_at !== right.event.created_at) {
+        return right.event.created_at - left.event.created_at
+      }
+
+      return left.event.id.localeCompare(right.event.id)
+    })
+
+  for (const envelope of sortedEvents) {
+    const currentRecords = recordsByPubkey.get(envelope.event.pubkey) ?? []
+
+    if (currentRecords.length >= maxNotesPerPubkey) {
+      continue
+    }
+
+    const text = normalizeNoteExtractText(envelope.event.content)
+    if (!text) {
+      continue
+    }
+
+    recordsByPubkey.set(envelope.event.pubkey, [
+      ...currentRecords,
+      {
+        noteId: envelope.event.id,
+        pubkey: envelope.event.pubkey,
+        createdAt: envelope.event.created_at,
+        fetchedAt: envelope.receivedAtMs,
+        text,
+      },
+    ])
+  }
+
+  return recordsByPubkey
+}
+
+function flattenNoteExtractRecords(
+  recordsByPubkey: Map<string, NoteExtractRecord[]>,
+): NoteExtractRecord[] {
+  return Array.from(recordsByPubkey.values())
+    .flat()
+    .sort((left, right) => {
+      if (left.pubkey !== right.pubkey) {
+        return left.pubkey.localeCompare(right.pubkey)
+      }
+
+      if (left.createdAt !== right.createdAt) {
+        return right.createdAt - left.createdAt
+      }
+
+      return left.noteId.localeCompare(right.noteId)
+    })
+}
+
+function summarizeKeywordCorpus(extracts: readonly NoteExtractRecord[]): {
+  corpusNodeCount: number
+  extractCount: number
+} {
+  return {
+    corpusNodeCount: new Set(extracts.map((extract) => extract.pubkey)).size,
+    extractCount: extracts.length,
+  }
+}
+
+function logKeywordMatchesToConsole(
+  keyword: string,
+  nodeHits: Record<string, number>,
+  matchesByPubkey: Record<string, KeywordMatch[]>,
+  nodes: Record<string, GraphNode>,
+): void {
+  if (typeof console === 'undefined') {
+    return
+  }
+
+  const matchedUsers = Object.entries(matchesByPubkey)
+    .map(([pubkey, matches]) => ({
+      pubkey,
+      label:
+        nodes[pubkey]?.label?.trim() ||
+        nodes[pubkey]?.nip05?.trim() ||
+        pubkey.slice(0, 12),
+      hitScore: nodeHits[pubkey] ?? 0,
+      excerptCount: matches.length,
+      topTokens: Array.from(
+        new Set(matches.flatMap((match) => match.matchedTokens)),
+      ).join(', '),
+    }))
+    .sort((left, right) => {
+      if (left.hitScore !== right.hitScore) {
+        return right.hitScore - left.hitScore
+      }
+
+      return left.pubkey.localeCompare(right.pubkey)
+    })
+
+  console.info(
+    `[graph] Keyword "${keyword}" matched ${matchedUsers.length} users.`,
+    matchedUsers,
+  )
 }
 
 function findDTag(event: Event): string | null {

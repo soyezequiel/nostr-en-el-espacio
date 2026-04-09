@@ -5,13 +5,19 @@ import type {
   DiscoveredGraphAnalysisStatus,
 } from '@/features/graph/analysis/types'
 
-export type GraphNodeSource = 'root' | 'follow' | 'inbound' | 'zap'
+export type GraphNodeSource = 'root' | 'follow' | 'inbound' | 'zap' | 'keyword'
 export type GraphLinkRelation = 'follow' | 'inbound' | 'zap'
 export type ZapLayerStatus =
   | 'disabled'
   | 'loading'
   | 'enabled'
   | 'unavailable'
+export type KeywordLayerStatus =
+  | 'disabled'
+  | 'loading'
+  | 'enabled'
+  | 'unavailable'
+export type KeywordSearchScope = 'graph' | 'global'
 export type RelayHealthStatus =
   | 'unknown'
   | 'connected'
@@ -102,6 +108,25 @@ export interface ZapLayerState {
   lastUpdatedAt: number | null
 }
 
+export interface KeywordMatch {
+  noteId: string
+  excerpt: string
+  matchedTokens: string[]
+  score: number
+}
+
+export interface KeywordLayerState {
+  status: KeywordLayerStatus
+  searchScope: KeywordSearchScope
+  loadedFrom: 'none' | 'cache' | 'live'
+  isPartial: boolean
+  message: string | null
+  corpusNodeCount: number
+  extractCount: number
+  matchesByPubkey: Record<string, KeywordMatch[]>
+  lastUpdatedAt: number | null
+}
+
 export interface GraphCaps {
   maxNodes: number
   capReached: boolean
@@ -182,6 +207,14 @@ export interface ZapSlice {
   setZapLayerState: (state: Partial<ZapLayerState>) => void
   replaceZapLayerEdges: (edges: ZapLayerEdge[]) => void
   resetZapLayer: () => void
+}
+
+export interface KeywordSlice {
+  keywordLayer: KeywordLayerState
+  setKeywordLayerState: (state: Partial<KeywordLayerState>) => void
+  setKeywordSearchScope: (scope: KeywordSearchScope) => void
+  setKeywordMatches: (matchesByPubkey: Record<string, KeywordMatch[]>) => void
+  resetKeywordLayer: () => void
 }
 
 export interface RelaySlice {
@@ -300,6 +333,7 @@ export interface AnalysisSlice {
 
 export type AppStore = GraphSlice &
   ZapSlice &
+  KeywordSlice &
   RelaySlice &
   UiSlice &
   ExportSlice &

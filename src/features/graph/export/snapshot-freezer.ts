@@ -50,6 +50,11 @@ export async function freezeSnapshot(
       return a.target.localeCompare(b.target)
     }),
     adjacency,
+    keywordSearch: {
+      keyword: state.currentKeyword.trim() || null,
+      totalHits: nodes.reduce((total, node) => total + node.keywordHits, 0),
+      matchedNodeCount: nodes.filter((node) => node.keywordHits > 0).length,
+    },
     users,
   }
 }

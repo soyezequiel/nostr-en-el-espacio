@@ -68,6 +68,14 @@ export interface ContactListRecord {
   relayHints: string[]
 }
 
+export interface NoteExtractRecord {
+  noteId: string
+  pubkey: string
+  createdAt: number
+  fetchedAt: number
+  text: string
+}
+
 export type InboundRelationType =
   | 'mention'
   | 'reply'

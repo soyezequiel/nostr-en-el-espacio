@@ -1,5 +1,6 @@
 import { OrthographicViewport } from '@deck.gl/core'
 
+import type { UiLayer } from '@/features/graph/app/store/types'
 import type { GraphViewState } from '@/features/graph/render/graphViewState'
 import type { GraphRenderNode } from '@/features/graph/render/types'
 
@@ -29,6 +30,12 @@ const GRAPH_NODE_LEGIBILITY_SETTINGS = {
   scaleMax: 1.52,
   scaleMin: 0.8,
   spacingCapGapPx: 0.5,
+} as const
+
+const GRAPH_NODE_KEYWORD_EMPHASIS_SETTINGS = {
+  maxScaleBoost: 0.6,
+  minScaleBoost: 0.3,
+  scaleLogFactor: 0.18,
 } as const
 
 const clampNumber = (value: number, min: number, max: number) =>
@@ -111,21 +118,43 @@ type ProjectedNodeMetric = {
   screenX: number
   screenY: number
   globalRadius: number
+  keywordHits: number
   isRoot: boolean
   isViewportAdjacent: boolean
   nearestNeighborWorldDist?: number
+}
+
+const getKeywordMatchScreenScale = ({
+  activeLayer,
+  keywordHits,
+}: {
+  activeLayer: UiLayer
+  keywordHits: number
+}) => {
+  if (activeLayer !== 'keywords' || keywordHits <= 0) {
+    return 1
+  }
+
+  return 1 + Math.min(
+    GRAPH_NODE_KEYWORD_EMPHASIS_SETTINGS.maxScaleBoost,
+    GRAPH_NODE_KEYWORD_EMPHASIS_SETTINGS.minScaleBoost +
+      Math.log2(keywordHits + 1) *
+        GRAPH_NODE_KEYWORD_EMPHASIS_SETTINGS.scaleLogFactor,
+  )
 }
 
 const buildCellKey = (cellX: number, cellY: number) => `${cellX}:${cellY}`
 
 const buildProjectedNodeMetrics = ({
   nodes,
+  activeLayer,
   viewState,
   width,
   height,
   visibleNodeCount,
 }: {
   nodes: readonly GraphRenderNode[]
+  activeLayer: UiLayer
   viewState: GraphViewState
   width: number
   height: number
@@ -150,13 +179,24 @@ const buildProjectedNodeMetrics = ({
       visibleNodeCount,
       zoomLevel: viewState.zoom,
     })
-    const bleed = globalRadius + GRAPH_NODE_LEGIBILITY_SETTINGS.offscreenBleedPx
+    const emphasizedGlobalRadius = clampNumber(
+      globalRadius *
+        getKeywordMatchScreenScale({
+          activeLayer,
+          keywordHits: node.keywordHits,
+        }),
+      getGraphNodeScreenRadiusBounds(node.isRoot).minRadius,
+      getGraphNodeScreenRadiusBounds(node.isRoot).maxRadius,
+    )
+    const bleed =
+      emphasizedGlobalRadius + GRAPH_NODE_LEGIBILITY_SETTINGS.offscreenBleedPx
 
     return {
       pubkey: node.pubkey,
       screenX,
       screenY,
-      globalRadius,
+      globalRadius: emphasizedGlobalRadius,
+      keywordHits: node.keywordHits,
       isRoot: node.isRoot,
       isViewportAdjacent:
         screenX >= -bleed &&
@@ -303,6 +343,7 @@ const resolveLegibilityCap = ({
 
 export const resolveGraphNodeScreenRadii = ({
   nodes,
+  activeLayer,
   viewState,
   width,
   height,
@@ -310,6 +351,7 @@ export const resolveGraphNodeScreenRadii = ({
   autoSizeNodes = false,
 }: {
   nodes: readonly GraphRenderNode[]
+  activeLayer: UiLayer
   viewState: GraphViewState
   width: number
   height: number
@@ -322,6 +364,7 @@ export const resolveGraphNodeScreenRadii = ({
 
   const projectedMetrics = buildProjectedNodeMetrics({
     nodes,
+    activeLayer,
     viewState,
     width,
     height,
@@ -339,9 +382,14 @@ export const resolveGraphNodeScreenRadii = ({
         const viewScale = Math.pow(2, viewState.zoom)
         const nearestDistancePx = metric.nearestNeighborWorldDist * viewScale
         const autoIdeal = nearestDistancePx * 0.5 - GRAPH_NODE_LEGIBILITY_SETTINGS.comfortPaddingPx
+        const preservedRadius = clampNumber(
+          Math.max(metric.globalRadius, autoIdeal),
+          minRadius,
+          maxRadius,
+        )
         return [
           metric.pubkey,
-          Math.max(minRadius, autoIdeal)
+          roundRadius(preservedRadius),
         ]
       }
 

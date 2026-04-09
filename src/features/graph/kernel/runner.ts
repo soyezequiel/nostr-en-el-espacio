@@ -1,5 +1,4 @@
 import type { UiLayer } from '@/features/graph/app/store'
-import type { KeywordExtractInput } from '@/features/graph/workers/events/contracts'
 import type {
   AppKernel,
   LoadRootResult,
@@ -14,7 +13,7 @@ import { KernelCommandError } from '@/features/graph/kernel/runtime'
 export type ScenarioCommand =
   | { type: 'loadRoot'; pubkey: string }
   | { type: 'expandNode'; pubkey: string }
-  | { type: 'searchKeyword'; keyword: string; extracts: KeywordExtractInput[] }
+  | { type: 'searchKeyword'; keyword: string }
   | { type: 'toggleLayer'; layer: UiLayer }
   | { type: 'findPath'; source: string; target: string; algorithm?: 'bfs' | 'dijkstra' }
   | { type: 'selectNode'; pubkey: string | null }
@@ -182,7 +181,7 @@ async function executeCommand(
       return { type: 'expandNode', result }
     }
     case 'searchKeyword': {
-      const result = await kernel.searchKeyword(command.keyword, command.extracts)
+      const result = await kernel.searchKeyword(command.keyword)
       return { type: 'searchKeyword', result }
     }
     case 'toggleLayer': {

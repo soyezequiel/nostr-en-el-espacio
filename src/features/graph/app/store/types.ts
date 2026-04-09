@@ -5,9 +5,14 @@ import type {
   DiscoveredGraphAnalysisStatus,
 } from '@/features/graph/analysis/types'
 
-export type GraphNodeSource = 'root' | 'follow' | 'inbound' | 'zap'
+export type GraphNodeSource = 'root' | 'follow' | 'inbound' | 'zap' | 'keyword'
 export type GraphLinkRelation = 'follow' | 'inbound' | 'zap'
 export type ZapLayerStatus =
+  | 'disabled'
+  | 'loading'
+  | 'enabled'
+  | 'unavailable'
+export type KeywordLayerStatus =
   | 'disabled'
   | 'loading'
   | 'enabled'
@@ -115,6 +120,24 @@ export interface ZapLayerState {
   lastUpdatedAt: number | null
 }
 
+export interface KeywordMatch {
+  noteId: string
+  excerpt: string
+  matchedTokens: string[]
+  score: number
+}
+
+export interface KeywordLayerState {
+  status: KeywordLayerStatus
+  loadedFrom: 'none' | 'cache' | 'live'
+  isPartial: boolean
+  message: string | null
+  corpusNodeCount: number
+  extractCount: number
+  matchesByPubkey: Record<string, KeywordMatch[]>
+  lastUpdatedAt: number | null
+}
+
 export interface GraphCaps {
   maxNodes: number
   capReached: boolean
@@ -182,6 +205,7 @@ export interface GraphSlice {
   nodeStructurePreviewStates: Record<string, NodeStructurePreviewState>
   setRootNodePubkey: (pubkey: string | null) => void
   upsertNodes: (nodes: GraphNode[]) => UpsertGraphNodesResult
+  removeNodes: (pubkeys: readonly string[]) => void
   upsertLinks: (links: GraphLink[]) => void
   upsertInboundLinks: (links: GraphLink[]) => void
   markNodeExpanded: (pubkey: string) => void
@@ -198,6 +222,13 @@ export interface ZapSlice {
   setZapLayerState: (state: Partial<ZapLayerState>) => void
   replaceZapLayerEdges: (edges: ZapLayerEdge[]) => void
   resetZapLayer: () => void
+}
+
+export interface KeywordSlice {
+  keywordLayer: KeywordLayerState
+  setKeywordLayerState: (state: Partial<KeywordLayerState>) => void
+  setKeywordMatches: (matchesByPubkey: Record<string, KeywordMatch[]>) => void
+  resetKeywordLayer: () => void
 }
 
 export interface RelaySlice {
@@ -363,6 +394,7 @@ export interface PathfindingSlice {
 
 export type AppStore = GraphSlice &
   ZapSlice &
+  KeywordSlice &
   RelaySlice &
   UiSlice &
   ExportSlice &

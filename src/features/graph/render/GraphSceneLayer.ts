@@ -223,21 +223,36 @@ const mixColor = (
 const GLASS_FROST_COLOR = [236, 245, 255, 255] as const
 const GLASS_EDGE_COLOR = [255, 255, 255, 255] as const
 const GLASS_SHADOW_COLOR = [125, 211, 252, 255] as const
+const KEYWORD_MUTED_COLOR = [156, 163, 175, 255] as const
+
+const shouldMuteKeywordMiss = (
+  model: GraphRenderModel,
+  node: GraphRenderNode,
+) => model.activeLayer === 'keywords' && node.keywordHits <= 0
+
+const muteKeywordMissColor = (
+  color: readonly [number, number, number, number],
+): [number, number, number, number] =>
+  mixColor(color, KEYWORD_MUTED_COLOR, 0.78)
 
 const getNodeGlassFillColor = (
   node: GraphRenderNode,
   paintedAvatarPubkeySet: ReadonlySet<string>,
+  model: GraphRenderModel,
   activeLayer: GraphRenderModel['activeLayer'],
   hasPathHighlight: boolean,
 ) => {
   const tint = getNodeFillColor(node, activeLayer, hasPathHighlight)
   const frosted = mixColor(tint, GLASS_FROST_COLOR, 0.72)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
+  const color = shouldMuteKeywordMiss(model, node)
+    ? muteKeywordMissColor(frosted)
+    : frosted
 
   return [
-    frosted[0],
-    frosted[1],
-    frosted[2],
+    color[0],
+    color[1],
+    color[2],
     hasAvatarPainted ? 88 : 122,
   ] as const
 }
@@ -245,15 +260,19 @@ const getNodeGlassFillColor = (
 const getNodeGlassLineColor = (
   node: GraphRenderNode,
   paintedAvatarPubkeySet: ReadonlySet<string>,
+  model: GraphRenderModel,
 ) => {
   const tint = getNodeLineColor(node)
   const edged = mixColor(tint, GLASS_EDGE_COLOR, 0.68)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
+  const color = shouldMuteKeywordMiss(model, node)
+    ? muteKeywordMissColor(edged)
+    : edged
 
   return [
-    edged[0],
-    edged[1],
-    edged[2],
+    color[0],
+    color[1],
+    color[2],
     hasAvatarPainted ? 150 : 196,
   ] as const
 }
@@ -261,17 +280,21 @@ const getNodeGlassLineColor = (
 const getNodeGlassHaloColor = (
   node: GraphRenderNode,
   paintedAvatarPubkeySet: ReadonlySet<string>,
+  model: GraphRenderModel,
   activeLayer: GraphRenderModel['activeLayer'],
   hasPathHighlight: boolean,
 ) => {
   const tint = getNodeFillColor(node, activeLayer, hasPathHighlight)
   const halo = mixColor(tint, GLASS_SHADOW_COLOR, 0.5)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
+  const color = shouldMuteKeywordMiss(model, node)
+    ? muteKeywordMissColor(halo)
+    : halo
 
   return [
-    halo[0],
-    halo[1],
-    halo[2],
+    color[0],
+    color[1],
+    color[2],
     hasAvatarPainted ? 24 : 40,
   ] as const
 }
@@ -279,17 +302,21 @@ const getNodeGlassHaloColor = (
 const getNodeGlassHighlightColor = (
   node: GraphRenderNode,
   paintedAvatarPubkeySet: ReadonlySet<string>,
+  model: GraphRenderModel,
   activeLayer: GraphRenderModel['activeLayer'],
   hasPathHighlight: boolean,
 ) => {
   const tint = getNodeFillColor(node, activeLayer, hasPathHighlight)
   const highlight = mixColor(tint, GLASS_EDGE_COLOR, 0.88)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
+  const color = shouldMuteKeywordMiss(model, node)
+    ? muteKeywordMissColor(highlight)
+    : highlight
 
   return [
-    highlight[0],
-    highlight[1],
-    highlight[2],
+    color[0],
+    color[1],
+    color[2],
     hasAvatarPainted ? 34 : 64,
   ] as const
 }
@@ -618,6 +645,12 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
     const fallbackAvatarNodes = model.nodes.filter(
       (node) => !paintedAvatarPubkeySet.has(node.pubkey),
     )
+    const hasKeywordMatches =
+      model.activeLayer === 'keywords' &&
+      model.nodes.some((node) => node.keywordHits > 0)
+    const keywordMutedNodes = hasKeywordMatches
+      ? model.nodes.filter((node) => node.keywordHits <= 0)
+      : []
     const baseReadyImageSignature = Object.entries(baseReadyImagesByPubkey)
       .sort(([leftPubkey], [rightPubkey]) =>
         leftPubkey.localeCompare(rightPubkey),
@@ -1015,6 +1048,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
           getNodeGlassHaloColor(
             node,
             paintedAvatarPubkeySet,
+            model,
             model.activeLayer,
             hasPathHighlight,
           ),
@@ -1041,11 +1075,12 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
           getNodeGlassFillColor(
             node,
             paintedAvatarPubkeySet,
+            model,
             model.activeLayer,
             hasPathHighlight,
           ),
         getLineColor: (node) =>
-          getNodeGlassLineColor(node, paintedAvatarPubkeySet),
+          getNodeGlassLineColor(node, paintedAvatarPubkeySet, model),
         getLineWidth: (node) =>
           node.isRoot
             ? 2.2
@@ -1059,7 +1094,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             model.activeLayer,
             hasPathHighlight,
           ],
-          getLineColor: [imageFrame.paintedPubkeys.join(',')],
+          getLineColor: [imageFrame.paintedPubkeys.join(','), model.activeLayer],
           getLineWidth: [imageFrame.paintedPubkeys.join(',')],
         },
       }),
@@ -1076,6 +1111,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
           getNodeGlassHighlightColor(
             node,
             paintedAvatarPubkeySet,
+            model,
             model.activeLayer,
             hasPathHighlight,
           ),
@@ -1108,6 +1144,25 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       }),
       ...avatarLayers,
       ...hdAvatarLayers,
+      ...(keywordMutedNodes.length > 0
+        ? [
+            new ScatterplotLayer<GraphRenderNode>({
+              id: `${this.props.id}-keyword-muted-overlay`,
+              data: keywordMutedNodes,
+              pickable: false,
+              stroked: false,
+              filled: true,
+              radiusUnits: 'pixels',
+              getPosition: (node) => node.position,
+              getRadius: (node) =>
+                getScreenRadius(node.pubkey, node.radius) * 0.98,
+              getFillColor: () => [148, 163, 184, 132],
+              updateTriggers: {
+                getRadius: [nodeScreenRadii, nodeSizeFactor],
+              },
+            }),
+          ]
+        : []),
       new TextLayer<GraphRenderLabel>({
         id: `${this.props.id}-labels`,
         data: visibleLabels,

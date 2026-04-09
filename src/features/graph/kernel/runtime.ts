@@ -6,6 +6,7 @@ import type {
   AppStoreApi,
   GraphNode,
   GraphLink,
+  KeywordMatch,
   RelayHealth,
   ZapLayerEdge,
   UiLayer,
@@ -13,7 +14,7 @@ import type {
 } from '@/features/graph/app/store'
 import { deriveDirectedEvidence } from '@/features/graph/evidence/directedEvidence'
 import { createNostrGraphDatabase, createRepositories, type NostrGraphRepositories } from '@/features/graph/db'
-import type { ProfileRecord, ZapRecord } from '@/features/graph/db/entities'
+import type { NoteExtractRecord, ProfileRecord, ZapRecord } from '@/features/graph/db/entities'
 import { appStore } from '@/features/graph/app/store/createAppStore'
 import {
   createEventsWorkerGateway,
@@ -21,7 +22,6 @@ import {
 } from '@/features/graph/workers/browser'
 import type {
   EventsWorkerActionMap,
-  KeywordExtractInput,
   ParseContactListResult,
   ZapReceiptInput,
 } from '@/features/graph/workers/events/contracts'
@@ -36,6 +36,7 @@ import {
   type RelayAdapterOptions,
   type RelayEventEnvelope,
   type RelayHealthSnapshot,
+  type RelayQueryFilter,
   type RelaySubscriptionSummary,
 } from '@/features/graph/nostr'
 import type {
@@ -56,7 +57,16 @@ const COVERAGE_RECOVERY_MESSAGE =
   'Cambia relays o prueba una pubkey curada para recuperar cobertura.'
 const ZAP_LAYER_LOADING_MESSAGE =
   'Buscando recibos de zap para los nodos explorados...'
+const KEYWORD_LAYER_LOADING_MESSAGE =
+  'Buscando notas recientes para la capa de intereses...'
+const KEYWORD_LAYER_EMPTY_MESSAGE = 'Corpus vacío, no hay notas descubiertas'
 const MAX_ZAP_RECEIPTS = 500
+const KEYWORD_LOOKBACK_WINDOW_SEC = 30 * 24 * 60 * 60
+const KEYWORD_BATCH_SIZE = 25
+const KEYWORD_BATCH_CONCURRENCY = 2
+const KEYWORD_MAX_NOTES_PER_PUBKEY = 5
+const KEYWORD_FILTER_LIMIT_FACTOR = 4
+const KEYWORD_EXTRACT_MAX_LENGTH = 500
 const NODE_DETAIL_PREVIEW_CONNECT_TIMEOUT_MS = 3_000
 const NODE_DETAIL_PREVIEW_PAGE_TIMEOUT_MS = 4_500
 const NODE_DETAIL_PREVIEW_RETRY_COUNT = 1
@@ -107,6 +117,7 @@ export interface SearchKeywordResult {
   tokens: string[]
   totalHits: number
   nodeHits: Record<string, number>
+  matchesByPubkey: Record<string, KeywordMatch[]>
 }
 
 export interface FindPathResult {
@@ -199,6 +210,11 @@ interface ActiveZapSession {
   adapter: RelayAdapterInstance
 }
 
+interface ActiveKeywordSession {
+  requestId: number
+  adapter: RelayAdapterInstance
+}
+
 interface MergedRelayEventEnvelope {
   event: Event
   relayUrls: string[]
@@ -221,6 +237,7 @@ export class AppKernel {
   private readonly now
   private activeLoadSession: ActiveLoadSession | null = null
   private activeZapSession: ActiveZapSession | null = null
+  private activeKeywordSession: ActiveKeywordSession | null = null
   private pendingRelayOverride: RelayOverrideSnapshot | null = null
   private readonly activeNodeStructurePreviewRequests = new Map<
     string,
@@ -232,9 +249,12 @@ export class AppKernel {
   >()
   private analysisFlushScheduled = false
   private analysisInFlight = false
+  private keywordCorpusInFlight = false
   private analysisScheduleVersion = 0
   private loadSequence = 0
   private zapRequestSequence = 0
+  private keywordRequestSequence = 0
+  private keywordSearchSequence = 0
 
   public constructor(dependencies: AppKernelDependencies) {
     this.store = dependencies.store
@@ -253,6 +273,7 @@ export class AppKernel {
   ): Promise<LoadRootResult> {
     this.cancelActiveLoad()
     this.cancelActiveZapLoad()
+    this.cancelActiveKeywordLoad()
 
     const loadId = this.loadSequence + 1
     this.loadSequence = loadId
@@ -365,14 +386,21 @@ export class AppKernel {
             loadId,
           )
           void this.prefetchZapLayer(this.getZapTargetPubkeys(), relayUrls)
+          void this.prefetchKeywordCorpus(
+            this.getKeywordCorpusTargetPubkeys(),
+            relayUrls,
+          )
         }
 
         return fallbackResult
       }
 
-      const parsedContactList = await this.eventsWorker.invoke('PARSE_CONTACT_LIST', {
-        event: serializeContactListEvent(latestContactListEvent.event),
-      })
+      const parsedContactList = await this.eventsWorker.invoke(
+        'PARSE_CONTACT_LIST',
+        {
+          event: serializeContactListEvent(latestContactListEvent.event),
+        },
+      )
 
       if (this.isStaleLoad(loadId)) {
         return this.createCancelledResult(relayUrls)
@@ -402,6 +430,7 @@ export class AppKernel {
         loadId,
       )
       void this.prefetchZapLayer(this.getZapTargetPubkeys(), relayUrls)
+      void this.prefetchKeywordCorpus(this.getKeywordCorpusTargetPubkeys(), relayUrls)
 
       const hasPartialSignals =
         parsedContactList.diagnostics.length > 0 ||
@@ -536,16 +565,22 @@ export class AppKernel {
           }) ??
           buildDiscoveredMessage(cachedContactList.follows.length, true, true)
 
-        return this.applyExpandedContactList(pubkey, cachedContactList.follows, {
-          relayUrls: state.relayUrls,
-          hasPartialSignals: true,
-          diagnostics: [],
-          loadedFromCache: true,
-          previewMessage:
-            cachedContactList.follows.length > 0
-              ? cachePreviewMessage
-              : `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
-        })
+        return this.applyExpandedStructureEvidence(
+          pubkey,
+          cachedContactList.follows,
+          [],
+          {
+            relayUrls: state.relayUrls,
+            authoredHasPartialSignals: true,
+            inboundHasPartialSignals: false,
+            authoredDiagnostics: [],
+            authoredLoadedFromCache: true,
+            previewMessage:
+              cachedContactList.follows.length > 0
+                ? cachePreviewMessage
+                : `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
+          },
+        )
       }
     }
 
@@ -558,11 +593,26 @@ export class AppKernel {
     })
 
     try {
-      const contactListResult = await collectRelayEvents(adapter, [
-        { authors: [pubkey], kinds: [3] } satisfies Filter,
+      const [contactListResult, inboundFollowerResult] = await Promise.all([
+        collectRelayEvents(adapter, [
+          { authors: [pubkey], kinds: [3] } satisfies Filter,
+        ]),
+        collectRelayEvents(adapter, [
+          {
+            kinds: [3],
+            '#p': [pubkey],
+            limit: NODE_EXPAND_INBOUND_QUERY_LIMIT,
+          } satisfies Filter & { '#p': string[] },
+        ]),
       ])
 
-      const latestContactListEvent = selectLatestReplaceableEvent(contactListResult.events)
+      const inboundFollowerEvidence = await this.collectInboundFollowerEvidence(
+        selectLatestReplaceableEventsByPubkey(inboundFollowerResult.events),
+        pubkey,
+      )
+      const latestContactListEvent = selectLatestReplaceableEvent(
+        contactListResult.events,
+      )
       if (!latestContactListEvent) {
         let cachedContactList = await this.repositories.contactLists.get(pubkey)
         if (!cachedContactList) {
@@ -583,34 +633,39 @@ export class AppKernel {
               loadedFromCache: true,
             }) ??
             buildDiscoveredMessage(cachedContactList.follows.length, true, true)
-          return this.applyExpandedContactList(pubkey, cachedContactList.follows, {
-            relayUrls,
-            hasPartialSignals: true,
-            diagnostics: [],
-            loadedFromCache: true,
-            previewMessage:
-              cachedContactList.follows.length > 0
-                ? cachePreviewMessage
-                : `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
-          })
+          return this.applyExpandedStructureEvidence(
+            pubkey,
+            cachedContactList.follows,
+            inboundFollowerEvidence.followerPubkeys,
+            {
+              relayUrls,
+              authoredHasPartialSignals: true,
+              inboundHasPartialSignals:
+                inboundFollowerEvidence.partial ||
+                inboundFollowerResult.error !== null,
+              authoredDiagnostics: [],
+              authoredLoadedFromCache: true,
+              previewMessage:
+                cachedContactList.follows.length > 0
+                  ? cachePreviewMessage
+                  : `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
+            },
+          )
         }
 
-        state.setNodeStructurePreviewState(pubkey, {
-          status: 'empty',
-          message: `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
-          discoveredFollowCount: 0,
-        })
-        state.setNodeExpansionState(pubkey, {
-          status: 'empty',
-          message: `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
-        })
-        state.markNodeExpanded(pubkey) // Confirma visualmente que la operacion se agoto
-        return {
-          status: 'empty',
-          discoveredFollowCount: 0,
-          rejectedPubkeys: [],
-          message: `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
-        }
+        return this.applyExpandedStructureEvidence(
+          pubkey,
+          [],
+          inboundFollowerEvidence.followerPubkeys,
+          {
+            relayUrls,
+            authoredHasPartialSignals: false,
+            inboundHasPartialSignals:
+              inboundFollowerEvidence.partial ||
+              inboundFollowerResult.error !== null,
+            previewMessage: `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
+          },
+        )
       }
 
       const parsedContactList = await this.eventsWorker.invoke('PARSE_CONTACT_LIST', {
@@ -641,21 +696,36 @@ export class AppKernel {
             loadedFromCache: true,
           }) ??
           buildDiscoveredMessage(cachedContactListBeforePersist.follows.length, true, true)
-        return this.applyExpandedContactList(pubkey, cachedContactListBeforePersist.follows, {
-          relayUrls,
-          hasPartialSignals: true,
-          diagnostics: [],
-          loadedFromCache: true,
-          previewMessage:
-            cachePreviewMessage,
-        })
+        return this.applyExpandedStructureEvidence(
+          pubkey,
+          cachedContactListBeforePersist.follows,
+          inboundFollowerEvidence.followerPubkeys,
+          {
+            relayUrls,
+            authoredHasPartialSignals: true,
+            inboundHasPartialSignals:
+              inboundFollowerEvidence.partial ||
+              inboundFollowerResult.error !== null,
+            authoredDiagnostics: [],
+            authoredLoadedFromCache: true,
+            previewMessage: cachePreviewMessage,
+          },
+        )
       }
 
-      return this.applyExpandedContactList(pubkey, parsedContactList.followPubkeys, {
-        relayUrls,
-        hasPartialSignals: parsedContactList.diagnostics.length > 0,
-        diagnostics: parsedContactList.diagnostics,
-      })
+      return this.applyExpandedStructureEvidence(
+        pubkey,
+        parsedContactList.followPubkeys,
+        inboundFollowerEvidence.followerPubkeys,
+        {
+          relayUrls,
+          authoredHasPartialSignals: parsedContactList.diagnostics.length > 0,
+          inboundHasPartialSignals:
+            inboundFollowerEvidence.partial ||
+            inboundFollowerResult.error !== null,
+          authoredDiagnostics: parsedContactList.diagnostics,
+        },
+      )
     } catch (error) {
       state.setNodeExpansionState(pubkey, {
         status: 'error',
@@ -670,20 +740,22 @@ export class AppKernel {
     }
   }
 
-  private applyExpandedContactList(
+  private applyExpandedStructureEvidence(
     pubkey: string,
     followPubkeys: string[],
+    inboundFollowerPubkeys: string[],
     options: {
       relayUrls: string[]
-      hasPartialSignals: boolean
-      diagnostics?: readonly { code: string }[]
-      loadedFromCache?: boolean
+      authoredHasPartialSignals: boolean
+      inboundHasPartialSignals: boolean
+      authoredDiagnostics?: readonly { code: string }[]
+      authoredLoadedFromCache?: boolean
       previewMessage?: string
     },
   ): ExpandNodeResult {
     const state = this.store.getState()
     const discoveredAt = this.now()
-    const newNodes: GraphNode[] = followPubkeys
+    const outboundNewNodes: GraphNode[] = followPubkeys
       .filter((followPubkey) => !state.nodes[followPubkey])
       .map((followPubkey) => ({
         pubkey: followPubkey,
@@ -693,7 +765,20 @@ export class AppKernel {
         source: 'follow' as const,
       }))
 
-    const nodeResult = state.upsertNodes(newNodes)
+    const outboundNodeResult = state.upsertNodes(outboundNewNodes)
+
+    const stateAfterOutboundNodes = this.store.getState()
+    const inboundNewNodes: GraphNode[] = inboundFollowerPubkeys
+      .filter((followerPubkey) => !stateAfterOutboundNodes.nodes[followerPubkey])
+      .map((followerPubkey) => ({
+        pubkey: followerPubkey,
+        keywordHits: 0,
+        discoveredAt,
+        profileState: 'loading',
+        source: 'inbound' as const,
+      }))
+
+    const inboundNodeResult = state.upsertNodes(inboundNewNodes)
 
     // Refrescar state despues de upsertNodes para que el filtro de links
     // use el estado actualizado del store (evitar stale nodes reference).
@@ -702,7 +787,7 @@ export class AppKernel {
     const newLinks: GraphLink[] = followPubkeys
       .filter(
         (followPubkey) =>
-          nodeResult.acceptedPubkeys.includes(followPubkey) ||
+          outboundNodeResult.acceptedPubkeys.includes(followPubkey) ||
           freshState.nodes[followPubkey],
       )
       .map((followPubkey) => ({
@@ -711,47 +796,79 @@ export class AppKernel {
         relation: 'follow' as const,
       }))
 
+    const newInboundLinks: GraphLink[] = inboundFollowerPubkeys
+      .filter(
+        (followerPubkey) =>
+          inboundNodeResult.acceptedPubkeys.includes(followerPubkey) ||
+          freshState.nodes[followerPubkey],
+      )
+      .filter((followerPubkey) => followerPubkey !== pubkey)
+      .map((followerPubkey) => ({
+        source: followerPubkey,
+        target: pubkey,
+        relation: 'inbound' as const,
+      }))
+
     state.upsertLinks(newLinks)
+    state.upsertInboundLinks(newInboundLinks)
     state.markNodeExpanded(pubkey)
     this.scheduleDiscoveredGraphAnalysis()
 
     void this.hydrateNodeProfiles(
-      [pubkey, ...nodeResult.acceptedPubkeys],
+      [
+        pubkey,
+        ...outboundNodeResult.acceptedPubkeys,
+        ...inboundNodeResult.acceptedPubkeys,
+      ],
       options.relayUrls,
       this.loadSequence,
     )
     void this.prefetchZapLayer(this.getZapTargetPubkeys(), options.relayUrls)
+    void this.prefetchKeywordCorpus(
+      this.getKeywordCorpusTargetPubkeys(),
+      options.relayUrls,
+    )
 
+    const rejectedPubkeys = Array.from(
+      new Set([
+        ...outboundNodeResult.rejectedPubkeys,
+        ...inboundNodeResult.rejectedPubkeys,
+      ]),
+    )
+    const discoveredFollowerCount = newInboundLinks.length
     const hasPartialSignals =
-      options.hasPartialSignals || nodeResult.rejectedPubkeys.length > 0
-    const status = hasPartialSignals ? 'partial' : 'ready'
-    const expansionMessage = hasPartialSignals || options.loadedFromCache
-      ? buildContactListPartialMessage({
-        discoveredFollowCount: followPubkeys.length,
-        diagnostics: options.diagnostics ?? [],
-        rejectedPubkeyCount: nodeResult.rejectedPubkeys.length,
-        maxGraphNodes: state.graphCaps.maxNodes,
-        loadedFromCache: options.loadedFromCache,
-        acceptedNodesCount: nodeResult.acceptedPubkeys.length,
-      }) ??
-      buildDiscoveredMessage(followPubkeys.length, false, options.loadedFromCache, nodeResult.acceptedPubkeys.length)
-      : buildDiscoveredMessage(followPubkeys.length, false, false, nodeResult.acceptedPubkeys.length)
+      options.authoredHasPartialSignals ||
+      options.inboundHasPartialSignals ||
+      rejectedPubkeys.length > 0
+    const status =
+      newLinks.length + discoveredFollowerCount === 0
+        ? 'empty'
+        : hasPartialSignals
+          ? 'partial'
+          : 'ready'
+    const acceptedNodesCount =
+      outboundNodeResult.acceptedPubkeys.length +
+      inboundNodeResult.acceptedPubkeys.length
+    const expansionMessage = buildExpandedStructureMessage({
+      pubkey,
+      discoveredFollowCount: followPubkeys.length,
+      discoveredFollowerCount,
+      hasPartialSignals,
+      authoredDiagnostics: options.authoredDiagnostics ?? [],
+      rejectedPubkeyCount: rejectedPubkeys.length,
+      maxGraphNodes: state.graphCaps.maxNodes,
+      authoredLoadedFromCache: options.authoredLoadedFromCache,
+      acceptedNodesCount,
+    })
 
     state.setNodeStructurePreviewState(pubkey, {
-      status,
-      message:
-        options.previewMessage ??
-        (hasPartialSignals || options.loadedFromCache
-          ? buildContactListPartialMessage({
-            discoveredFollowCount: followPubkeys.length,
-            diagnostics: options.diagnostics ?? [],
-            rejectedPubkeyCount: nodeResult.rejectedPubkeys.length,
-            maxGraphNodes: state.graphCaps.maxNodes,
-            loadedFromCache: options.loadedFromCache,
-            acceptedNodesCount: nodeResult.acceptedPubkeys.length,
-          }) ??
-          buildDiscoveredMessage(followPubkeys.length, true, options.loadedFromCache, nodeResult.acceptedPubkeys.length)
-          : null),
+      status:
+        followPubkeys.length === 0
+          ? 'empty'
+          : options.authoredHasPartialSignals || options.authoredLoadedFromCache
+            ? 'partial'
+            : 'ready',
+      message: options.previewMessage ?? null,
       discoveredFollowCount: followPubkeys.length,
     })
     state.setNodeExpansionState(pubkey, {
@@ -762,8 +879,52 @@ export class AppKernel {
     return {
       status,
       discoveredFollowCount: followPubkeys.length,
-      rejectedPubkeys: nodeResult.rejectedPubkeys,
+      rejectedPubkeys,
       message: expansionMessage,
+    }
+  }
+
+  private async collectInboundFollowerEvidence(
+    envelopes: RelayEventEnvelope[],
+    targetPubkey: string,
+  ): Promise<InboundFollowerEvidence> {
+    if (envelopes.length === 0) {
+      return {
+        followerPubkeys: [],
+        partial: false,
+      }
+    }
+
+    const followerPubkeys = new Set<string>()
+    let partial = false
+
+    await runWithConcurrencyLimit(
+      envelopes,
+      NODE_EXPAND_INBOUND_PARSE_CONCURRENCY,
+      async (envelope) => {
+        try {
+          const parsedContactList = await this.eventsWorker.invoke(
+            'PARSE_CONTACT_LIST',
+            {
+              event: serializeContactListEvent(envelope.event),
+            },
+          )
+
+          if (
+            parsedContactList.followPubkeys.includes(targetPubkey) &&
+            envelope.event.pubkey !== targetPubkey
+          ) {
+            followerPubkeys.add(envelope.event.pubkey)
+          }
+        } catch {
+          partial = true
+        }
+      },
+    )
+
+    return {
+      followerPubkeys: Array.from(followerPubkeys).sort(),
+      partial,
     }
   }
 
@@ -861,35 +1022,119 @@ export class AppKernel {
     }
   }
 
-  public async searchKeyword(keyword: string, extracts: KeywordExtractInput[]): Promise<SearchKeywordResult> {
+  public async searchKeyword(keyword: string): Promise<SearchKeywordResult> {
+    const requestId = this.keywordSearchSequence + 1
+    this.keywordSearchSequence = requestId
     const trimmed = keyword.trim()
+    const visiblePubkeys = this.getKeywordCorpusTargetPubkeys()
+
     if (trimmed.length === 0) {
-      return { keyword: '', tokens: [], totalHits: 0, nodeHits: {} }
+      const state = this.store.getState()
+      state.setCurrentKeyword('')
+      this.removeKeywordSourceNodes()
+      this.applyKeywordHits({})
+      state.setKeywordMatches({})
+
+      if (state.keywordLayer.status === 'enabled') {
+        state.setKeywordLayerState({
+          message: state.keywordLayer.extractCount > 0
+            ? `${state.keywordLayer.extractCount} extractos listos para explorar.`
+            : KEYWORD_LAYER_EMPTY_MESSAGE,
+        })
+      }
+
+      return {
+        keyword: '',
+        tokens: [],
+        totalHits: 0,
+        nodeHits: {},
+        matchesByPubkey: {},
+      }
     }
 
-    this.store.getState().setCurrentKeyword(trimmed)
+    this.removeKeywordSourceNodes()
+    const extracts = await this.repositories.noteExtracts.findByPubkeys(visiblePubkeys)
+
+    if (this.keywordSearchSequence !== requestId) {
+      return {
+        keyword: trimmed,
+        tokens: tokenizeKeyword(trimmed),
+        totalHits: 0,
+        nodeHits: {},
+        matchesByPubkey: {},
+      }
+    }
+
+    if (extracts.length === 0) {
+      const state = this.store.getState()
+      state.setCurrentKeyword(trimmed)
+      this.applyKeywordHits({})
+      state.setKeywordMatches({})
+
+      return {
+        keyword: trimmed,
+        tokens: tokenizeKeyword(trimmed),
+        totalHits: 0,
+        nodeHits: {},
+        matchesByPubkey: {},
+      }
+    }
 
     const result = await this.eventsWorker.invoke('SEARCH_KEYWORDS', {
       keyword: trimmed,
-      extracts,
+      extracts: extracts.map((extract) => ({
+        noteId: extract.noteId,
+        pubkey: extract.pubkey,
+        text: extract.text,
+      })),
     })
 
-    const state = this.store.getState()
+    if (this.keywordSearchSequence !== requestId) {
+      return {
+        keyword: trimmed,
+        tokens: result.tokens,
+        totalHits: result.excerptMatches.length,
+        nodeHits: {},
+        matchesByPubkey: {},
+      }
+    }
+
     const nodeHits: Record<string, number> = {}
+    const matchesByPubkey: Record<string, KeywordMatch[]> = {}
 
     for (const [pubkey, count] of Object.entries(result.hitCounts)) {
       nodeHits[pubkey] = count
-      const existingNode = state.nodes[pubkey]
-      if (existingNode) {
-        state.upsertNodes([{ ...existingNode, keywordHits: count }])
-      }
     }
+
+    for (const match of result.excerptMatches) {
+      const matches = matchesByPubkey[match.pubkey] ?? []
+      matches.push({
+        noteId: match.noteId,
+        excerpt: match.excerpt,
+        matchedTokens: match.matchedTokens,
+        score: match.score,
+      })
+      matchesByPubkey[match.pubkey] = matches
+    }
+
+    const state = this.store.getState()
+    state.setCurrentKeyword(trimmed)
+    this.applyKeywordHits(nodeHits)
+    state.setKeywordMatches(matchesByPubkey)
+    state.setKeywordLayerState({
+      message:
+        result.excerptMatches.length > 0
+          ? `${result.excerptMatches.length} coincidencias en ${Object.keys(matchesByPubkey).length} nodos para "${trimmed}".`
+          : `Sin coincidencias para "${trimmed}".`,
+    })
+    logKeywordMatchesToConsole(trimmed, nodeHits, matchesByPubkey, state.nodes)
 
     return {
       keyword: trimmed,
       tokens: result.tokens,
       totalHits: result.excerptMatches.length,
       nodeHits,
+      matchesByPubkey,
     }
   }
 
@@ -910,7 +1155,12 @@ export class AppKernel {
     return {
       previousLayer,
       activeLayer: layer,
-      message: layer === 'zaps' ? state.zapLayer.message : null,
+      message:
+        layer === 'zaps'
+          ? state.zapLayer.message
+          : layer === 'keywords'
+            ? state.keywordLayer.message
+            : null,
     }
   }
 
@@ -1272,7 +1522,11 @@ export class AppKernel {
     for (let iteration = 0; iteration < 20; iteration += 1) {
       await Promise.resolve()
 
-      if (!this.analysisFlushScheduled && !this.analysisInFlight) {
+      if (
+        !this.analysisFlushScheduled &&
+        !this.analysisInFlight &&
+        !this.keywordCorpusInFlight
+      ) {
         return
       }
     }
@@ -1519,6 +1773,7 @@ export class AppKernel {
   public dispose(): void {
     this.cancelActiveLoad()
     this.cancelActiveZapLoad()
+    this.cancelActiveKeywordLoad()
     this.eventsWorker.dispose()
     this.graphWorker.dispose()
   }
@@ -1631,6 +1886,11 @@ export class AppKernel {
     state.resetGraphAnalysis()
     state.resetGraph()
     state.resetZapLayer()
+    state.resetKeywordLayer()
+    state.setCurrentKeyword('')
+    if (state.activeLayer === 'keywords') {
+      state.setActiveLayer('graph')
+    }
     state.setRootNodePubkey(rootPubkey)
 
     const discoveredAt = this.now()
@@ -1772,6 +2032,340 @@ export class AppKernel {
     }
 
     return [...targetPubkeys].sort()
+  }
+
+  private getKeywordCorpusTargetPubkeys(): string[] {
+    return Object.values(this.store.getState().nodes)
+      .filter((node) => node.source !== 'keyword')
+      .map((node) => node.pubkey)
+      .sort()
+  }
+
+  private removeKeywordSourceNodes(keepPubkeys: readonly string[] = []): void {
+    const state = this.store.getState()
+    const keepSet = new Set(keepPubkeys)
+    const removablePubkeys = Object.values(state.nodes)
+      .filter((node) => node.source === 'keyword' && !keepSet.has(node.pubkey))
+      .map((node) => node.pubkey)
+
+    if (removablePubkeys.length === 0) {
+      return
+    }
+
+    const removableSet = new Set(removablePubkeys)
+    if (
+      state.selectedNodePubkey !== null &&
+      removableSet.has(state.selectedNodePubkey)
+    ) {
+      state.setSelectedNodePubkey(null)
+      if (state.openPanel === 'node-detail') {
+        state.setOpenPanel('overview')
+      }
+    }
+
+    if (state.comparedNodePubkeys.size > 0) {
+      const nextComparedNodePubkeys = new Set(
+        Array.from(state.comparedNodePubkeys).filter(
+          (pubkey) => !removableSet.has(pubkey),
+        ),
+      )
+
+      if (nextComparedNodePubkeys.size !== state.comparedNodePubkeys.size) {
+        state.setComparedNodePubkeys(nextComparedNodePubkeys)
+      }
+    }
+
+    state.removeNodes(removablePubkeys)
+  }
+
+  private resetKeywordHits(): void {
+    const state = this.store.getState()
+    const nodesWithHits = Object.values(state.nodes).filter(
+      (node) => node.keywordHits > 0,
+    )
+
+    if (nodesWithHits.length === 0) {
+      return
+    }
+
+    state.upsertNodes(
+      nodesWithHits.map((node) => ({
+        ...node,
+        keywordHits: 0,
+      })),
+    )
+  }
+
+  private applyKeywordHits(
+    nodeHits: Record<string, number>,
+    createMissingNode?: (pubkey: string, hitCount: number) => GraphNode | null,
+  ): void {
+    const state = this.store.getState()
+    const candidatePubkeys = new Set([
+      ...Object.keys(nodeHits),
+      ...Object.values(state.nodes)
+        .filter((node) => node.keywordHits > 0)
+        .map((node) => node.pubkey),
+    ])
+    const changedNodes: GraphNode[] = []
+
+    for (const pubkey of candidatePubkeys) {
+      const nextHits = nodeHits[pubkey] ?? 0
+      const existingNode =
+        state.nodes[pubkey] ?? createMissingNode?.(pubkey, nextHits)
+
+      if (!existingNode) {
+        continue
+      }
+
+      if (existingNode.keywordHits === nextHits) {
+        continue
+      }
+
+      changedNodes.push({
+        ...existingNode,
+        keywordHits: nextHits,
+      })
+    }
+
+    if (changedNodes.length > 0) {
+      state.upsertNodes(changedNodes)
+    }
+  }
+
+  private async prefetchKeywordCorpus(
+    targetPubkeys: string[],
+    relayUrls: string[],
+  ): Promise<void> {
+    const normalizedTargetPubkeys = Array.from(
+      new Set(targetPubkeys.filter(Boolean)),
+    ).sort()
+    const state = this.store.getState()
+
+    if (normalizedTargetPubkeys.length === 0) {
+      this.resetKeywordHits()
+      state.resetKeywordLayer()
+      state.setCurrentKeyword('')
+      return
+    }
+
+    const requestId = this.keywordRequestSequence + 1
+    this.keywordRequestSequence = requestId
+    this.cancelActiveKeywordLoad()
+    this.keywordCorpusInFlight = true
+
+    const cachedExtracts = await this.repositories.noteExtracts.findByPubkeys(
+      normalizedTargetPubkeys,
+    )
+
+    if (this.isStaleKeywordRequest(requestId)) {
+      this.keywordCorpusInFlight = false
+      return
+    }
+
+    const cachedSummary = summarizeKeywordCorpus(cachedExtracts)
+    if (cachedSummary.extractCount > 0) {
+      state.setKeywordLayerState({
+        status: 'enabled',
+        loadedFrom: 'cache',
+        isPartial: false,
+        message: `${cachedSummary.extractCount} extractos disponibles desde cache local. Revalidando corpus...`,
+        corpusNodeCount: cachedSummary.corpusNodeCount,
+        extractCount: cachedSummary.extractCount,
+        lastUpdatedAt: this.now(),
+      })
+    } else {
+      this.resetKeywordHits()
+      state.setKeywordMatches({})
+      state.setKeywordLayerState({
+        status: 'loading',
+        loadedFrom: 'none',
+        isPartial: false,
+        message: KEYWORD_LAYER_LOADING_MESSAGE,
+        corpusNodeCount: 0,
+        extractCount: 0,
+        matchesByPubkey: {},
+        lastUpdatedAt: null,
+      })
+    }
+
+    const adapter = this.createRelayAdapter({ relayUrls })
+    this.activeKeywordSession = {
+      requestId,
+      adapter,
+    }
+
+    const liveExtractsByPubkey = new Map<string, NoteExtractRecord[]>()
+    let failedBatchCount = 0
+
+    try {
+      const batches = chunkIntoBatches(normalizedTargetPubkeys, KEYWORD_BATCH_SIZE)
+      const since = Math.max(
+        0,
+        Math.floor(this.now() / 1000) - KEYWORD_LOOKBACK_WINDOW_SEC,
+      )
+
+      await runWithConcurrencyLimit(
+        batches,
+        KEYWORD_BATCH_CONCURRENCY,
+        async (batch) => {
+          const batchResult = await collectRelayEvents(adapter, [
+            {
+              authors: batch,
+              kinds: [1],
+              since,
+              limit:
+                Math.max(
+                  KEYWORD_MAX_NOTES_PER_PUBKEY,
+                  batch.length * KEYWORD_MAX_NOTES_PER_PUBKEY * KEYWORD_FILTER_LIMIT_FACTOR,
+                ),
+            } satisfies Filter,
+          ])
+
+          if (this.isStaleKeywordRequest(requestId)) {
+            return
+          }
+
+          if (batchResult.error) {
+            failedBatchCount += 1
+            return
+          }
+
+          const mergedEvents = mergeRelayEventsById(batchResult.events)
+          await Promise.all(
+            mergedEvents.map((eventEnvelope) =>
+              this.persistRawEventEnvelope(eventEnvelope),
+            ),
+          )
+          const recordsByPubkey = buildNoteExtractRecordsByPubkey(
+            mergedEvents,
+            batch,
+            KEYWORD_MAX_NOTES_PER_PUBKEY,
+          )
+
+          await Promise.all(
+            batch.map(async (pubkey) => {
+              const records = recordsByPubkey.get(pubkey) ?? []
+              await this.repositories.noteExtracts.replaceForPubkey(pubkey, records)
+              liveExtractsByPubkey.set(pubkey, records)
+            }),
+          )
+        },
+      )
+
+      if (this.isStaleKeywordRequest(requestId)) {
+        return
+      }
+
+      const visibleExtracts =
+        liveExtractsByPubkey.size > 0
+          ? flattenNoteExtractRecords(liveExtractsByPubkey)
+          : await this.repositories.noteExtracts.findByPubkeys(normalizedTargetPubkeys)
+      const summary = summarizeKeywordCorpus(visibleExtracts)
+      const hasLiveCorpus = summary.extractCount > 0
+      const hasCacheCorpus = cachedSummary.extractCount > 0
+      const currentKeyword = this.store.getState().currentKeyword.trim()
+
+      if (hasLiveCorpus) {
+        state.setKeywordLayerState({
+          status: 'enabled',
+          loadedFrom: 'live',
+          isPartial: failedBatchCount > 0,
+          message:
+            failedBatchCount > 0
+              ? `${summary.extractCount} extractos listos con cobertura parcial de relays.`
+              : `${summary.extractCount} extractos listos para explorar.`,
+          corpusNodeCount: summary.corpusNodeCount,
+          extractCount: summary.extractCount,
+          lastUpdatedAt: this.now(),
+        })
+
+        if (currentKeyword.length > 0) {
+          await this.searchKeyword(currentKeyword)
+        } else {
+          this.resetKeywordHits()
+          state.setKeywordMatches({})
+        }
+
+        return
+      }
+
+      if (hasCacheCorpus) {
+        state.setKeywordLayerState({
+          status: 'enabled',
+          loadedFrom: 'cache',
+          isPartial: true,
+          message: `${cachedSummary.extractCount} extractos desde cache. No se pudo refrescar toda la cobertura live.`,
+          corpusNodeCount: cachedSummary.corpusNodeCount,
+          extractCount: cachedSummary.extractCount,
+          lastUpdatedAt: this.now(),
+        })
+
+        if (currentKeyword.length > 0) {
+          await this.searchKeyword(currentKeyword)
+        } else {
+          this.resetKeywordHits()
+          state.setKeywordMatches({})
+        }
+
+        return
+      }
+
+      this.resetKeywordHits()
+      state.setKeywordMatches({})
+      state.setCurrentKeyword('')
+      state.setKeywordLayerState({
+        status: 'unavailable',
+        loadedFrom: 'live',
+        isPartial: failedBatchCount > 0,
+        message:
+          failedBatchCount > 0
+            ? 'No se pudo construir el corpus de notas con los relays actuales.'
+            : KEYWORD_LAYER_EMPTY_MESSAGE,
+        corpusNodeCount: 0,
+        extractCount: 0,
+        lastUpdatedAt: this.now(),
+      })
+    } catch (error) {
+      if (!this.isStaleKeywordRequest(requestId)) {
+        if (cachedSummary.extractCount > 0) {
+          state.setKeywordLayerState({
+            status: 'enabled',
+            loadedFrom: 'cache',
+            isPartial: true,
+            message: `${cachedSummary.extractCount} extractos desde cache. No se pudo refrescar el corpus live.`,
+            corpusNodeCount: cachedSummary.corpusNodeCount,
+            extractCount: cachedSummary.extractCount,
+            lastUpdatedAt: this.now(),
+          })
+        } else {
+          this.resetKeywordHits()
+          state.setKeywordMatches({})
+          state.setCurrentKeyword('')
+          state.setKeywordLayerState({
+            status: 'unavailable',
+            loadedFrom: 'none',
+            isPartial: true,
+            message:
+              error instanceof Error && error.message.trim().length > 0
+                ? error.message
+                : 'No se pudo construir el corpus de notas con los relays actuales.',
+            corpusNodeCount: 0,
+            extractCount: 0,
+            lastUpdatedAt: this.now(),
+          })
+        }
+      }
+    } finally {
+      if (this.activeKeywordSession?.requestId === requestId) {
+        this.activeKeywordSession.adapter.close()
+        this.activeKeywordSession = null
+      }
+
+      if (this.keywordRequestSequence === requestId) {
+        this.keywordCorpusInFlight = false
+      }
+    }
   }
 
   private syncNodeProfile(pubkey: string, profile: NodeDetailProfile): void {
@@ -2045,6 +2639,7 @@ export class AppKernel {
         relayUrls,
         this.loadSequence,
       )
+      void this.prefetchKeywordCorpus(this.getKeywordCorpusTargetPubkeys(), relayUrls)
     }
   }
 
@@ -2281,12 +2876,25 @@ export class AppKernel {
     this.activeZapSession = null
   }
 
+  private cancelActiveKeywordLoad(): void {
+    if (!this.activeKeywordSession) {
+      return
+    }
+
+    this.activeKeywordSession.adapter.close()
+    this.activeKeywordSession = null
+  }
+
   private isStaleLoad(loadId: number): boolean {
     return loadId !== this.loadSequence
   }
 
   private isStaleZapRequest(requestId: number): boolean {
     return requestId !== this.zapRequestSequence
+  }
+
+  private isStaleKeywordRequest(requestId: number): boolean {
+    return requestId !== this.keywordRequestSequence
   }
 }
 
@@ -2317,6 +2925,7 @@ export interface RootLoader {
   ) => Promise<ReconfigureRelaysResult>
   revertRelayOverride: () => Promise<ReconfigureRelaysResult | null>
   expandNode: (pubkey: string) => Promise<ExpandNodeResult>
+  searchKeyword: (keyword: string) => Promise<SearchKeywordResult>
   toggleLayer: (layer: UiLayer) => ToggleLayerResult
   findPath: (
     sourcePubkey: string,
@@ -2539,7 +3148,7 @@ function mapStoreRelayHealthStatus(
 
 async function collectRelayEvents(
   adapter: RelayAdapterInstance,
-  filters: Filter[],
+  filters: RelayQueryFilter[],
 ): Promise<RelayCollectionResult> {
   return new Promise<RelayCollectionResult>((resolve) => {
     const events: RelayEventEnvelope[] = []
@@ -2708,6 +3317,17 @@ function buildNodeProfileFromNode(node: GraphNode): NodeDetailProfile {
   }
 }
 
+function tokenizeKeyword(keyword: string): string[] {
+  return [
+    ...new Set(
+      keyword
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((token) => token.length > 1),
+    ),
+  ].sort()
+}
+
 function firstString(...values: unknown[]): string | null {
   for (const value of values) {
     if (typeof value === 'string' && value.trim().length > 0) {
@@ -2716,6 +3336,149 @@ function firstString(...values: unknown[]): string | null {
   }
 
   return null
+}
+
+function chunkIntoBatches<T>(items: readonly T[], size: number): T[][] {
+  if (size <= 0) {
+    return [items.slice()]
+  }
+
+  const batches: T[][] = []
+
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size))
+  }
+
+  return batches
+}
+
+function normalizeNoteExtractText(content: string): string | null {
+  const normalized = content.replace(/\s+/g, ' ').trim()
+
+  if (normalized.length === 0) {
+    return null
+  }
+
+  return normalized.slice(0, KEYWORD_EXTRACT_MAX_LENGTH)
+}
+
+function buildNoteExtractRecordsByPubkey(
+  events: readonly MergedRelayEventEnvelope[],
+  requestedPubkeys: readonly string[],
+  maxNotesPerPubkey: number,
+): Map<string, NoteExtractRecord[]> {
+  const recordsByPubkey = new Map<string, NoteExtractRecord[]>(
+    requestedPubkeys.map((pubkey) => [pubkey, []]),
+  )
+  const requestedSet = new Set(requestedPubkeys)
+
+  const sortedEvents = events
+    .filter(
+      (envelope) => envelope.event.kind === 1 && requestedSet.has(envelope.event.pubkey),
+    )
+    .slice()
+    .sort((left, right) => {
+      if (left.event.pubkey !== right.event.pubkey) {
+        return left.event.pubkey.localeCompare(right.event.pubkey)
+      }
+
+      if (left.event.created_at !== right.event.created_at) {
+        return right.event.created_at - left.event.created_at
+      }
+
+      return left.event.id.localeCompare(right.event.id)
+    })
+
+  for (const envelope of sortedEvents) {
+    const currentRecords = recordsByPubkey.get(envelope.event.pubkey) ?? []
+
+    if (currentRecords.length >= maxNotesPerPubkey) {
+      continue
+    }
+
+    const text = normalizeNoteExtractText(envelope.event.content)
+    if (!text) {
+      continue
+    }
+
+    recordsByPubkey.set(envelope.event.pubkey, [
+      ...currentRecords,
+      {
+        noteId: envelope.event.id,
+        pubkey: envelope.event.pubkey,
+        createdAt: envelope.event.created_at,
+        fetchedAt: envelope.receivedAtMs,
+        text,
+      },
+    ])
+  }
+
+  return recordsByPubkey
+}
+
+function flattenNoteExtractRecords(
+  recordsByPubkey: Map<string, NoteExtractRecord[]>,
+): NoteExtractRecord[] {
+  return Array.from(recordsByPubkey.values())
+    .flat()
+    .sort((left, right) => {
+      if (left.pubkey !== right.pubkey) {
+        return left.pubkey.localeCompare(right.pubkey)
+      }
+
+      if (left.createdAt !== right.createdAt) {
+        return right.createdAt - left.createdAt
+      }
+
+      return left.noteId.localeCompare(right.noteId)
+    })
+}
+
+function summarizeKeywordCorpus(extracts: readonly NoteExtractRecord[]): {
+  corpusNodeCount: number
+  extractCount: number
+} {
+  return {
+    corpusNodeCount: new Set(extracts.map((extract) => extract.pubkey)).size,
+    extractCount: extracts.length,
+  }
+}
+
+function logKeywordMatchesToConsole(
+  keyword: string,
+  nodeHits: Record<string, number>,
+  matchesByPubkey: Record<string, KeywordMatch[]>,
+  nodes: Record<string, GraphNode>,
+): void {
+  if (typeof console === 'undefined') {
+    return
+  }
+
+  const matchedUsers = Object.entries(matchesByPubkey)
+    .map(([pubkey, matches]) => ({
+      pubkey,
+      label:
+        nodes[pubkey]?.label?.trim() ||
+        nodes[pubkey]?.nip05?.trim() ||
+        pubkey.slice(0, 12),
+      hitScore: nodeHits[pubkey] ?? 0,
+      excerptCount: matches.length,
+      topTokens: Array.from(
+        new Set(matches.flatMap((match) => match.matchedTokens)),
+      ).join(', '),
+    }))
+    .sort((left, right) => {
+      if (left.hitScore !== right.hitScore) {
+        return right.hitScore - left.hitScore
+      }
+
+      return left.pubkey.localeCompare(right.pubkey)
+    })
+
+  console.info(
+    `[graph] Keyword "${keyword}" matched ${matchedUsers.length} users.`,
+    matchedUsers,
+  )
 }
 
 function findDTag(event: Event): string | null {
@@ -2904,4 +3667,47 @@ function buildContactListPartialMessage(options: {
   }
 
   return `${prefix} con degradacion parcial.`
+}
+
+function buildExpandedStructureMessage(options: {
+  pubkey: string
+  discoveredFollowCount: number
+  discoveredFollowerCount: number
+  hasPartialSignals: boolean
+  authoredDiagnostics: readonly { code: string }[]
+  rejectedPubkeyCount: number
+  maxGraphNodes: number
+  authoredLoadedFromCache?: boolean
+  acceptedNodesCount: number
+}): string {
+  const authoredMessage =
+    options.discoveredFollowCount > 0
+      ? options.hasPartialSignals || options.authoredLoadedFromCache
+        ? buildContactListPartialMessage({
+            discoveredFollowCount: options.discoveredFollowCount,
+            diagnostics: options.authoredDiagnostics,
+            rejectedPubkeyCount: options.rejectedPubkeyCount,
+            maxGraphNodes: options.maxGraphNodes,
+            loadedFromCache: options.authoredLoadedFromCache,
+            acceptedNodesCount: options.acceptedNodesCount,
+          }) ??
+          buildDiscoveredMessage(
+            options.discoveredFollowCount,
+            true,
+            options.authoredLoadedFromCache,
+            options.acceptedNodesCount,
+          )
+        : buildDiscoveredMessage(
+            options.discoveredFollowCount,
+            false,
+            false,
+            options.acceptedNodesCount,
+          )
+      : `Sin lista de follows descubierta para ${options.pubkey.slice(0, 8)}...`
+
+  if (options.discoveredFollowerCount === 0) {
+    return authoredMessage
+  }
+
+  return `${authoredMessage} ${options.discoveredFollowerCount} followers inbound reales descubiertos.`
 }

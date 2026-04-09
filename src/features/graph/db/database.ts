@@ -6,6 +6,7 @@ import type {
   ContactListRecord,
   ImageVariantRecord,
   InboundRefRecord,
+  NoteExtractRecord,
   ProfileRecord,
   RawEventRecord,
   ReplaceableHeadKey,
@@ -45,12 +46,18 @@ export const NOSTR_GRAPH_DB_SCHEMA_V4 = {
     '[sourceUrl+bucket], sourceUrl, bucket, fetchedAt, lastAccessedAt, expiresAt, byteSize',
 } as const
 
+export const NOSTR_GRAPH_DB_SCHEMA_V5 = {
+  ...NOSTR_GRAPH_DB_SCHEMA_V4,
+  noteExtracts: 'noteId, pubkey, createdAt, fetchedAt, [pubkey+createdAt]',
+} as const
+
 export class NostrGraphDexie extends Dexie {
   rawEvents!: Table<RawEventRecord, string>
   replaceableHeads!: Table<ReplaceableHeadRecord, ReplaceableHeadKey>
   addressableHeads!: Table<AddressableHeadRecord, AddressableHeadKey>
   profiles!: Table<ProfileRecord, string>
   contactLists!: Table<ContactListRecord, string>
+  noteExtracts!: Table<NoteExtractRecord, string>
   inboundRefs!: Table<InboundRefRecord, string>
   zaps!: Table<ZapRecord, string>
   imageVariants!: Table<ImageVariantRecord, [string, number]>
@@ -66,6 +73,7 @@ export class NostrGraphDexie extends Dexie {
     this.version(4)
       .stores(NOSTR_GRAPH_DB_SCHEMA_V4)
       .upgrade((tx) => tx.table('imageVariants').clear())
+    this.version(5).stores(NOSTR_GRAPH_DB_SCHEMA_V5)
   }
 }
 

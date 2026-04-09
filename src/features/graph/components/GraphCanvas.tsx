@@ -53,8 +53,10 @@ import { GraphViewportLazy } from '@/features/graph/render/GraphViewportLazy'
 const selectGraphCanvasState = (state: AppStore) => ({
   nodes: state.nodes,
   links: state.links,
+  inboundLinks: state.inboundLinks,
   zapEdges: state.zapLayer.edges,
   zapLayerStatus: state.zapLayer.status,
+  keywordLayer: state.keywordLayer,
   relayUrls: state.relayUrls,
   relayHealth: state.relayHealth,
   rootNodePubkey: state.rootNodePubkey,
@@ -66,6 +68,7 @@ const selectGraphCanvasState = (state: AppStore) => ({
   rootLoadStatus: state.rootLoad.status,
   rootLoadMessage: state.rootLoad.message,
   activeLayer: state.activeLayer,
+  currentKeyword: state.currentKeyword,
   capReached: state.graphCaps.capReached,
   maxNodes: state.graphCaps.maxNodes,
   renderConfig: state.renderConfig,
@@ -106,6 +109,7 @@ export interface GraphCanvasDiagnostics {
     meta: string
     activeLayer: string
     zapLayerStatus: string
+    keywordLayerStatus: string
   }
 }
 
@@ -278,8 +282,10 @@ export function GraphCanvas({
   const {
     nodes,
     links,
+    inboundLinks,
     zapEdges,
     zapLayerStatus,
+    keywordLayer,
     relayUrls,
     relayHealth,
     rootNodePubkey,
@@ -291,6 +297,7 @@ export function GraphCanvas({
     rootLoadStatus,
     rootLoadMessage,
     activeLayer,
+    currentKeyword,
     capReached,
     maxNodes,
     renderConfig,
@@ -312,6 +319,8 @@ export function GraphCanvas({
   } | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [isShiftPressed, setIsShiftPressed] = useState(false)
+  const [keywordDraft, setKeywordDraft] = useState(currentKeyword)
+  const [isKeywordSearching, setIsKeywordSearching] = useState(false)
   const previousRenderSnapshotRef = useRef({
     nodes,
     links,
@@ -351,6 +360,7 @@ export function GraphCanvas({
   const [imageDiagnosticsSnapshot, setImageDiagnosticsSnapshot] =
     useState<ImageResidencySnapshot>(EMPTY_IMAGE_DIAGNOSTICS)
   const stableViewStateRef = useRef<GraphViewState | null>(null)
+  const keywordSearchSequenceRef = useRef(0)
   const stableVisibleLabelsRef = useRef<readonly GraphRenderLabel[]>([])
   const stableNodeScreenRadiiRef = useRef<ReadonlyMap<string, number>>(
     EMPTY_NODE_SCREEN_RADII,
@@ -531,6 +541,7 @@ export function GraphCanvas({
     workerQueueRefs.current.pendingInput = {
       nodes,
       links,
+      inboundLinks,
       zapEdges,
       activeLayer,
       rootNodePubkey,
@@ -643,6 +654,7 @@ export function GraphCanvas({
     graphAnalysis,
     graphRenderWorker,
     links,
+    inboundLinks,
     nodes,
     pathfinding.path,
     pathfinding.status,
@@ -821,6 +833,7 @@ export function GraphCanvas({
 
     return resolveGraphNodeScreenRadii({
       nodes: model.nodes,
+      activeLayer: model.activeLayer,
       viewState,
       width: size.width,
       height: size.height,
@@ -828,6 +841,7 @@ export function GraphCanvas({
       autoSizeNodes: model.renderConfig?.autoSizeNodes,
     })
   }, [
+    model.activeLayer,
     model.lod.visibleNodeCount,
     model.nodes,
     model.renderConfig?.autoSizeNodes,
@@ -1085,6 +1099,65 @@ export function GraphCanvas({
     [fitSignature, markViewportInteraction],
   )
 
+  const handleToggleLayer = useCallback(
+    (layer: AppStore['activeLayer']) => {
+      runtime.toggleLayer(layer)
+    },
+    [runtime],
+  )
+
+  const handleKeywordDraftChange = useCallback(
+    (nextValue: string) => {
+      startTransition(() => {
+        setKeywordDraft(nextValue)
+      })
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (activeLayer !== 'keywords') {
+      setKeywordDraft(currentKeyword)
+    }
+  }, [activeLayer, currentKeyword])
+
+  useEffect(() => {
+    if (activeLayer !== 'keywords' || keywordLayer.status !== 'enabled') {
+      setIsKeywordSearching(false)
+      return
+    }
+
+    const requestId = keywordSearchSequenceRef.current + 1
+    keywordSearchSequenceRef.current = requestId
+
+    const timer = window.setTimeout(() => {
+      setIsKeywordSearching(true)
+      void runtime
+        .searchKeyword(keywordDraft)
+        .catch((error) => {
+          console.warn('[graph] Keyword search failed.', error)
+        })
+        .finally(() => {
+          if (keywordSearchSequenceRef.current === requestId) {
+            setIsKeywordSearching(false)
+          }
+        })
+    }, 250)
+
+    return () => {
+      window.clearTimeout(timer)
+
+      if (keywordSearchSequenceRef.current === requestId) {
+        setIsKeywordSearching(false)
+      }
+    }
+  }, [
+    activeLayer,
+    keywordDraft,
+    keywordLayer.status,
+    runtime,
+  ])
+
   useEffect(() => {
     lastViewSampleRef.current = null
     lastViewportInteractionAtRef.current = null
@@ -1102,6 +1175,11 @@ export function GraphCanvas({
     !shouldMountRenderer &&
     rootNodePubkey !== null &&
     rootLoadStatus !== 'loading'
+  const keywordMatchNodeCount = Object.keys(keywordLayer.matchesByPubkey).length
+  const keywordMatchCount = Object.values(keywordLayer.matchesByPubkey).reduce(
+    (total, matches) => total + matches.length,
+    0,
+  )
   const shouldShowRecoveryEmptyState =
     shouldShowEmptyState && coverageRecovery.shouldOfferRecovery
   const shouldShowRecoveryOverlay =
@@ -1112,7 +1190,34 @@ export function GraphCanvas({
       ? `Camino de ${Math.max(0, pathfinding.path.length - 1)} saltos`
     : activeLayer === 'zaps'
       ? `${zapEdges.length} zaps visibles`
+      : activeLayer === 'keywords'
+        ? keywordMatchCount > 0
+          ? `${keywordMatchCount} hits en ${keywordMatchNodeCount} nodos`
+          : keywordLayer.extractCount > 0
+            ? `${keywordLayer.extractCount} extractos listos`
+            : keywordLayer.message ?? 'Keywords sin corpus'
       : `${model.edges.length} links visibles`
+  const layerStatusNote =
+    activeLayer === 'keywords'
+      ? keywordLayer.message
+      : activeLayer === 'zaps'
+        ? zapLayerStatus === 'enabled'
+          ? `${zapEdges.length} relaciones de zap visibles.`
+          : 'La capa de zaps depende de recibos disponibles.'
+        : graphAnalysis.message
+  const keywordLayerDisabledReason =
+    keywordLayer.status === 'unavailable'
+      ? keywordLayer.message ?? 'La capa de keywords no esta disponible.'
+      : keywordLayer.status === 'loading'
+        ? keywordLayer.message ?? 'Preparando corpus de notas...'
+        : keywordLayer.status === 'disabled'
+          ? keywordLayer.message ?? 'La capa de keywords todavia no esta lista.'
+          : ''
+  const isKeywordSearchUsable = keywordLayer.status === 'enabled'
+  const keywordInputPlaceholder =
+    keywordLayer.status === 'enabled'
+      ? 'Buscar keyword o interes'
+      : 'Esperando corpus de notas'
   const streamLabel =
     pathfinding.status === 'computing'
       ? 'Calculando camino'
@@ -1151,6 +1256,7 @@ export function GraphCanvas({
         meta: statusCopy,
         activeLayer,
         zapLayerStatus,
+        keywordLayerStatus: keywordLayer.status,
       },
     }),
     [
@@ -1166,6 +1272,7 @@ export function GraphCanvas({
       statusCopy,
       streamLabel,
       visibleLabels.length,
+      keywordLayer.status,
       zapLayerStatus,
     ],
   )
@@ -1279,6 +1386,99 @@ export function GraphCanvas({
               <p className="graph-panel__empty-copy">{overlayCopy.body}</p>
               {modelErrorMessage ? (
                 <p className="graph-panel__empty-copy">{modelErrorMessage}</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="graph-panel__stream-status" role="status">
+            <span className="graph-panel__stream-label">{streamLabel}</span>
+            <span className="graph-panel__stream-meta">{statusCopy}</span>
+          </div>
+
+          <div className="graph-panel__control-bar">
+            <div className="graph-panel__control-group" role="group" aria-label="Capas del grafo">
+              <button
+                aria-pressed={activeLayer === 'graph'}
+                className={`graph-panel__control-btn${
+                  activeLayer === 'graph' ? ' graph-panel__control-btn--primary' : ''
+                }`}
+                onClick={() => handleToggleLayer('graph')}
+                type="button"
+              >
+                Graph
+              </button>
+              <button
+                aria-pressed={activeLayer === 'mutuals'}
+                className={`graph-panel__control-btn${
+                  activeLayer === 'mutuals' ? ' graph-panel__control-btn--primary' : ''
+                }`}
+                onClick={() => handleToggleLayer('mutuals')}
+                type="button"
+              >
+                Mutuals
+              </button>
+              <button
+                aria-pressed={activeLayer === 'keywords'}
+                className={`graph-panel__control-btn${
+                  activeLayer === 'keywords' ? ' graph-panel__control-btn--primary' : ''
+                }`}
+                onClick={() => handleToggleLayer('keywords')}
+                title={keywordLayerDisabledReason || undefined}
+                type="button"
+              >
+                Keywords
+              </button>
+              <button
+                aria-pressed={activeLayer === 'zaps'}
+                className={`graph-panel__control-btn${
+                  activeLayer === 'zaps' ? ' graph-panel__control-btn--primary' : ''
+                }`}
+                disabled={zapLayerStatus !== 'enabled'}
+                onClick={() => handleToggleLayer('zaps')}
+                title={
+                  zapLayerStatus !== 'enabled'
+                    ? 'La capa de zaps depende de recibos disponibles.'
+                    : undefined
+                }
+                type="button"
+              >
+                Zaps
+              </button>
+            </div>
+
+            {activeLayer === 'keywords' ? (
+              <div className="graph-panel__keyword-search">
+                <input
+                  aria-label="Buscar keyword o interes"
+                  className="graph-panel__keyword-input"
+                  disabled={!isKeywordSearchUsable}
+                  onChange={(event) => handleKeywordDraftChange(event.target.value)}
+                  placeholder={keywordInputPlaceholder}
+                  type="search"
+                  value={keywordDraft}
+                />
+                <span className="graph-panel__keyword-meta">
+                  {isKeywordSearching
+                    ? 'Buscando...'
+                    : keywordMatchCount > 0
+                      ? `${keywordMatchCount} hits`
+                      : keywordLayer.extractCount > 0
+                        ? `${keywordLayer.extractCount} extractos`
+                        : 'Sin corpus'}
+                </span>
+              </div>
+            ) : null}
+          </div>
+
+          {layerStatusNote ? (
+            <div className="graph-panel__status-note" aria-live="polite">
+              <p>{layerStatusNote}</p>
+              {activeLayer === 'keywords' ? (
+                <p>
+                  Corpus {keywordLayer.extractCount} extractos /{' '}
+                  {keywordLayer.corpusNodeCount} nodos / origen {keywordLayer.loadedFrom}
+                  {keywordLayer.isPartial ? ' / parcial' : ''}
+                </p>
               ) : null}
             </div>
           ) : null}

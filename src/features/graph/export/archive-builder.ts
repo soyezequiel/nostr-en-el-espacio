@@ -308,6 +308,9 @@ function addGraphFiles(
   files['grafo/nodes.json'] = encodeUtf8(canonicalJson(nodesData))
   files['grafo/links.json'] = encodeUtf8(canonicalJson(linksData))
   files['grafo/adjacency.json'] = encodeUtf8(canonicalJson(snapshot.adjacency))
+  files['grafo/keyword-search.json'] = encodeUtf8(
+    canonicalJson(snapshot.keywordSearch),
+  )
 }
 
 function addUserFiles(

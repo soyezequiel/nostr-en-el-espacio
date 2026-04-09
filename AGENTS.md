@@ -25,15 +25,16 @@ For this repo, the strongest angle is identity graph exploration, trust signals,
 
 ## Current Stack
 
-- Next.js 16 + TypeScript + Tailwind CSS v4
+- Next.js 16 + React 19 + TypeScript + Tailwind CSS v4
 - NDK v3 for auth, profile, badges, and relay-aware fetches
 - nostr-tools for low-level NIP-19 helpers and protocol utilities
 - Zustand for auth state and the graph app store
 - deck.gl for graph rendering
 - d3-force for graph layout work
 - Dexie for client-side persistence in the graph feature
-- Web Workers for graph analysis and event processing
+- Web Workers for graph analysis, render prep, and event verification
 - qrcode.react for NIP-46 bunker login
+- fflate for auditable export packaging
 
 ## Current Route Map
 
@@ -48,53 +49,85 @@ For this repo, the strongest angle is identity graph exploration, trust signals,
 
 ```text
 src/
-├── app/
-│   ├── layout.tsx
-│   ├── page.tsx
-│   ├── badges/page.tsx
-│   ├── profile/page.tsx
-│   └── globals.css
-├── components/
-│   ├── Navbar.tsx
-│   ├── LoginModal.tsx
-│   ├── Profile.tsx
-│   ├── Badges.tsx
-│   └── SkeletonImage.tsx
-├── features/
-│   └── graph/
-│       ├── GraphApp.tsx
-│       ├── GraphClient.tsx
-│       ├── analysis/
-│       ├── app/store/
-│       ├── components/
-│       ├── db/
-│       ├── export/
-│       ├── kernel/
-│       ├── nostr/
-│       ├── render/
-│       └── workers/
-├── lib/
-│   ├── media.ts
-│   └── nostr.ts
-├── store/
-│   └── auth.ts
-└── types/
-    └── nostr.d.ts
+|-- app/
+|   |-- layout.tsx
+|   |-- page.tsx
+|   |-- badges/page.tsx
+|   |-- profile/page.tsx
+|   `-- globals.css
+|-- components/
+|   |-- Navbar.tsx
+|   |-- LoginModal.tsx
+|   |-- Profile.tsx
+|   |-- Badges.tsx
+|   `-- SkeletonImage.tsx
+|-- features/
+|   `-- graph/
+|       |-- GraphApp.tsx
+|       |-- GraphClient.tsx
+|       |-- analysis/
+|       |-- app/store/
+|       |-- components/
+|       |-- db/
+|       |-- export/
+|       |-- kernel/
+|       |-- nostr/
+|       |-- render/
+|       `-- workers/
+|-- lib/
+|   |-- media.ts
+|   `-- nostr.ts
+|-- store/
+|   `-- auth.ts
+`-- types/
+    `-- nostr.d.ts
 ```
 
 ## What's Already Built
 
-- 3 auth methods: NIP-07, nsec, NIP-46 bunker
+- 3 auth methods: NIP-07, `nsec`, NIP-46 bunker, plus bunker QR flow
 - Profile route with skeleton loading, social stats, notes timeline, and media normalization
 - Badge route for NIP-58 award display
 - Graph route with:
   - root input via `npub` or `nprofile`
-  - relay health and relay override controls
-  - node detail panel
-  - graph analysis state
+  - relay health and reversible relay override controls
+  - node detail hydration plus structural node expansion
+  - discovered graph analysis for communities, leaders, and bridges
+  - compare selection inside the graph canvas
+  - zap-aware graph layer support
   - export flow with auditable snapshot packaging
-  - layered rendering and diagnostics
-  - worker-backed processing
+  - layered rendering, image pipeline controls, and internal diagnostics
+  - worker-backed event processing and graph analysis
+
+## Important Product Boundaries
+
+- Treat the graph route as the main product, not a side feature.
+- Treat `/profile` and `/badges` as classic surfaces for connected-account views.
+- Treat relay failure, partial coverage, and stale graph state as first-class UX states.
+- Treat export as evidence packaging, not just a convenience download.
+
+## Current Graph State Model
+
+The graph app store already models:
+
+- nodes, links, adjacency, root state
+- relay URLs, relay health, override status, stale-state tracking
+- selected node, active panel, compare selection, render config
+- discovered graph analysis
+- zap layer state
+- export selection and job progress
+
+Current graph layers represented in store/render contracts:
+
+- `graph`
+- `mutuals`
+- `keywords`
+- `zaps`
+- `pathfinding`
+
+Important caution:
+
+- `pathfinding` should be treated as partial infrastructure until there is a complete UI workflow around it. Do not document or demo it as a finished feature unless you actually finish the user-facing flow.
 
 ## Working Rules for This Repo
 
@@ -115,6 +148,7 @@ src/
 - Treat `src/features/graph` as its own application slice.
 - UI state belongs in the graph Zustand store under `src/features/graph/app/store`.
 - Expensive processing belongs in `workers/` or `analysis/`, not inside React render paths.
+- Persistence belongs in `db/`.
 - Rendering-specific code belongs in `render/`.
 - Nostr transport or relay behavior specific to the graph belongs in `nostr/` or `kernel/`.
 - Export logic belongs in `export/`.
@@ -131,12 +165,12 @@ These fit the current implementation better than generic starter-kit ideas:
 
 1. NIP-05 trust overlay on graph nodes
 2. Web-of-trust scoring and explanation panel
-3. Follow pathfinding between identities
-4. Identity card export from selected nodes
-5. Badge and zap signals integrated into graph analysis
-6. Compare two identities in the node detail workflow
-7. Relay reliability insights tied to discovery confidence
-8. External identity attestation surfaced on node detail
+3. Identity card export from selected nodes
+4. Badge and zap signals integrated into graph analysis
+5. Compare two identities in the node detail workflow
+6. Relay reliability insights tied to discovery confidence
+7. External identity attestation surfaced on node detail
+8. Follow pathfinding between identities, but only if you finish the end-user UI around the existing partial infrastructure
 
 ## File-Level Guidance
 
@@ -147,13 +181,17 @@ These fit the current implementation better than generic starter-kit ideas:
 - `src/features/graph/GraphApp.tsx`
   Main graph shell and panel orchestration.
 - `src/features/graph/components/`
-  UI controls and graph-facing panels.
+  UI controls, graph canvas, node detail, relay config, render config.
 - `src/features/graph/app/store/slices/`
   Graph app state organization.
+- `src/features/graph/db/`
+  Dexie persistence and graph repositories.
 - `src/features/graph/kernel/`
-  App runtime and root loading orchestration.
+  App runtime, root loading, relay orchestration, export orchestration.
 - `src/features/graph/workers/`
-  Background processing for graph/event workloads.
+  Background processing for graph, event, and verification workloads.
+- `src/features/graph/render/`
+  deck.gl model building, viewport logic, avatar/image pipeline.
 - `src/features/graph/export/`
   Snapshot and ZIP export pipeline.
 
@@ -162,6 +200,8 @@ These fit the current implementation better than generic starter-kit ideas:
 - If the user wants a fast hackathon win, build on the graph route.
 - If the user wants a simpler feature, use `/profile` or `/badges`.
 - If a feature needs both, keep auth/profile in `lib/nostr.ts` and integrate derived identity insights into `features/graph`.
+- If the feature touches relay behavior, make sure stale-state and partial-state UX still make sense.
+- If the feature touches export, keep the output auditable and deterministic.
 
 ## Commands
 

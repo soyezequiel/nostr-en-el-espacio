@@ -2,36 +2,41 @@
 
 Graph-first Nostr identity explorer for La Crypta's IDENTITY Hackathon.
 
-This repo started from the original starter kit, but the current app is no longer just a profile viewer. The home route is now an identity graph explorer with relay-aware discovery, worker-backed analysis, and auditable export.
+This repository started from the original `nostr-starter`, but the current app is no longer a profile-first starter kit. The primary surface is now an identity graph explorer with relay-aware discovery, worker-backed analysis, layered rendering, and auditable export.
+
+## What the app does today
+
+- Explore a discovered identity neighborhood from an `npub` or `nprofile`
+- Inspect node profiles, discovered follow counts, followers, and mutuals
+- Expand nodes without losing the existing graph session
+- Reconfigure relays with reversible overrides and live health feedback
+- Switch graph views for graph, mutual, keyword, and zap-oriented reading
+- Compare selected identities visually inside the graph canvas
+- Export auditable snapshot bundles as deterministic ZIP packages
+- Log in with NIP-07, `nsec`, or NIP-46 bunker
+- View the connected profile and NIP-58 badges on dedicated routes
 
 ## Routes
 
-- `/` - Graph explorer
-- `/profile` - Logged-in profile view
-- `/badges` - Logged-in NIP-58 badge view
+- `/` - identity graph explorer
+- `/profile` - authenticated profile view with social stats and notes
+- `/badges` - authenticated NIP-58 badge view
 
-## Quick Start
+## Current Graph Capabilities
 
-```bash
-npm install
-npm run dev
-```
+The graph route is the strongest part of the product and already includes:
 
-Open [http://localhost:3000](http://localhost:3000).
+- root input for `npub` and `nprofile`
+- relay health indicators and relay override controls
+- root loading states with graceful partial and stale handling
+- node detail panel with async hydration and node expansion
+- discovered graph analysis for communities, leaders, and bridges
+- compare mode for selected nodes
+- zap layer support in the render/store pipeline
+- render diagnostics and image runtime diagnostics
+- export selection for deep users plus auditable snapshot packaging
 
-## Current Features
-
-- NIP-07, nsec, and NIP-46 bunker login
-- Profile route with banner, avatar, bio, links, followers/following stats, and notes
-- Badge route for NIP-58 awards
-- Graph explorer with:
-  - `npub` and `nprofile` root input
-  - relay health and relay override controls
-  - node detail panel
-  - graph analysis state
-  - exportable auditable snapshots
-  - worker-backed processing
-  - deck.gl rendering
+Note: there is internal support for a `pathfinding` layer in the graph runtime and render pipeline, but it should be treated as in-progress infrastructure rather than a polished user-facing feature.
 
 ## Stack
 
@@ -43,43 +48,53 @@ Open [http://localhost:3000](http://localhost:3000).
 - nostr-tools
 - Zustand
 - deck.gl
-- Dexie
 - d3-force
+- Dexie
+- Web Workers
+- qrcode.react
+- fflate
 
-## Code Map
+## Architecture Snapshot
 
 ```text
 src/
-├── app/                  # Next.js routes
-├── components/           # Shared profile/login/navbar UI
-├── features/graph/       # Graph application
-├── lib/                  # Shared Nostr and media helpers
-├── store/                # Shared auth store
-└── types/                # Browser Nostr typings
+|-- app/                  # Next.js routes
+|-- components/           # Shared navbar/login/profile/badges UI
+|-- features/graph/       # Graph application slice
+|   |-- analysis/         # Graph analysis models and helpers
+|   |-- app/store/        # Zustand slices, selectors, store wiring
+|   |-- components/       # Graph-facing panels and controls
+|   |-- db/               # Dexie persistence and repositories
+|   |-- export/           # Snapshot freezing and ZIP packaging
+|   |-- kernel/           # Runtime orchestration and root loading
+|   |-- nostr/            # Graph-specific relay transport logic
+|   |-- render/           # deck.gl model, viewport, image pipeline
+|   `-- workers/          # Event, graph, and verification workers
+|-- lib/                  # Shared Nostr/media helpers for classic surfaces
+|-- store/                # Shared auth state
+`-- types/                # Browser Nostr typings
 ```
 
-Graph-specific code lives under `src/features/graph/` and is split into:
+## Development
 
-- `app/store/` for Zustand slices and selectors
-- `components/` for graph panels and controls
-- `kernel/` for orchestration/runtime
-- `nostr/` for graph transport concerns
-- `render/` for rendering code
-- `workers/` for heavy background work
-- `export/` for deterministic snapshot packaging
+```bash
+npm install
+npm run dev
+npm run build
+npm run lint
+```
 
-## Best Hackathon Directions
+The graph workers are rebuilt automatically through `predev`, `prebuild`, and `prestart`.
 
-This repo is especially strong for:
+## Working Conventions
 
-- web-of-trust exploration
-- relay-aware identity discovery
-- NIP-05 and identity verification overlays
-- graph-based social analysis
-- evidence/export flows for identity research
+- Prefer extending `src/features/graph/` for identity-heavy work
+- Keep Nostr fetches time-bounded and relay-aware
+- Preserve partial-state UX when relay coverage is weak
+- Reuse `src/lib/nostr.ts` for auth/profile/badge flows
+- Treat export as evidence packaging, not just a file download
 
-## Notes
+## Extra Docs
 
-- The old starter docs are partially outdated.
-- Use [`docs/current-codebase.md`](./docs/current-codebase.md) for the adapted architecture guide.
-- Use [`AGENTS.md`](./AGENTS.md) for assistant-specific coding guidance grounded in the current repo.
+- [`docs/current-codebase.md`](./docs/current-codebase.md) for the real architecture guide
+- [`AGENTS.md`](./AGENTS.md) for repo-specific implementation guidance

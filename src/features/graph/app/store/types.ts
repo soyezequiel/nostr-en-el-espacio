@@ -216,6 +216,8 @@ export interface RenderConfig {
   showSharedEmphasis: boolean
   showAvatarQualityGuide?: boolean
   showImageResidencyDebug?: boolean
+  floatingEnabled?: boolean
+  floatingPreset?: 'cinematic' | 'subtle' | 'dramatic'
 }
 
 export interface UiSlice {

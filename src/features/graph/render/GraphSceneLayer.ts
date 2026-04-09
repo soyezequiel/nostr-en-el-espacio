@@ -9,6 +9,11 @@ import type { Texture } from '@luma.gl/core'
 
 import type { RenderConfig } from '@/features/graph/app/store/types'
 import {
+  FloatingNodesController,
+  FLOATING_PRESETS,
+  type FloatingNodesPreset,
+} from '@/features/graph/render/floatingNodes'
+import {
   COMMON_FOLLOW_NODE_COLOR,
   EXPANDED_RING_COLOR,
   HIGHLIGHT_LINK_COLOR,
@@ -215,6 +220,11 @@ type GraphSceneTopologyCacheEntry = {
 
 const rendererAvatarAtlases = new Map<string, AvatarAtlasManager>()
 const graphSceneTopologyCache = new Map<string, GraphSceneTopologyCacheEntry>()
+
+// ─── Floating nodes: estado externo a la capa (patrón del atlas de avatares) ──
+// Keyed by layer id ('graph-scene'), persisten entre re-creaciones React del layer.
+const floatingControllers = new Map<string, FloatingNodesController>()
+const floatingPositions = new Map<string, Map<string, [number, number]>>()
 const HD_ATLAS_MAX_TEXTURE_SIZE = 4096
 const HD_ATLAS_BUCKETS = [256, 512, 1024] as const
 
@@ -447,6 +457,58 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
 
   public static layerName = 'GraphSceneLayer'
 
+  public override updateState(params: UpdateParameters<this>): void {
+    super.updateState(params)
+
+    const { renderConfig, model } = this.props
+    const floatingEnabled = renderConfig.floatingEnabled ?? false
+    const layerId = this.props.id
+    const existingController = floatingControllers.get(layerId)
+
+    if (floatingEnabled && !existingController) {
+      // Primera vez que se habilita: crear y arrancar el controller
+      const preset: FloatingNodesPreset = (renderConfig.floatingPreset as FloatingNodesPreset | undefined) ?? 'cinematic'
+      const controller = new FloatingNodesController(
+        FLOATING_PRESETS[preset],
+        (positions) => {
+          // Actualizar el map de posiciones y pedirle a Deck.gl que redibuje
+          // sin pasar por React (setNeedsUpdate es de la API de Deck.gl)
+          const posMap = floatingPositions.get(layerId) ?? new Map<string, [number, number]>()
+          for (const [pubkey, pos] of positions) {
+            posMap.set(pubkey, pos)
+          }
+          floatingPositions.set(layerId, posMap)
+          this.setNeedsUpdate()
+        },
+      )
+      floatingControllers.set(layerId, controller)
+      controller.syncNodes(model.nodes)
+      controller.start()
+    } else if (!floatingEnabled && existingController) {
+      // Se deshabilitó: parar y limpiar
+      existingController.stop()
+      floatingControllers.delete(layerId)
+      floatingPositions.delete(layerId)
+    } else if (floatingEnabled && existingController) {
+      // Ya existe: sincronizar si cambió el modelo o el preset
+      if (params.oldProps.model !== params.props.model) {
+        existingController.syncNodes(model.nodes)
+      }
+      if (params.oldProps.renderConfig?.floatingPreset !== renderConfig.floatingPreset) {
+        const preset: FloatingNodesPreset = (renderConfig.floatingPreset as FloatingNodesPreset | undefined) ?? 'cinematic'
+        existingController.setConfig(FLOATING_PRESETS[preset])
+      }
+    }
+  }
+
+  public override finalizeState(context: Parameters<CompositeLayer['finalizeState']>[0]): void {
+    super.finalizeState(context)
+    const layerId = this.props.id
+    floatingControllers.get(layerId)?.stop()
+    floatingControllers.delete(layerId)
+    floatingPositions.delete(layerId)
+  }
+
   public renderLayers(): Layer[] {
     const {
       model,
@@ -461,6 +523,12 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       hoverPickingEnabled,
       onAvatarRendererDelivery,
     } = this.props
+
+    // ── Floating positions: override post-layout si la animación está activa ──
+    const activePositions = floatingPositions.get(this.props.id) ?? null
+    const resolveNodePos = (pubkey: string, fallback: [number, number]): [number, number] =>
+      activePositions?.get(pubkey) ?? fallback
+
     const topologyData = getGraphSceneTopologyData(this.props.id, model)
     const emphasisNodes = getEmphasisNodes(
       model.nodes,
@@ -567,7 +635,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               iconAtlas: coerceIconAtlasTexture(page.iconAtlas),
               iconMapping: page.iconMapping,
               sizeUnits: 'pixels' as const,
-              getPosition: (node: GraphRenderNode) => node.position,
+              getPosition: (node: GraphRenderNode) => resolveNodePos(node.pubkey, node.position),
               getSize: (node: GraphRenderNode) =>
                 getScreenRadius(node.pubkey, node.radius) * 2,
               // En modo prepacked, `getIcon` devuelve solo la key del mapping estable que
@@ -642,7 +710,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               iconAtlas: coerceIconAtlasTexture(page.iconAtlas),
               iconMapping: page.iconMapping,
               sizeUnits: 'pixels',
-              getPosition: (node: GraphRenderNode) => node.position,
+              getPosition: (node: GraphRenderNode) => resolveNodePos(node.pubkey, node.position),
               getSize: (node: GraphRenderNode) =>
                 getScreenRadius(node.pubkey, node.radius) * 2,
               getIcon: (node: GraphRenderNode) =>
@@ -666,8 +734,8 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         data: segments,
         pickable: hoverPickingEnabled,
         widthUnits: 'pixels',
-        getSourcePosition: (segment) => segment.sourcePosition,
-        getTargetPosition: (segment) => segment.targetPosition,
+        getSourcePosition: (segment) => resolveNodePos(segment.source, segment.sourcePosition),
+        getTargetPosition: (segment) => resolveNodePos(segment.target, segment.targetPosition),
         getColor: (segment) => {
           const baseColor = getEdgeColor(
             segment,
@@ -705,7 +773,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               data: visibleArrowData,
               pickable: false,
               sizeUnits: 'pixels',
-              getPosition: (segment) => segment.targetPosition,
+              getPosition: (segment) => resolveNodePos(segment.target, segment.targetPosition),
               getAngle: (segment) => -segment.angle,
               getText: () => (arrowType === 'triangle' ? '▶' : '➤'),
               getColor: (segment) => {
@@ -748,7 +816,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         filled: true,
         radiusUnits: 'pixels',
         lineWidthUnits: 'pixels',
-        getPosition: (node) => node.position,
+        getPosition: (node) => resolveNodePos(node.pubkey, node.position),
         getRadius: (node) =>
           getScreenRadius(node.pubkey, node.radius) *
           (node.isSelected || hoveredEdgePubkeys.includes(node.pubkey)
@@ -785,7 +853,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               filled: false,
               radiusUnits: 'pixels',
               lineWidthUnits: 'pixels',
-              getPosition: (node) => node.position,
+              getPosition: (node) => resolveNodePos(node.pubkey, node.position),
               getRadius: (node) =>
                 getScreenRadius(node.pubkey, node.radius) *
                 getSharedRingScale(node.sharedByExpandedCount),
@@ -806,7 +874,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         filled: true,
         radiusUnits: 'pixels',
         lineWidthUnits: 'pixels',
-        getPosition: (node) => node.position,
+        getPosition: (node) => resolveNodePos(node.pubkey, node.position),
         getRadius: (node) => getScreenRadius(node.pubkey, node.radius) * 1.2,
         getFillColor: () => [167, 243, 208, 100],
         getLineColor: () => [167, 243, 208, 220],
@@ -823,7 +891,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         filled: true,
         radiusUnits: 'pixels',
         lineWidthUnits: 'pixels',
-        getPosition: (node) => node.position,
+        getPosition: (node) => resolveNodePos(node.pubkey, node.position),
         getRadius: (node) => getScreenRadius(node.pubkey, node.radius),
         getFillColor: (node) => getNodeFillColor(node),
         getLineColor: (node) => getNodeLineColor(node),
@@ -845,7 +913,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         data: fallbackAvatarNodes,
         pickable: false,
         sizeUnits: 'pixels',
-        getPosition: (node) => node.position,
+        getPosition: (node) => resolveNodePos(node.pubkey, node.position),
         getSize: (node) => getScreenRadius(node.pubkey, node.radius) * 2,
         getIcon: () => ({
           id: 'fallback-avatar',
@@ -866,7 +934,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         pickable: hoverPickingEnabled,
         background: true,
         sizeUnits: 'pixels',
-        getPosition: (label) => label.position,
+        getPosition: (label) => resolveNodePos(label.pubkey, label.position),
         getText: (label) => label.text,
         getColor: () => LABEL_TEXT_COLOR,
         getSize: (label) => (label.isRoot ? 14 : 13),

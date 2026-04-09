@@ -38,6 +38,8 @@ export const createInitialUiSliceState = (): Pick<
     showSharedEmphasis: false,
     showAvatarQualityGuide: false,
     showImageResidencyDebug: false,
+    floatingEnabled: true,
+    floatingPreset: 'cinematic',
   },
 })
 

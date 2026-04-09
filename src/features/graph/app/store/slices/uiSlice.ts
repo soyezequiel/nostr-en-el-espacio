@@ -1,9 +1,55 @@
-import type { AppStateCreator, UiSlice } from '@/features/graph/app/store/types'
+import type {
+  AppStateCreator,
+  SavedRootEntry,
+  SavedRootProfileSnapshot,
+  UiSlice,
+} from '@/features/graph/app/store/types'
 import {
   DEFAULT_AVATAR_FULL_HD_ZOOM_THRESHOLD,
   DEFAULT_AVATAR_HD_ZOOM_THRESHOLD,
   normalizeAvatarZoomThresholds,
 } from '@/features/graph/render/avatarQualityGuide'
+
+const MAX_SAVED_ROOTS = 12
+
+const sortSavedRoots = (savedRoots: SavedRootEntry[]) =>
+  savedRoots
+    .slice()
+    .sort((left, right) => {
+      if (left.lastOpenedAt !== right.lastOpenedAt) {
+        return right.lastOpenedAt - left.lastOpenedAt
+      }
+
+      if (left.addedAt !== right.addedAt) {
+        return right.addedAt - left.addedAt
+      }
+
+      return left.npub.localeCompare(right.npub)
+    })
+
+const mergeSavedRootProfile = (
+  existingProfile: SavedRootProfileSnapshot | null,
+  incomingProfile: SavedRootProfileSnapshot | null | undefined,
+): SavedRootProfileSnapshot | null => {
+  if (incomingProfile === undefined || incomingProfile === null) {
+    return existingProfile ?? null
+  }
+
+  const mergedProfile = {
+    displayName: incomingProfile.displayName ?? existingProfile?.displayName ?? null,
+    name: incomingProfile.name ?? existingProfile?.name ?? null,
+    picture: incomingProfile.picture ?? existingProfile?.picture ?? null,
+    about: incomingProfile.about ?? existingProfile?.about ?? null,
+    nip05: incomingProfile.nip05 ?? existingProfile?.nip05 ?? null,
+    lud16: incomingProfile.lud16 ?? existingProfile?.lud16 ?? null,
+  }
+
+  if (Object.values(mergedProfile).every((value) => value === null)) {
+    return null
+  }
+
+  return mergedProfile
+}
 
 export const createInitialUiSliceState = (): Pick<
   UiSlice,
@@ -14,6 +60,8 @@ export const createInitialUiSliceState = (): Pick<
   | 'currentKeyword'
   | 'rootLoad'
   | 'renderConfig'
+  | 'savedRoots'
+  | 'savedRootsHydrated'
 > => ({
   selectedNodePubkey: null,
   comparedNodePubkeys: new Set<string>(),
@@ -39,6 +87,8 @@ export const createInitialUiSliceState = (): Pick<
     showAvatarQualityGuide: false,
     showImageResidencyDebug: false,
   },
+  savedRoots: [],
+  savedRootsHydrated: typeof window === 'undefined',
 })
 
 export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
@@ -90,5 +140,52 @@ export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
         }
       })(),
     }))
+  },
+  upsertSavedRoot: (entry) => {
+    set((state) => {
+      const existingEntry = state.savedRoots.find(
+        (savedRoot) => savedRoot.pubkey === entry.pubkey,
+      )
+      const openedAt = entry.openedAt ?? Date.now()
+      const nextSavedRoot: SavedRootEntry = {
+        pubkey: entry.pubkey,
+        npub: entry.npub,
+        addedAt: existingEntry?.addedAt ?? openedAt,
+        lastOpenedAt: openedAt,
+        profile: mergeSavedRootProfile(existingEntry?.profile ?? null, entry.profile),
+        profileFetchedAt:
+          entry.profileFetchedAt ?? existingEntry?.profileFetchedAt ?? null,
+      }
+
+      return {
+        savedRoots: sortSavedRoots([
+          nextSavedRoot,
+          ...state.savedRoots.filter(
+            (savedRoot) => savedRoot.pubkey !== entry.pubkey,
+          ),
+        ]).slice(0, MAX_SAVED_ROOTS),
+      }
+    })
+  },
+  removeSavedRoot: (pubkey) => {
+    set((state) => ({
+      savedRoots: state.savedRoots.filter((savedRoot) => savedRoot.pubkey !== pubkey),
+    }))
+  },
+  setSavedRootProfile: (pubkey, profile, fetchedAt) => {
+    set((state) => ({
+      savedRoots: state.savedRoots.map((savedRoot) =>
+        savedRoot.pubkey === pubkey
+          ? {
+            ...savedRoot,
+            profile: mergeSavedRootProfile(savedRoot.profile, profile),
+            profileFetchedAt: fetchedAt ?? savedRoot.profileFetchedAt,
+          }
+          : savedRoot,
+      ),
+    }))
+  },
+  setSavedRootsHydrated: (hydrated) => {
+    set({ savedRootsHydrated: hydrated })
   },
 })

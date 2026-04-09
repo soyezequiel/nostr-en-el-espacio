@@ -218,6 +218,24 @@ export interface RenderConfig {
   showImageResidencyDebug?: boolean
 }
 
+export interface SavedRootProfileSnapshot {
+  displayName: string | null
+  name: string | null
+  picture: string | null
+  about: string | null
+  nip05: string | null
+  lud16: string | null
+}
+
+export interface SavedRootEntry {
+  pubkey: string
+  npub: string
+  addedAt: number
+  lastOpenedAt: number
+  profile: SavedRootProfileSnapshot | null
+  profileFetchedAt: number | null
+}
+
 export interface UiSlice {
   selectedNodePubkey: string | null
   comparedNodePubkeys: ReadonlySet<string>
@@ -226,6 +244,8 @@ export interface UiSlice {
   currentKeyword: string
   rootLoad: RootLoadState
   renderConfig: RenderConfig
+  savedRoots: SavedRootEntry[]
+  savedRootsHydrated: boolean
   setSelectedNodePubkey: (pubkey: string | null) => void
   setComparedNodePubkeys: (pubkeys: ReadonlySet<string>) => void
   clearComparedNodes: () => void
@@ -235,6 +255,20 @@ export interface UiSlice {
   setRootLoadState: (state: Partial<RootLoadState>) => void
   resetRootLoadState: () => void
   setRenderConfig: (config: Partial<RenderConfig>) => void
+  upsertSavedRoot: (entry: {
+    pubkey: string
+    npub: string
+    openedAt?: number
+    profile?: SavedRootProfileSnapshot | null
+    profileFetchedAt?: number | null
+  }) => void
+  removeSavedRoot: (pubkey: string) => void
+  setSavedRootProfile: (
+    pubkey: string,
+    profile: SavedRootProfileSnapshot | null,
+    fetchedAt: number | null,
+  ) => void
+  setSavedRootsHydrated: (hydrated: boolean) => void
 }
 
 export interface ExportSlice {

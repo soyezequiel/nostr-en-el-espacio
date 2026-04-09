@@ -2,9 +2,15 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useEffect, useState } from 'react'
+import { nip19 } from 'nostr-tools'
 
 import { useAppStore } from '@/features/graph/app/store'
-import type { UiPanel } from '@/features/graph/app/store/types'
+import type {
+  GraphNode,
+  SavedRootEntry,
+  SavedRootProfileSnapshot,
+  UiPanel,
+} from '@/features/graph/app/store/types'
 import {
   GraphCanvas,
   type GraphCanvasDiagnostics,
@@ -13,7 +19,12 @@ import { NpubInput } from '@/features/graph/components/NpubInput'
 import { RelayConfigPanel } from '@/features/graph/components/RelayConfigPanel'
 import { RelayHealthIndicator } from '@/features/graph/components/RelayHealthIndicator'
 import { RenderConfigPanel } from '@/features/graph/components/RenderConfigPanel'
+import { SavedRootsPanel } from '@/features/graph/components/SavedRootsPanel'
 import { browserAppKernel, type RootLoader } from '@/features/graph/kernel'
+import {
+  fetchProfileByPubkey,
+  type NostrProfile,
+} from '@/lib/nostr'
 
 interface AppProps {
   rootLoader?: RootLoader
@@ -27,6 +38,32 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'zip', label: 'Export' },
   { id: 'internal', label: 'Internal' },
 ]
+const SAVED_ROOT_PROFILE_STALE_MS = 6 * 60 * 60 * 1000
+const MAX_SAVED_ROOT_REFRESHES = 6
+
+function mapNostrProfileToSavedRootProfile(
+  profile: NostrProfile,
+): SavedRootProfileSnapshot {
+  return {
+    displayName: profile.displayName ?? null,
+    name: profile.name ?? null,
+    picture: profile.picture ?? null,
+    about: profile.about ?? null,
+    nip05: profile.nip05 ?? null,
+    lud16: profile.lud16 ?? null,
+  }
+}
+
+function mapGraphNodeToSavedRootProfile(node: GraphNode): SavedRootProfileSnapshot {
+  return {
+    displayName: node.label ?? null,
+    name: node.label ?? null,
+    picture: node.picture ?? null,
+    about: node.about ?? null,
+    nip05: node.nip05 ?? null,
+    lud16: node.lud16 ?? null,
+  }
+}
 
 function IdentityIcon() {
   return (
@@ -125,6 +162,9 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
   const [graphDiagnostics, setGraphDiagnostics] =
     useState<GraphCanvasDiagnostics | null>(null)
   const rootPubkey = useAppStore((state) => state.rootNodePubkey)
+  const currentRootNode = useAppStore((state) =>
+    state.rootNodePubkey ? state.nodes[state.rootNodePubkey] ?? null : null,
+  )
   const nodeCount = useAppStore((state) => Object.keys(state.nodes).length)
   const linkCount = useAppStore((state) => state.links.length)
   const maxNodes = useAppStore((state) => state.graphCaps.maxNodes)
@@ -151,6 +191,11 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     (state) => state.comparedNodePubkeys.size,
   )
   const selectedNodePubkey = useAppStore((state) => state.selectedNodePubkey)
+  const savedRoots = useAppStore((state) => state.savedRoots)
+  const savedRootsHydrated = useAppStore((state) => state.savedRootsHydrated)
+  const upsertSavedRoot = useAppStore((state) => state.upsertSavedRoot)
+  const removeSavedRoot = useAppStore((state) => state.removeSavedRoot)
+  const setSavedRootProfile = useAppStore((state) => state.setSavedRootProfile)
   const isNodeDetailOpen = useAppStore(
     (state) =>
       state.openPanel === 'node-detail' && state.selectedNodePubkey !== null,
@@ -235,14 +280,87 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     }
   }, [isNodeDetailOpen, rootLoader])
 
+  useEffect(() => {
+    if (!savedRootsHydrated || savedRoots.length === 0) {
+      return
+    }
+
+    const rootsNeedingRefresh = savedRoots
+      .filter(
+        (savedRoot) =>
+          savedRoot.profileFetchedAt === null ||
+          Date.now() - savedRoot.profileFetchedAt > SAVED_ROOT_PROFILE_STALE_MS,
+      )
+      .slice(0, MAX_SAVED_ROOT_REFRESHES)
+
+    if (rootsNeedingRefresh.length === 0) {
+      return
+    }
+
+    let cancelled = false
+
+    void Promise.allSettled(
+      rootsNeedingRefresh.map(async (savedRoot) => {
+        const profile = await fetchProfileByPubkey(savedRoot.pubkey)
+        if (cancelled) {
+          return
+        }
+
+        setSavedRootProfile(
+          savedRoot.pubkey,
+          mapNostrProfileToSavedRootProfile(profile),
+          Date.now(),
+        )
+      }),
+    )
+
+    return () => {
+      cancelled = true
+    }
+  }, [savedRoots, savedRootsHydrated, setSavedRootProfile])
+
+  useEffect(() => {
+    if (!rootPubkey || !currentRootNode) {
+      return
+    }
+
+    if (
+      !currentRootNode.label &&
+      !currentRootNode.picture &&
+      !currentRootNode.nip05 &&
+      !currentRootNode.about &&
+      !currentRootNode.lud16
+    ) {
+      return
+    }
+
+    setSavedRootProfile(
+      rootPubkey,
+      mapGraphNodeToSavedRootProfile(currentRootNode),
+      currentRootNode.profileFetchedAt ?? Date.now(),
+    )
+  }, [currentRootNode, rootPubkey, setSavedRootProfile])
+
   const relayCount = relayUrls.length
   const isRootEntryInline = rootPubkey === null
   const shouldShowRootEntry = isRootEntryInline || isRootEntryOpen
-  const rootEntryTitle = isRootEntryInline ? 'Ingresa una npub o nprofile' : 'Cambiar root'
-  const rootEntryEyebrow = isRootEntryInline ? 'Start exploring' : 'Entry point'
+  const hasSavedRoots = savedRoots.length > 0
+  const shouldShowSavedRootsSection = !savedRootsHydrated || hasSavedRoots
+  const rootEntryTitle = isRootEntryInline
+    ? shouldShowSavedRootsSection
+      ? 'Elegi una identidad'
+      : 'Ingresa una npub o nprofile'
+    : shouldShowSavedRootsSection
+      ? 'Cambiar identidad'
+      : 'Cambiar root'
+  const rootEntryEyebrow = isRootEntryInline
+    ? shouldShowSavedRootsSection
+      ? 'Guardadas'
+      : 'Root'
+    : 'Root'
   const rootEntryButtonLabel = isRootEntryInline
     ? 'Entrada de root activa'
-    : 'Abrir entrada de npub'
+    : 'Abrir selector de root'
   const primaryTabs = SETTINGS_TABS.filter((tab) => tab.id !== 'internal')
   const advancedTabs = SETTINGS_TABS.filter((tab) => tab.id === 'internal')
   const settingsStatusItems = [
@@ -253,6 +371,30 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
       value: `${relayCount} ${isGraphStale ? 'stale' : 'live'}`,
     },
   ]
+
+  const handleResolveRoot = ({
+    kind,
+    pubkey,
+  }: {
+    pubkey: string
+    kind: 'npub' | 'nprofile'
+  }) => {
+    setRootKind(kind)
+    upsertSavedRoot({
+      pubkey,
+      npub: nip19.npubEncode(pubkey),
+      openedAt: Date.now(),
+    })
+    setIsRootEntryOpen(false)
+    void rootLoader.loadRoot(pubkey)
+  }
+
+  const handleSelectSavedRoot = (savedRoot: SavedRootEntry) => {
+    handleResolveRoot({
+      pubkey: savedRoot.pubkey,
+      kind: 'npub',
+    })
+  }
 
   const handleOpenSettings = (tab: SettingsTab = 'appearance') => {
     if (openPanel === 'node-detail') {
@@ -630,7 +772,7 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
             aria-modal={isRootEntryInline ? undefined : 'true'}
             className={`root-entry-sheet${
               isRootEntryInline ? ' root-entry-sheet--inline' : ''
-            }`}
+            }${shouldShowSavedRootsSection ? ' root-entry-sheet--chooser' : ''}`}
             role={isRootEntryInline ? 'region' : 'dialog'}
           >
             <div className="root-entry-sheet__header">
@@ -650,25 +792,40 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
               ) : null}
             </div>
 
-            <NpubInput
-              onInvalidRoot={() => {
-                setRootKind(null)
-              }}
-              onValidRoot={({ pubkey, kind }) => {
-                setRootKind(kind)
-                setIsRootEntryOpen(false)
-                void rootLoader.loadRoot(pubkey)
-              }}
-            />
+            <div className="root-entry-sheet__body">
+              <SavedRootsPanel
+                entries={savedRoots}
+                isHydrated={savedRootsHydrated}
+                onDelete={(savedRoot) => removeSavedRoot(savedRoot.pubkey)}
+                onSelect={handleSelectSavedRoot}
+              />
+
+              {shouldShowSavedRootsSection ? (
+                <div className="root-entry-sheet__divider" aria-hidden="true">
+                  <span>Otra npub</span>
+                </div>
+              ) : null}
+
+              <div className="root-entry-sheet__manual">
+                <NpubInput
+                  onInvalidRoot={() => {
+                    setRootKind(null)
+                  }}
+                  onValidRoot={handleResolveRoot}
+                />
+              </div>
+            </div>
             {rootLoadMessage ? (
               <p className="root-entry-sheet__status" role="status">
                 {rootLoadMessage}
               </p>
             ) : null}
             <p className="root-entry-sheet__fineprint">
-              {isRootEntryInline
-                ? 'Carga una identidad para entrar directo al grafo. El canvas queda libre apenas se resuelve la root.'
-                : 'Este producto muestra vecindario descubierto, no cobertura total de la red.'}
+              {shouldShowSavedRootsSection
+                ? 'Guardadas solo en este navegador.'
+                : isRootEntryInline
+                  ? 'Pega una identidad para abrir el grafo.'
+                  : 'El grafo muestra vecindario descubierto.'}
             </p>
           </section>
         ) : null}

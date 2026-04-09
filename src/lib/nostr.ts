@@ -13,7 +13,7 @@ const POPULAR_RELAYS = [
 
 // Global NDK instance
 let ndkInstance: NDK | null = null;
-let userRelaysAdded = false;
+let userRelaysAdded = new Set<string>();
 
 export function getNDK(): NDK {
   if (!ndkInstance) {
@@ -31,12 +31,12 @@ export async function connectNDK(): Promise<NDK> {
 }
 
 export function resetUserRelays(): void {
-  userRelaysAdded = false;
+  userRelaysAdded = new Set<string>();
 }
 
 // Fetch user's preferred relays (NIP-65 kind 10002) and add them to NDK
 async function addUserRelays(pubkey: string): Promise<void> {
-  if (userRelaysAdded) return;
+  if (userRelaysAdded.has(pubkey)) return;
   const ndk = getNDK();
 
   try {
@@ -58,7 +58,7 @@ async function addUserRelays(pubkey: string): Promise<void> {
         }
       }
     }
-    userRelaysAdded = true;
+    userRelaysAdded.add(pubkey);
   } catch {
     // timeout or error — continue with default relays
   }
@@ -266,6 +266,21 @@ export function parseProfile(user: NDKUser): NostrProfile {
     lud16: readProfileField(profile.lud16),
     website: readProfileField(profile.website),
   };
+}
+
+export async function fetchProfileByPubkey(pubkey: string): Promise<NostrProfile> {
+  const ndk = await connectNDK();
+  await addUserRelays(pubkey);
+
+  const user = ndk.getUser({ pubkey });
+
+  try {
+    await withTimeout(user.fetchProfile(), 8000);
+  } catch {
+    console.warn(`fetchProfileByPubkey timed out or failed for ${pubkey.slice(0, 8)}...`);
+  }
+
+  return parseProfile(user);
 }
 
 // Fetch followers and following

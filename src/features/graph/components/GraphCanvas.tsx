@@ -253,7 +253,10 @@ const getRenderModelErrorMessage = (error: unknown) => {
   return 'No se pudo preparar el render 2D.'
 }
 
-const emptyStateCopy = (status: ReturnType<typeof deriveGraphRenderState>) => {
+const emptyStateCopy = (
+  status: ReturnType<typeof deriveGraphRenderState>,
+  activeLayer: AppStore['activeLayer'],
+) => {
   if (status.reasons.includes('worker-error')) {
     return {
       title: 'No se pudo preparar el render 2D.',
@@ -265,6 +268,20 @@ const emptyStateCopy = (status: ReturnType<typeof deriveGraphRenderState>) => {
     return {
       title: 'Preparando render del vecindario descubierto.',
       body: 'Montando el viewport 2D y ajustando el framing inicial.',
+    }
+  }
+
+  if (activeLayer === 'followers') {
+    return {
+      title: 'Todavia no hay followers inbound visibles.',
+      body: 'No hay follows entrantes descubiertos todavia; hace falta expandir root u otros nodos.',
+    }
+  }
+
+  if (activeLayer === 'mutuals') {
+    return {
+      title: 'Todavia no hay mutuals visibles.',
+      body: 'Hace falta combinar evidencia saliente e inbound expandiendo root u otros nodos del vecindario.',
     }
   }
 

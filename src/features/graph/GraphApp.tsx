@@ -20,7 +20,12 @@ import { RelayConfigPanel } from '@/features/graph/components/RelayConfigPanel'
 import { RelayHealthIndicator } from '@/features/graph/components/RelayHealthIndicator'
 import { RenderConfigPanel } from '@/features/graph/components/RenderConfigPanel'
 import { SavedRootsPanel } from '@/features/graph/components/SavedRootsPanel'
-import { browserAppKernel, type RootLoader } from '@/features/graph/kernel'
+import {
+  browserAppKernel,
+  CURATED_SAMPLE_ROOT,
+  type LoadRootOptions,
+  type RootLoader,
+} from '@/features/graph/kernel'
 import {
   fetchProfileByPubkey,
   type NostrProfile,
@@ -99,6 +104,28 @@ function GearIcon() {
     >
       <circle cx="12" cy="12" r="3.2" />
       <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.84l.05.05a2 2 0 0 1-2.82 2.83l-.06-.06a1.7 1.7 0 0 0-1.84-.33 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.08a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.84.33l-.06.06a2 2 0 1 1-2.82-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.08A1.7 1.7 0 0 0 4.64 8.4a1.7 1.7 0 0 0-.33-1.84l-.06-.06a2 2 0 1 1 2.83-2.82l.06.05a1.7 1.7 0 0 0 1.84.34h.02a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.08a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.84-.34l.06-.05a2 2 0 1 1 2.82 2.82l-.05.06A1.7 1.7 0 0 0 19.4 8.4v.02a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.08A1.7 1.7 0 0 0 19.4 15Z" />
+    </svg>
+  )
+}
+
+function PathIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      height="18"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+      viewBox="0 0 24 24"
+      width="18"
+    >
+      <circle cx="6.5" cy="6.5" r="2.5" />
+      <circle cx="17.5" cy="17.5" r="2.5" />
+      <path d="M8.5 8.5 12 12l3.5-3.5" />
+      <path d="M12 12v4" />
+      <path d="M12 16h3" />
     </svg>
   )
 }
@@ -196,9 +223,18 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
   const upsertSavedRoot = useAppStore((state) => state.upsertSavedRoot)
   const removeSavedRoot = useAppStore((state) => state.removeSavedRoot)
   const setSavedRootProfile = useAppStore((state) => state.setSavedRootProfile)
+  const pathfindingSelectionMode = useAppStore(
+    (state) => state.pathfinding.selectionMode,
+  )
+  const setPathfindingSelectionMode = useAppStore(
+    (state) => state.setPathfindingSelectionMode,
+  )
   const isNodeDetailOpen = useAppStore(
     (state) =>
       state.openPanel === 'node-detail' && state.selectedNodePubkey !== null,
+  )
+  const isPathfindingOpen = useAppStore(
+    (state) => state.openPanel === 'pathfinding',
   )
 
   useEffect(() => {
@@ -210,7 +246,7 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
       return
     }
 
-    if (openPanel === 'node-detail') {
+    if (openPanel === 'node-detail' || openPanel === 'pathfinding') {
       setIsSettingsOpen(false)
       setIsRootEntryOpen(false)
     }
@@ -232,6 +268,16 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
           return
         }
 
+        if (isPathfindingOpen) {
+          if (pathfindingSelectionMode !== 'idle') {
+            setPathfindingSelectionMode('idle')
+            return
+          }
+
+          setOpenPanel('overview')
+          return
+        }
+
         if (isNodeDetailOpen) {
           rootLoader.selectNode(null)
         }
@@ -244,15 +290,18 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     }
   }, [
     isNodeDetailOpen,
+    isPathfindingOpen,
     isRootEntryOpen,
     isSettingsOpen,
     openPanel,
+    pathfindingSelectionMode,
     rootLoader,
+    setPathfindingSelectionMode,
     setOpenPanel,
   ])
 
   useEffect(() => {
-    if (!isNodeDetailOpen) {
+    if (!isNodeDetailOpen && !isPathfindingOpen) {
       return
     }
 
@@ -264,13 +313,19 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
 
       if (
         target.closest('[data-node-detail-panel]') ||
+        target.closest('[data-pathfinding-panel]') ||
         target.closest('[data-graph-panel]') ||
         target.closest('[data-settings-drawer]')
       ) {
         return
       }
 
-      rootLoader.selectNode(null)
+      if (isNodeDetailOpen) {
+        rootLoader.selectNode(null)
+        return
+      }
+
+      setOpenPanel('overview')
     }
 
     document.addEventListener('pointerdown', handlePointerDown)
@@ -278,7 +333,7 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
     }
-  }, [isNodeDetailOpen, rootLoader])
+  }, [isNodeDetailOpen, isPathfindingOpen, rootLoader, setOpenPanel])
 
   useEffect(() => {
     if (!savedRootsHydrated || savedRoots.length === 0) {
@@ -374,36 +429,70 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
 
   const handleResolveRoot = ({
     kind,
+    npub,
     pubkey,
   }: {
+    npub?: string
     pubkey: string
     kind: 'npub' | 'nprofile'
-  }) => {
+  }, loadOptions?: LoadRootOptions) => {
     setRootKind(kind)
     upsertSavedRoot({
       pubkey,
-      npub: nip19.npubEncode(pubkey),
+      npub: npub ?? nip19.npubEncode(pubkey),
       openedAt: Date.now(),
     })
+    setIsSettingsOpen(false)
     setIsRootEntryOpen(false)
-    void rootLoader.loadRoot(pubkey)
+    void rootLoader.loadRoot(pubkey, loadOptions)
   }
 
   const handleSelectSavedRoot = (savedRoot: SavedRootEntry) => {
     handleResolveRoot({
       pubkey: savedRoot.pubkey,
       kind: 'npub',
+      npub: savedRoot.npub,
     })
   }
 
+  const handleLoadCuratedSampleRoot = () => {
+    handleResolveRoot(
+      {
+        pubkey: CURATED_SAMPLE_ROOT.pubkey,
+        kind: 'npub',
+        npub: CURATED_SAMPLE_ROOT.npub,
+      },
+      { useDefaultRelays: true },
+    )
+  }
+
   const handleOpenSettings = (tab: SettingsTab = 'appearance') => {
-    if (openPanel === 'node-detail') {
+    if (openPanel === 'node-detail' || openPanel === 'pathfinding') {
       setOpenPanel('overview')
     }
 
     setActiveTab(tab)
     setIsRootEntryOpen(false)
     setIsSettingsOpen(true)
+  }
+
+  const handleTogglePathfinding = () => {
+    if (isPathfindingOpen) {
+      if (pathfindingSelectionMode !== 'idle') {
+        setPathfindingSelectionMode('idle')
+      }
+      setOpenPanel('overview')
+      return
+    }
+
+    if (openPanel === 'node-detail') {
+      setOpenPanel('overview')
+    }
+
+    setIsSettingsOpen(false)
+    setIsRootEntryOpen(false)
+    setPathfindingSelectionMode('idle')
+    setOpenPanel('pathfinding')
   }
 
   const handleCloseSettings = () => {
@@ -414,7 +503,7 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
   }
 
   const handleOpenRootEntry = () => {
-    if (openPanel === 'node-detail') {
+    if (openPanel === 'node-detail' || openPanel === 'pathfinding') {
       setOpenPanel('overview')
     }
 
@@ -706,12 +795,24 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     <main className="app-shell app-shell--immersive">
       <section className="workspace-shell">
         <GraphCanvas
+          onTrySampleRoot={handleLoadCuratedSampleRoot}
           onDiagnosticsChange={setGraphDiagnostics}
           runtime={rootLoader}
         />
 
         <header className="workspace-topbar">
           <div className="workspace-topbar__actions">
+            <button
+              aria-expanded={isPathfindingOpen}
+              aria-label="Abrir pathfinding"
+              className={`workspace-icon-btn${
+                isPathfindingOpen ? ' workspace-icon-btn--active' : ''
+              }`}
+              onClick={handleTogglePathfinding}
+              type="button"
+            >
+              <PathIcon />
+            </button>
             <button
               aria-expanded={shouldShowRootEntry}
               aria-label={rootEntryButtonLabel}

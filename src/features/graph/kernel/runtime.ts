@@ -2,6 +2,7 @@ import type { Event, Filter } from 'nostr-tools'
 
 import { createDiscoveredGraphAnalysisKey } from '@/features/graph/analysis/analysisKey'
 import type {
+  AppStore,
   AppStoreApi,
   GraphNode,
   GraphLink,
@@ -161,8 +162,9 @@ interface PreservedExpandedNeighborhood {
   expandedNodePubkeys: string[]
 }
 
-interface LoadRootOptions {
+export interface LoadRootOptions {
   preserveExistingGraph?: boolean
+  useDefaultRelays?: boolean
   relayUrls?: string[]
 }
 
@@ -268,17 +270,24 @@ export class AppKernel {
 
     const storeState = this.store.getState()
     const preserveExistingGraph = options.preserveExistingGraph ?? false
-    const relayUrls =
-      options.relayUrls?.slice() ??
-      (storeState.relayUrls.length > 0
-        ? storeState.relayUrls.slice()
-        : this.defaultRelayUrls.slice())
+    const relayUrls = options.useDefaultRelays
+      ? this.defaultRelayUrls.slice()
+      : options.relayUrls?.slice() ??
+        (storeState.relayUrls.length > 0
+          ? storeState.relayUrls.slice()
+          : this.defaultRelayUrls.slice())
 
     storeState.setRelayUrls(relayUrls)
+    if (options.useDefaultRelays) {
+      this.pendingRelayOverride = null
+      storeState.resetRelayHealth(relayUrls)
+      storeState.setRelayOverrideStatus('applied')
+    }
     if (!preserveExistingGraph) {
       storeState.markGraphStale(false)
       storeState.setSelectedNodePubkey(null)
       storeState.setOpenPanel('overview')
+      storeState.resetPathfinding()
     }
     storeState.setRootLoadState({
       status: 'loading',
@@ -1042,7 +1051,7 @@ export class AppKernel {
       )
     }
 
-    const adjacency = { ...state.adjacency }
+    const adjacency = buildMutualAdjacency(state)
 
     const result = await this.graphWorker.invoke('FIND_PATH', {
       sourcePubkey,
@@ -2731,7 +2740,10 @@ export class KernelCommandError extends Error {
 }
 
 export interface RootLoader {
-  loadRoot: (rootPubkey: string) => Promise<LoadRootResult>
+  loadRoot: (
+    rootPubkey: string,
+    options?: LoadRootOptions,
+  ) => Promise<LoadRootResult>
   reconfigureRelays: (
     input: ReconfigureRelaysInput,
   ) => Promise<ReconfigureRelaysResult>
@@ -2739,12 +2751,73 @@ export interface RootLoader {
   expandNode: (pubkey: string) => Promise<ExpandNodeResult>
   searchKeyword: (keyword: string) => Promise<SearchKeywordResult>
   toggleLayer: (layer: UiLayer) => ToggleLayerResult
+  findPath: (
+    sourcePubkey: string,
+    targetPubkey: string,
+    algorithm?: 'bfs' | 'dijkstra',
+  ) => Promise<FindPathResult>
   selectNode: (pubkey: string | null) => SelectNodeResult
   getNodeDetail: (pubkey: string) => Promise<NodeDetailProfile | null>
 }
 
 export function createAppKernel(dependencies: AppKernelDependencies): AppKernel {
   return new AppKernel(dependencies)
+}
+
+function buildMutualAdjacency(
+  state: Pick<AppStore, 'links' | 'nodes'>,
+): Record<string, string[]> {
+  const followAdjacency = new Map<string, Set<string>>()
+
+  Object.keys(state.nodes).forEach((pubkey) => {
+    followAdjacency.set(pubkey, new Set())
+  })
+
+  state.links.forEach((link) => {
+    if (
+      link.relation !== 'follow' ||
+      !state.nodes[link.source] ||
+      !state.nodes[link.target]
+    ) {
+      return
+    }
+
+    const neighbors = followAdjacency.get(link.source) ?? new Set<string>()
+    neighbors.add(link.target)
+    followAdjacency.set(link.source, neighbors)
+
+    if (!followAdjacency.has(link.target)) {
+      followAdjacency.set(link.target, new Set())
+    }
+  })
+
+  const mutualAdjacency = Object.fromEntries(
+    Array.from(followAdjacency.keys())
+      .sort()
+      .map((pubkey) => [pubkey, [] as string[]]),
+  )
+
+  Array.from(followAdjacency.entries()).forEach(([sourcePubkey, neighbors]) => {
+    Array.from(neighbors).forEach((targetPubkey) => {
+      if (!followAdjacency.get(targetPubkey)?.has(sourcePubkey)) {
+        return
+      }
+
+      if (!mutualAdjacency[sourcePubkey].includes(targetPubkey)) {
+        mutualAdjacency[sourcePubkey].push(targetPubkey)
+      }
+
+      if (!mutualAdjacency[targetPubkey].includes(sourcePubkey)) {
+        mutualAdjacency[targetPubkey].push(sourcePubkey)
+      }
+    })
+  })
+
+  Object.values(mutualAdjacency).forEach((neighbors) => {
+    neighbors.sort()
+  })
+
+  return mutualAdjacency
 }
 
 const browserDatabase = createNostrGraphDatabase()

@@ -13,8 +13,13 @@ import {
 } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
-import { appStore, useAppStore } from '@/features/graph/app/store'
+import {
+  appStore,
+  deriveCoverageRecovery,
+  useAppStore,
+} from '@/features/graph/app/store'
 import type { AppStore } from '@/features/graph/app/store/types'
+import { CoverageRecoveryCard } from '@/features/graph/components/CoverageRecoveryCard'
 import { createPerfCounters } from '@/features/graph/components/perfCounters'
 import type { RootLoader } from '@/features/graph/kernel'
 import {
@@ -51,12 +56,16 @@ const selectGraphCanvasState = (state: AppStore) => ({
   zapEdges: state.zapLayer.edges,
   zapLayerStatus: state.zapLayer.status,
   keywordLayer: state.keywordLayer,
+  relayUrls: state.relayUrls,
+  relayHealth: state.relayHealth,
   rootNodePubkey: state.rootNodePubkey,
   selectedNodePubkey: state.selectedNodePubkey,
   comparedNodePubkeys: state.comparedNodePubkeys,
   expandedNodePubkeys: state.expandedNodePubkeys,
   graphAnalysis: state.graphAnalysis,
+  pathfinding: state.pathfinding,
   rootLoadStatus: state.rootLoad.status,
+  rootLoadMessage: state.rootLoad.message,
   activeLayer: state.activeLayer,
   currentKeyword: state.currentKeyword,
   capReached: state.graphCaps.capReached,
@@ -64,11 +73,17 @@ const selectGraphCanvasState = (state: AppStore) => ({
   renderConfig: state.renderConfig,
   isNodeDetailOpen:
     state.openPanel === 'node-detail' && state.selectedNodePubkey !== null,
+  isPathfindingOpen: state.openPanel === 'pathfinding',
 })
 
 const NodeDetailPanel = lazy(async () => {
   const module = await import('@/features/graph/components/NodeDetailPanel')
   return { default: module.NodeDetailPanel }
+})
+
+const PathfindingPanel = lazy(async () => {
+  const module = await import('@/features/graph/components/PathfindingPanel')
+  return { default: module.PathfindingPanel }
 })
 
 export interface GraphCanvasDiagnostics {
@@ -99,6 +114,7 @@ export interface GraphCanvasDiagnostics {
 
 interface GraphCanvasProps {
   runtime: RootLoader
+  onTrySampleRoot: () => void
   onDiagnosticsChange?: (snapshot: GraphCanvasDiagnostics | null) => void
 }
 
@@ -259,6 +275,7 @@ const emptyStateCopy = (status: ReturnType<typeof deriveGraphRenderState>) => {
 
 export function GraphCanvas({
   runtime,
+  onTrySampleRoot,
   onDiagnosticsChange,
 }: GraphCanvasProps) {
   const {
@@ -267,18 +284,23 @@ export function GraphCanvas({
     zapEdges,
     zapLayerStatus,
     keywordLayer,
+    relayUrls,
+    relayHealth,
     rootNodePubkey,
     selectedNodePubkey,
     comparedNodePubkeys,
     expandedNodePubkeys,
     graphAnalysis,
+    pathfinding,
     rootLoadStatus,
+    rootLoadMessage,
     activeLayer,
     currentKeyword,
     capReached,
     maxNodes,
     renderConfig,
     isNodeDetailOpen,
+    isPathfindingOpen,
   } = useAppStore(useShallow(selectGraphCanvasState))
   const containerRef = useRef<HTMLDivElement | null>(null)
   const perfCountersRef = useRef(createPerfCounters())
@@ -309,6 +331,7 @@ export function GraphCanvas({
     viewState: null as GraphViewState | null,
     renderConfig,
     comparedNodePubkeys,
+    pathfinding,
   })
   const lastProfiledModelRef = useRef<GraphRenderModel | null>(null)
   const modelRef = useRef<GraphRenderModel>(
@@ -350,6 +373,46 @@ export function GraphCanvas({
   const [viewportQuietForMs, setViewportQuietForMs] = useState(
     QUIET_VIEWPORT_READY_MS,
   )
+  const [isBrowserOnline, setIsBrowserOnline] = useState(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine,
+  )
+  const coverageRecovery = useMemo(
+    () =>
+      deriveCoverageRecovery({
+        browserOnline: isBrowserOnline,
+        relayUrls,
+        relayHealth,
+        rootNodePubkey,
+        rootLoadStatus,
+        links,
+      }),
+    [
+      isBrowserOnline,
+      links,
+      relayHealth,
+      relayUrls,
+      rootLoadStatus,
+      rootNodePubkey,
+    ],
+  )
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsBrowserOnline(true)
+    }
+
+    const handleOffline = () => {
+      setIsBrowserOnline(false)
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   useEffect(() => {
     const nextImageRuntime = new ImageRuntime()
@@ -482,6 +545,10 @@ export function GraphCanvas({
       selectedNodePubkey,
       expandedNodePubkeys,
       comparedNodePubkeys,
+      pathfinding: {
+        status: pathfinding.status,
+        path: pathfinding.path,
+      },
       graphAnalysis,
       renderConfig,
     }
@@ -585,6 +652,8 @@ export function GraphCanvas({
     graphRenderWorker,
     links,
     nodes,
+    pathfinding.path,
+    pathfinding.status,
     rootNodePubkey,
     selectedNodePubkey,
     zapEdges,
@@ -686,6 +755,8 @@ export function GraphCanvas({
       counters.lastRenderTrigger = 'view'
     } else if (renderConfig !== previous.renderConfig) {
       counters.lastRenderTrigger = 'renderConfig'
+    } else if (pathfinding !== previous.pathfinding) {
+      counters.lastRenderTrigger = 'pathfinding'
     } else {
       counters.lastRenderTrigger = 'other'
     }
@@ -702,6 +773,7 @@ export function GraphCanvas({
       viewState,
       renderConfig,
       comparedNodePubkeys,
+      pathfinding,
     }
   }, [
     activeLayer,
@@ -714,6 +786,7 @@ export function GraphCanvas({
     selectedNodePubkey,
     size,
     viewState,
+    pathfinding,
     zapEdges,
   ])
 
@@ -882,6 +955,20 @@ export function GraphCanvas({
   const handleSelectNode = useCallback(
     (pubkey: string | null, options?: { shiftKey?: boolean }) => {
       const state = appStore.getState()
+
+      if (
+        pubkey &&
+        state.openPanel === 'pathfinding' &&
+        state.pathfinding.selectionMode !== 'idle'
+      ) {
+        state.setSelectedNodePubkey(pubkey)
+        state.setPathfindingEndpoint(state.pathfinding.selectionMode, {
+          pubkey,
+          query: pubkey,
+        })
+        return
+      }
+
       const effectiveShift = options?.shiftKey || isShiftPressed
 
       if (effectiveShift && pubkey) {
@@ -1084,8 +1171,14 @@ export function GraphCanvas({
     (total, matches) => total + matches.length,
     0,
   )
+  const shouldShowRecoveryEmptyState =
+    shouldShowEmptyState && coverageRecovery.shouldOfferRecovery
+  const shouldShowRecoveryOverlay =
+    shouldMountRenderer && coverageRecovery.shouldOfferRecovery
   const statusCopy = capReached
     ? `Cap ${maxNodes} alcanzado`
+    : activeLayer === 'pathfinding' && pathfinding.path
+      ? `Camino de ${Math.max(0, pathfinding.path.length - 1)} saltos`
     : activeLayer === 'zaps'
       ? `${zapEdges.length} zaps visibles`
       : activeLayer === 'keywords'
@@ -1116,7 +1209,9 @@ export function GraphCanvas({
       ? 'Buscar keyword o interes'
       : 'Esperando corpus de notas'
   const streamLabel =
-    rootLoadStatus === 'loading'
+    pathfinding.status === 'computing'
+      ? 'Calculando camino'
+      : rootLoadStatus === 'loading'
       ? 'Descubriendo'
       : rootLoadStatus === 'partial'
         ? 'Evidencia parcial'
@@ -1214,9 +1309,30 @@ export function GraphCanvas({
             containerRef.current = element
           }}
         >
+          {shouldShowRecoveryOverlay && coverageRecovery.reason ? (
+            <div className="graph-panel__overlay-stack">
+              <CoverageRecoveryCard
+                onChangeRelays={() => {
+                  appStore.getState().setOpenPanel('relay-config')
+                }}
+                onTrySampleRoot={onTrySampleRoot}
+                reason={coverageRecovery.reason}
+                relaySummary={coverageRecovery.relaySummary}
+                rootLoadMessage={rootLoadMessage}
+                variant="overlay"
+              />
+            </div>
+          ) : null}
+
           {isNodeDetailOpen ? (
             <Suspense fallback={null}>
               <NodeDetailPanel imageRuntime={imageRuntime} runtime={runtime} />
+            </Suspense>
+          ) : null}
+
+          {isPathfindingOpen ? (
+            <Suspense fallback={null}>
+              <PathfindingPanel runtime={runtime} />
             </Suspense>
           ) : null}
 
@@ -1241,7 +1357,20 @@ export function GraphCanvas({
             />
           ) : null}
 
-          {shouldShowEmptyState ? (
+          {shouldShowRecoveryEmptyState && coverageRecovery.reason ? (
+            <CoverageRecoveryCard
+              onChangeRelays={() => {
+                appStore.getState().setOpenPanel('relay-config')
+              }}
+              onTrySampleRoot={onTrySampleRoot}
+              reason={coverageRecovery.reason}
+              relaySummary={coverageRecovery.relaySummary}
+              rootLoadMessage={rootLoadMessage}
+              variant="empty"
+            />
+          ) : null}
+
+          {shouldShowEmptyState && !shouldShowRecoveryEmptyState ? (
             <div aria-live="polite" className="graph-panel__empty">
               <p className="graph-panel__empty-title">{overlayCopy.title}</p>
               <p className="graph-panel__empty-copy">{overlayCopy.body}</p>

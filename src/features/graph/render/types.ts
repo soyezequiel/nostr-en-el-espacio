@@ -51,6 +51,9 @@ export interface GraphRenderNode {
   bridgeHaloColor?: [number, number, number, number] | null
   analysisCommunityId?: string | null
   nearestNeighborWorldDist?: number
+  isPathNode?: boolean
+  isPathEndpoint?: boolean
+  pathOrder?: number | null
 }
 
 export interface GraphRenderEdge {
@@ -65,6 +68,7 @@ export interface GraphRenderEdge {
   targetRadius: number
   isPriority: boolean
   targetSharedByExpandedCount: number
+  isPathEdge?: boolean
 }
 
 export interface GraphRenderLabel {
@@ -145,6 +149,10 @@ export interface BuildGraphRenderModelInput {
   selectedNodePubkey: string | null
   expandedNodePubkeys: ReadonlySet<string>
   comparedNodePubkeys?: ReadonlySet<string>
+  pathfinding?: {
+    status: 'idle' | 'computing' | 'found' | 'not-found' | 'error'
+    path: string[] | null
+  }
   graphAnalysis?: DiscoveredGraphAnalysisState
   renderConfig: RenderConfig
   previousPositions?: ReadonlyMap<string, [number, number]>

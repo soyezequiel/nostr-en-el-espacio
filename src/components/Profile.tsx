@@ -10,6 +10,7 @@ import {
   fetchUserNotes,
   formatTimestamp,
 } from '@/lib/nostr';
+import { getInitials } from '@/lib/media';
 import SkeletonImage from '@/components/SkeletonImage';
 
 function ProfileSkeleton() {
@@ -177,6 +178,8 @@ export default function Profile() {
     return <ProfileSkeleton />;
   }
 
+  const profileInitial = getInitials(profile.displayName || profile.name);
+
   return (
     <div className="min-h-screen pt-16">
       {/* Banner */}
@@ -188,6 +191,7 @@ export default function Profile() {
             sizes="100vw"
             className="object-cover"
             containerClassName="absolute inset-0"
+            fallback={<div className="absolute inset-0 lc-grid-bg opacity-40" />}
           />
         ) : (
           <div className="absolute inset-0 lc-grid-bg opacity-40" />
@@ -206,10 +210,15 @@ export default function Profile() {
                 alt={profile.displayName || profile.name || 'Profile picture'}
                 sizes="128px"
                 className="object-cover"
+                fallback={
+                  <div className="w-full h-full bg-lc-olive flex items-center justify-center text-lc-green text-4xl font-bold">
+                    {profileInitial}
+                  </div>
+                }
               />
             ) : (
               <div className="w-full h-full bg-lc-olive flex items-center justify-center text-lc-green text-4xl font-bold">
-                {(profile.name || profile.displayName || 'N')[0].toUpperCase()}
+                {profileInitial}
               </div>
             )}
           </div>
@@ -332,11 +341,16 @@ export default function Profile() {
                         alt=""
                         sizes="40px"
                         className="object-cover"
+                        fallback={
+                          <div className="w-full h-full rounded-xl bg-lc-olive flex items-center justify-center text-lc-green font-semibold text-sm">
+                            {profileInitial}
+                          </div>
+                        }
                       />
                     </div>
                   ) : (
                     <div className="w-10 h-10 rounded-xl bg-lc-olive flex items-center justify-center text-lc-green font-semibold text-sm">
-                      {(profile.name || 'N')[0].toUpperCase()}
+                      {profileInitial}
                     </div>
                   )}
                   <div className="flex-1 min-w-0">

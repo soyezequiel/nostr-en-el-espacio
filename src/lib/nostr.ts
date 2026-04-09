@@ -1,5 +1,6 @@
 import NDK, { NDKEvent, NDKUser, NDKNip07Signer, NDKPrivateKeySigner } from '@nostr-dev-kit/ndk';
 import { nip19 } from 'nostr-tools';
+import { normalizeMediaUrl } from '@/lib/media';
 
 // Popular relays (high availability)
 const POPULAR_RELAYS = [
@@ -239,17 +240,31 @@ export interface NostrProfile {
 
 export function parseProfile(user: NDKUser): NostrProfile {
   const profile = user.profile || {};
+
+  const readProfileField = (...values: unknown[]): string | undefined => {
+    for (const value of values) {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) {
+          return trimmed;
+        }
+      }
+    }
+
+    return undefined;
+  };
+
   return {
     pubkey: user.pubkey,
     npub: user.npub,
-    name: profile.name,
-    displayName: (profile.displayName || profile.display_name) as string | undefined,
-    about: profile.about as string | undefined,
-    picture: (profile.image || profile.picture) as string | undefined,
-    banner: profile.banner,
-    nip05: profile.nip05,
-    lud16: profile.lud16,
-    website: profile.website,
+    name: readProfileField(profile.name),
+    displayName: readProfileField(profile.displayName, profile.display_name),
+    about: readProfileField(profile.about),
+    picture: normalizeMediaUrl(profile.image ?? profile.picture),
+    banner: normalizeMediaUrl(profile.banner),
+    nip05: readProfileField(profile.nip05),
+    lud16: readProfileField(profile.lud16),
+    website: readProfileField(profile.website),
   };
 }
 

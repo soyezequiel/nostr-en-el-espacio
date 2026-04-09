@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { useAuthStore } from '@/store/auth';
 import { getNDK, connectNDK } from '@/lib/nostr';
+import { normalizeMediaUrl } from '@/lib/media';
 import SkeletonImage from '@/components/SkeletonImage';
 
 interface Badge {
@@ -139,7 +140,7 @@ export default function Badges() {
         ) : (
           <div className="grid grid-cols-2 gap-3 pb-12">
             {badges.map((badge) => {
-              const badgeImage = badge.thumb ?? badge.image;
+              const badgeImage = normalizeMediaUrl(badge.thumb ?? badge.image);
 
               return (
                 <div key={badge.id} className="lc-card p-4 flex flex-col items-center text-center">
@@ -150,6 +151,13 @@ export default function Badges() {
                       alt={badge.name}
                       sizes="80px"
                       className="object-cover"
+                      fallback={
+                        <div className="w-full h-full rounded-xl bg-lc-olive/40 flex items-center justify-center">
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#b4f953" strokeWidth="1.5">
+                            <path d="M12 15l-2 5l9-6.5H13L15 2l-9 8.5h7z"/>
+                          </svg>
+                        </div>
+                      }
                     />
                   </div>
                   ) : (

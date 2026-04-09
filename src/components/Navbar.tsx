@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/auth';
+import { getInitials } from '@/lib/media';
 import LoginModal from './LoginModal';
 import SkeletonImage from './SkeletonImage';
 
@@ -48,6 +49,7 @@ export default function Navbar() {
   const [showMenu, setShowMenu] = useState(false);
   const pathname = usePathname();
   const { isConnected, profile, logout } = useAuthStore();
+  const profileInitial = getInitials(profile?.displayName || profile?.name);
 
   return (
     <>
@@ -104,11 +106,16 @@ export default function Navbar() {
                         alt={profile.displayName || profile.name || 'Profile picture'}
                         sizes="32px"
                         className="object-cover"
+                        fallback={
+                          <div className="w-full h-full rounded-full bg-lc-olive flex items-center justify-center text-lc-green text-sm font-semibold">
+                            {profileInitial}
+                          </div>
+                        }
                       />
                     </div>
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-lc-olive flex items-center justify-center text-lc-green text-sm font-semibold">
-                      {(profile.name || profile.displayName || 'N')[0].toUpperCase()}
+                      {profileInitial}
                     </div>
                   )}
                   <span className="text-sm text-lc-white font-medium max-w-[120px] truncate">

@@ -115,11 +115,17 @@ export type ImageDiagnosticStage =
   | 'resident'
   | 'screen'
 
+export type ImageHydrationStage = 'idle' | 'preloading-persistent' | 'ready'
+
 export interface ImageDiagnosticsSnapshot {
   health: ImageDiagnosticHealth
   bottleneckStage: ImageDiagnosticStage | null
   primarySummary: string
   secondarySummary: string | null
+  hydrationStage: ImageHydrationStage
+  hydrationBacklog: number
+  proxyFallbackReason: string | null
+  proxyFallbackSources: number
 }
 
 export interface ImageVisibilitySnapshot {
@@ -261,6 +267,12 @@ type SourceFailure = {
   timedOut: boolean
 }
 
+type ProxyFallbackState = {
+  retryProxyAt: number
+  status: number | null
+  lastReason: string
+}
+
 type RequestPriorityClass =
   | 'visible-base'
   | 'visible-hd'
@@ -298,6 +310,9 @@ const HD_VIEWPORT_QUIET_MS = 120
 const FULL_HD_VIEWPORT_QUIET_MS = 250
 const IDLE_VISIBLE_HD_WEIGHT_BUDGET = 96
 const MOTION_VISIBLE_HD_WEIGHT_BUDGET = 24
+const PRELOAD_BATCH_SIZE = 24
+const PRELOAD_SUMMARY_BATCH_INTERVAL = 6
+const PROXY_FALLBACK_COOLDOWN_MS = 5 * 60 * 1000
 
 const QUALITY_BUDGETS = {
   performance: {
@@ -395,6 +410,20 @@ const isCancelledError = (error: unknown) =>
   error.isCancelled === true
 
 const now = () => Date.now()
+
+const scheduleNextFrame = (callback: () => void) => {
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => callback())
+    return
+  }
+
+  setTimeout(callback, 0)
+}
+
+const yieldToBrowser = () =>
+  new Promise<void>((resolve) => {
+    scheduleNextFrame(resolve)
+  })
 
 const canCreateObjectUrl = () =>
   typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
@@ -495,6 +524,10 @@ const createEmptyDiagnosticsSnapshot = (): ImageDiagnosticsSnapshot => ({
   bottleneckStage: null,
   primarySummary: 'No hay nodos visibles en este frame.',
   secondarySummary: null,
+  hydrationStage: 'idle',
+  hydrationBacklog: 0,
+  proxyFallbackReason: null,
+  proxyFallbackSources: 0,
 })
 
 const createEmptyPresentationSnapshot = (): ImagePresentationSnapshot => ({
@@ -520,6 +553,10 @@ const cloneDiagnosticsSnapshot = (
   bottleneckStage: snapshot.bottleneckStage,
   primarySummary: snapshot.primarySummary,
   secondarySummary: snapshot.secondarySummary,
+  hydrationStage: snapshot.hydrationStage,
+  hydrationBacklog: snapshot.hydrationBacklog,
+  proxyFallbackReason: snapshot.proxyFallbackReason,
+  proxyFallbackSources: snapshot.proxyFallbackSources,
 })
 
 const clonePresentationSnapshot = (
@@ -674,6 +711,38 @@ const summarizePendingWork = (snapshot: ImagePendingWorkSnapshot) => {
   return `Pendiente: cola ${snapshot.queuedRequests}, en vuelo ${snapshot.inFlightRequests}.`
 }
 
+const summarizeHydrationStatus = (
+  stage: ImageHydrationStage,
+  backlog: number,
+) => {
+  if (stage !== 'preloading-persistent' || backlog <= 0) {
+    return null
+  }
+
+  return `Hidratacion de cache: ${backlog} variantes pendientes.`
+}
+
+const summarizeProxyFallback = (
+  proxyFallbackSources: number,
+  proxyFallbackReason: string | null,
+) => {
+  if (proxyFallbackSources <= 0) {
+    return null
+  }
+
+  return `${formatDiagnosticCount(proxyFallbackSources, 'fuente')} usando fallback directo${proxyFallbackReason ? ` (${proxyFallbackReason})` : '.'}`
+}
+
+const mergeDiagnosticSummaries = (
+  ...summaries: Array<string | null | undefined>
+) => {
+  const parts = summaries.filter(
+    (summary): summary is string => typeof summary === 'string' && summary.length > 0,
+  )
+
+  return parts.length > 0 ? parts.join(' ') : null
+}
+
 const equalStringLists = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&
   left.every((value, index) => value === right[index])
@@ -725,17 +794,43 @@ const resolveDiagnosticsSnapshot = ({
   presentation,
   failures,
   pendingWork,
+  hydrationStage,
+  hydrationBacklog,
+  proxyFallbackReason,
+  proxyFallbackSources,
 }: Pick<
   ImageResidencySnapshot,
   'visibility' | 'presentation' | 'failures' | 'pendingWork'
->): ImageDiagnosticsSnapshot => {
+> & {
+  hydrationStage: ImageHydrationStage
+  hydrationBacklog: number
+  proxyFallbackReason: string | null
+  proxyFallbackSources: number
+}): ImageDiagnosticsSnapshot => {
+  const hydrationSummary = summarizeHydrationStatus(
+    hydrationStage,
+    hydrationBacklog,
+  )
+  const fallbackSummary = summarizeProxyFallback(
+    proxyFallbackSources,
+    proxyFallbackReason,
+  )
+
   if (visibility.visibleScreenNodes === 0) {
     return {
       health: 'healthy',
       bottleneckStage: null,
       primarySummary: 'No hay nodos visibles en este frame.',
-      secondarySummary:
-        summarizePendingWork(pendingWork) ?? summarizeFailureStatus(failures),
+      secondarySummary: mergeDiagnosticSummaries(
+        summarizePendingWork(pendingWork),
+        summarizeFailureStatus(failures),
+        hydrationSummary,
+        fallbackSummary,
+      ),
+      hydrationStage,
+      hydrationBacklog,
+      proxyFallbackReason,
+      proxyFallbackSources,
     }
   }
 
@@ -749,8 +844,16 @@ const resolveDiagnosticsSnapshot = ({
       health: 'healthy',
       bottleneckStage: null,
       primarySummary: 'Todos los nodos visibles muestran avatar.',
-      secondarySummary:
-        summarizePendingWork(pendingWork) ?? summarizeFailureStatus(failures),
+      secondarySummary: mergeDiagnosticSummaries(
+        summarizePendingWork(pendingWork),
+        summarizeFailureStatus(failures),
+        hydrationSummary,
+        fallbackSummary,
+      ),
+      hydrationStage,
+      hydrationBacklog,
+      proxyFallbackReason,
+      proxyFallbackSources,
     }
   }
 
@@ -786,7 +889,15 @@ const resolveDiagnosticsSnapshot = ({
     primarySummary: primaryReason
       ? summarizeVisibleMissingReason(primaryReason)
       : `Hay ${visibleAvatarlessNodes} nodos visibles sin avatar.`,
-    secondarySummary,
+    secondarySummary: mergeDiagnosticSummaries(
+      secondarySummary,
+      hydrationSummary,
+      fallbackSummary,
+    ),
+    hydrationStage,
+    hydrationBacklog,
+    proxyFallbackReason,
+    proxyFallbackSources,
   }
 }
 
@@ -1054,13 +1165,18 @@ export class ImageRuntime {
   private readonly queuedRequests = new Map<string, ScheduledVariantRequest>()
   private readonly inFlightRequests = new Map<string, InFlightVariantRequest>()
   private readonly sourceFailures = new Map<string, SourceFailure>()
+  private readonly proxyFallbacks = new Map<string, ProxyFallbackState>()
   private readonly listeners = new Set<() => void>()
+  private disposed = false
   private timedOutRequests = 0
   private persistentBudgetBytes = DEFAULT_STORAGE_BUDGET_BYTES
   private persistentBudgetPromise: Promise<void> | null = null
   private persistentSummarySyncActive = false
   private persistentSummarySyncPending = false
   private notifyScheduled = false
+  private persistentHydrationStage: ImageHydrationStage = 'idle'
+  private persistentHydrationBacklog = 0
+  private lastProxyFallbackReason: string | null = null
   private persistentSnapshot = createEmptyTierSnapshot()
   private compressedSnapshot = createEmptyTierSnapshot()
   private decodedSnapshot = createEmptyTierSnapshot()
@@ -1094,57 +1210,79 @@ export class ImageRuntime {
 
   private async preloadCachedVariants() {
     try {
+      this.persistentHydrationStage = 'preloading-persistent'
       const records = await this.repositories.imageVariants.getAll()
-      const frameNow = now()
-      let processed = 0
-      const BATCH_SIZE = 20 // Procesar en chunks para no bloquear el hilo
+      if (this.disposed) {
+        return
+      }
 
-      const processRecords = () => {
-        for (let i = 0; i < BATCH_SIZE && processed < records.length; i++) {
-          const record = records[processed++]
-          const bucket = record.bucket as ImageLodBucket
-          const key = buildVariantKey(record.sourceUrl, bucket)
+      this.persistentHydrationBacklog = records.length
+      this.scheduleNotify()
 
-          if (this.decodedCache.has(key)) {
-            continue
-          }
+      const expiredKeys: Array<[string, number]> = []
+      let batchesSinceSummary = 0
 
-          if (record.expiresAt <= frameNow) {
-            void this.repositories.imageVariants
-              .delete([record.sourceUrl, bucket])
-              .catch(console.warn)
-            continue
-          }
-
-          const compressed = this.toCompressedEntry(record)
-          this.compressedCache.set(key, compressed)
-
-          const url = this.createBlobUrl(
-            record.sourceUrl,
-            bucket,
-            compressed.blob,
-          )
-          this.decodedCache.set(key, {
-            key,
-            sourceUrl: record.sourceUrl,
-            bucket,
-            byteSize: compressed.byteSize,
-            lastUsedAt: frameNow,
-            url,
-          })
-        }
-
-        if (processed < records.length) {
-          queueMicrotask(processRecords)
+      for (
+        let startIndex = 0;
+        startIndex < records.length;
+        startIndex += PRELOAD_BATCH_SIZE
+      ) {
+        if (this.disposed) {
           return
         }
 
-        this.refreshMemoryTierSnapshots()
+        const batchEnd = Math.min(startIndex + PRELOAD_BATCH_SIZE, records.length)
+        const batchNow = now()
+        let loadedInBatch = 0
+
+        for (let index = startIndex; index < batchEnd; index += 1) {
+          const record = records[index]
+          const bucket = record.bucket as ImageLodBucket
+          const key = buildVariantKey(record.sourceUrl, bucket)
+
+          if (this.compressedCache.has(key)) {
+            continue
+          }
+
+          if (record.expiresAt <= batchNow) {
+            expiredKeys.push([record.sourceUrl, bucket])
+            continue
+          }
+
+          this.compressedCache.set(key, this.toCompressedEntry(record))
+          loadedInBatch += 1
+        }
+
+        this.persistentHydrationBacklog = records.length - batchEnd
+        batchesSinceSummary += 1
+
+        if (
+          loadedInBatch > 0 &&
+          (batchesSinceSummary >= PRELOAD_SUMMARY_BATCH_INTERVAL ||
+            batchEnd === records.length)
+        ) {
+          this.refreshMemoryTierSnapshots()
+          batchesSinceSummary = 0
+        }
+
         this.scheduleNotify()
+
+        if (batchEnd < records.length) {
+          await yieldToBrowser()
+        }
       }
 
-      processRecords()
+      if (expiredKeys.length > 0) {
+        void this.repositories.imageVariants.bulkDelete(expiredKeys).catch(console.warn)
+      }
+
+      this.persistentHydrationStage = 'ready'
+      this.persistentHydrationBacklog = 0
+      this.refreshMemoryTierSnapshots()
+      this.scheduleNotify()
     } catch (error) {
+      this.persistentHydrationStage = 'ready'
+      this.persistentHydrationBacklog = 0
       console.warn('Failed to preload cached image variants:', error)
     }
   }
@@ -1157,6 +1295,7 @@ export class ImageRuntime {
   }
 
   public dispose() {
+    this.disposed = true
     for (const request of this.inFlightRequests.values()) {
       if (!request.abortController.signal.aborted) {
         request.abortController.abort('runtime-disposed')
@@ -1172,10 +1311,14 @@ export class ImageRuntime {
     this.residentCache.clear()
     this.previousBuckets.clear()
     this.sourceFailures.clear()
+    this.proxyFallbacks.clear()
     this.listeners.clear()
     this.queuedRequests.clear()
     this.inFlightRequests.clear()
     this.timedOutRequests = 0
+    this.persistentHydrationStage = 'idle'
+    this.persistentHydrationBacklog = 0
+    this.lastProxyFallbackReason = null
     this.refreshMemoryTierSnapshots()
     this.refreshFailureSnapshot()
     this.visibilitySnapshot = createEmptyVisibilitySnapshot()
@@ -1793,6 +1936,7 @@ export class ImageRuntime {
     const pendingWork = this.getPendingWorkSnapshot()
     const visibility = cloneVisibilitySnapshot(this.visibilitySnapshot)
     const presentation = clonePresentationSnapshot(this.presentationSnapshot)
+    const proxyFallbackSources = this.getProxyFallbackSourceCount()
     visibility.paintedVisibleNodes = presentation.paintedVisibleNodes
     visibility.visibleMissingReasons = mergeVisibleMissingReasons({
       visibility,
@@ -1804,6 +1948,10 @@ export class ImageRuntime {
       presentation,
       failures,
       pendingWork,
+      hydrationStage: this.persistentHydrationStage,
+      hydrationBacklog: this.persistentHydrationBacklog,
+      proxyFallbackReason: this.lastProxyFallbackReason,
+      proxyFallbackSources,
     })
 
     return {
@@ -1878,13 +2026,16 @@ export class ImageRuntime {
   }
 
   private scheduleNotify() {
-    if (this.notifyScheduled) {
+    if (this.notifyScheduled || this.disposed) {
       return
     }
 
     this.notifyScheduled = true
-    queueMicrotask(() => {
+    scheduleNextFrame(() => {
       this.notifyScheduled = false
+      if (this.disposed) {
+        return
+      }
       for (const listener of this.listeners) {
         listener()
       }
@@ -2178,44 +2329,43 @@ export class ImageRuntime {
     abortController: AbortController | null,
     highPriority = false,
   ) {
-    const fetchUrl = resolveAvatarFetchUrl(sourceUrl, undefined, bucket)
     let blob: Blob
     let proxyError: unknown = null
+    const proxyBypassed = this.isProxyCoolingDown(sourceUrl)
 
-    try {
-      blob = await this.fetchBlob(fetchUrl, abortController, highPriority)
-    } catch (error) {
-      proxyError = error
-      if (isTimeoutError(error) || isCancelledError(error)) {
-        throw error
-      }
-      const proxyStatus = readErrorStatus(error)
-      if (proxyStatus === 404 || proxyStatus === 410) {
-        throw buildImageFetchError(
-          readErrorMessage(error),
-          proxyStatus,
-          sourceUrl,
-        )
-      }
+    if (!proxyBypassed) {
+      const fetchUrl = resolveAvatarFetchUrl(sourceUrl, undefined, bucket)
 
       try {
-        blob = await this.fetchBlob(sourceUrl, abortController, highPriority)
-      } catch (sourceError) {
-        if (isTimeoutError(sourceError) || isCancelledError(sourceError)) {
-          throw sourceError
+        blob = await this.fetchBlob(fetchUrl, abortController, highPriority)
+        this.clearProxyFallback(sourceUrl)
+      } catch (error) {
+        proxyError = error
+        if (isTimeoutError(error) || isCancelledError(error)) {
+          throw error
         }
-        const sourceMessage = readErrorMessage(sourceError)
-        const sourceStatus = readErrorStatus(sourceError)
-        const proxyMessage =
-          proxyError === null ? null : readErrorMessage(proxyError)
-        throw buildImageFetchError(
-          proxyMessage && proxyMessage !== sourceMessage
-            ? `${sourceMessage} Fallback after proxy failure: ${proxyMessage}`
-            : sourceMessage,
-          sourceStatus ?? readErrorStatus(proxyError),
+
+        this.noteProxyFallback(sourceUrl, error)
+        blob = await this.fetchVariantDirect(
           sourceUrl,
+          abortController,
+          highPriority,
+          proxyError,
         )
       }
+    } else {
+      proxyError = buildImageFetchError(
+        this.proxyFallbacks.get(sourceUrl)?.lastReason ??
+          'Avatar proxy fallback is cooling down.',
+        this.proxyFallbacks.get(sourceUrl)?.status ?? null,
+        sourceUrl,
+      )
+      blob = await this.fetchVariantDirect(
+        sourceUrl,
+        abortController,
+        highPriority,
+        proxyError,
+      )
     }
 
     const persistedRecord: ImageVariantRecord = {
@@ -2238,6 +2388,32 @@ export class ImageRuntime {
     this.schedulePersistentSummaryRefresh()
 
     return this.toCompressedEntry(persistedRecord)
+  }
+
+  private async fetchVariantDirect(
+    sourceUrl: string,
+    abortController: AbortController | null,
+    highPriority: boolean,
+    proxyError: unknown,
+  ) {
+    try {
+      return await this.fetchBlob(sourceUrl, abortController, highPriority)
+    } catch (sourceError) {
+      if (isTimeoutError(sourceError) || isCancelledError(sourceError)) {
+        throw sourceError
+      }
+
+      const sourceMessage = readErrorMessage(sourceError)
+      const sourceStatus = readErrorStatus(sourceError)
+      const proxyMessage = proxyError === null ? null : readErrorMessage(proxyError)
+      throw buildImageFetchError(
+        proxyMessage && proxyMessage !== sourceMessage
+          ? `${sourceMessage} Fallback after proxy failure: ${proxyMessage}`
+          : sourceMessage,
+        sourceStatus ?? readErrorStatus(proxyError),
+        sourceUrl,
+      )
+    }
   }
 
   private async fetchBlob(
@@ -2284,6 +2460,55 @@ export class ImageRuntime {
     } finally {
       clearTimeout(timeoutId)
     }
+  }
+
+  private clearExpiredProxyFallbacks(currentTime = now()) {
+    for (const [sourceUrl, fallback] of this.proxyFallbacks.entries()) {
+      if (fallback.retryProxyAt <= currentTime) {
+        this.proxyFallbacks.delete(sourceUrl)
+      }
+    }
+  }
+
+  private getProxyFallbackSourceCount(currentTime = now()) {
+    this.clearExpiredProxyFallbacks(currentTime)
+    return this.proxyFallbacks.size
+  }
+
+  private isProxyCoolingDown(sourceUrl: string, currentTime = now()) {
+    const fallback = this.proxyFallbacks.get(sourceUrl)
+    if (!fallback) {
+      return false
+    }
+
+    if (fallback.retryProxyAt <= currentTime) {
+      this.proxyFallbacks.delete(sourceUrl)
+      return false
+    }
+
+    this.lastProxyFallbackReason = fallback.lastReason
+    return true
+  }
+
+  private clearProxyFallback(sourceUrl: string) {
+    if (!this.proxyFallbacks.has(sourceUrl)) {
+      return
+    }
+
+    this.proxyFallbacks.delete(sourceUrl)
+    if (this.proxyFallbacks.size === 0) {
+      this.lastProxyFallbackReason = null
+    }
+  }
+
+  private noteProxyFallback(sourceUrl: string, error: unknown) {
+    const reason = readErrorMessage(error)
+    this.proxyFallbacks.set(sourceUrl, {
+      retryProxyAt: now() + PROXY_FALLBACK_COOLDOWN_MS,
+      status: readErrorStatus(error),
+      lastReason: reason,
+    })
+    this.lastProxyFallbackReason = reason
   }
 
   private isSourceCoolingDown(sourceUrl: string) {
@@ -2361,7 +2586,11 @@ export class ImageRuntime {
       }
     }
 
-    return resolveAvatarFetchUrl(sourceUrl, undefined, bucket)
+    return resolveAvatarFetchUrl(
+      sourceUrl,
+      this.isProxyCoolingDown(sourceUrl) ? 'direct' : 'wsrv',
+      bucket,
+    )
   }
 
   private promoteResidents(

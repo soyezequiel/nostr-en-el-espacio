@@ -240,6 +240,9 @@ export interface RelaySlice {
   resetRelayHealth: (relayUrls?: string[]) => void
   setRelayOverrideStatus: (status: RelayOverrideStatus) => void
   updateRelayHealth: (relayUrl: string, health: Partial<RelayHealth>) => void
+  updateRelayHealthBatch: (
+    relayHealth: Record<string, Partial<RelayHealth>>,
+  ) => void
   markGraphStale: (isStale: boolean) => void
 }
 

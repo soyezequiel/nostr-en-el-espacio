@@ -489,6 +489,14 @@ export class ImageVariantRepository {
     await this.db.imageVariants.delete(key)
   }
 
+  public async bulkDelete(keys: Array<[string, number]>): Promise<void> {
+    if (keys.length === 0) {
+      return
+    }
+
+    await this.db.imageVariants.bulkDelete(keys)
+  }
+
   public async enforceByteBudget(maxBytes: number): Promise<void> {
     type VariantMeta = { cacheKey: [string, number]; byteSize: number }
     const metaRecords: VariantMeta[] = []

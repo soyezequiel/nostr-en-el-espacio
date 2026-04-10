@@ -82,6 +82,7 @@ const DISCOVERED_GRAPH_ANALYSIS_LOADING_MESSAGE =
 const NODE_PROFILE_HYDRATION_BATCH_SIZE = 50
 const NODE_PROFILE_HYDRATION_BATCH_CONCURRENCY = 2
 const NODE_PROFILE_PERSIST_CONCURRENCY = 8
+const RELAY_HEALTH_FLUSH_DELAY_MS = 32
 
 export interface LoadRootResult {
   status: 'ready' | 'partial' | 'empty' | 'error'
@@ -255,6 +256,9 @@ export class AppKernel {
   private zapRequestSequence = 0
   private keywordRequestSequence = 0
   private keywordSearchSequence = 0
+  private pendingRelayHealthFlush: ReturnType<typeof setTimeout> | null = null
+  private pendingRelayHealthSnapshot: Record<string, RelayHealthSnapshot> | null =
+    null
 
   public constructor(dependencies: AppKernelDependencies) {
     this.store = dependencies.store
@@ -2746,18 +2750,52 @@ export class AppKernel {
   }
 
   private publishRelayHealth(relayHealth: Record<string, RelayHealthSnapshot>): void {
-    const state = this.store.getState()
-
-    for (const [relayUrl, snapshot] of Object.entries(relayHealth)) {
-      state.updateRelayHealth(relayUrl, {
-        status: mapRelayHealthStatus(snapshot.status),
-        lastCheckedAt: snapshot.lastChangeMs,
-        lastNotice: snapshot.lastNotice ?? null,
-      })
+    if (Object.keys(relayHealth).length === 0) {
+      return
     }
+
+    this.pendingRelayHealthSnapshot = {
+      ...(this.pendingRelayHealthSnapshot ?? {}),
+      ...relayHealth,
+    }
+
+    if (this.pendingRelayHealthFlush !== null) {
+      return
+    }
+
+    this.pendingRelayHealthFlush = setTimeout(() => {
+      this.flushPendingRelayHealth()
+    }, RELAY_HEALTH_FLUSH_DELAY_MS)
+  }
+
+  private flushPendingRelayHealth(): void {
+    if (this.pendingRelayHealthFlush !== null) {
+      clearTimeout(this.pendingRelayHealthFlush)
+      this.pendingRelayHealthFlush = null
+    }
+
+    const pendingRelayHealth = this.pendingRelayHealthSnapshot
+    if (!pendingRelayHealth) {
+      return
+    }
+
+    this.pendingRelayHealthSnapshot = null
+    this.store.getState().updateRelayHealthBatch(
+      Object.fromEntries(
+        Object.entries(pendingRelayHealth).map(([relayUrl, snapshot]) => [
+          relayUrl,
+          {
+            status: mapRelayHealthStatus(snapshot.status),
+            lastCheckedAt: snapshot.lastChangeMs,
+            lastNotice: snapshot.lastNotice ?? null,
+          },
+        ]),
+      ),
+    )
   }
 
   private snapshotStoreRelayHealth(relayUrls: string[]): Record<string, RelayHealthSnapshot> {
+    this.flushPendingRelayHealth()
     const state = this.store.getState()
 
     return Object.fromEntries(

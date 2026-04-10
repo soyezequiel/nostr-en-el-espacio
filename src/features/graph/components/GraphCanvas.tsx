@@ -1,6 +1,7 @@
-/* eslint-disable @next/next/no-assign-module-variable, react-hooks/refs */
+/* eslint-disable @next/next/no-assign-module-variable */
 
 import {
+  memo,
   Profiler,
   Suspense,
   lazy,
@@ -16,6 +17,7 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   appStore,
   deriveCoverageRecovery,
+  selectRelayHealthData,
   useAppStore,
 } from '@/features/graph/app/store'
 import type { AppStore } from '@/features/graph/app/store/types'
@@ -50,15 +52,13 @@ import {
 } from '@/features/graph/render/renderModelWorker'
 import { GraphViewportLazy } from '@/features/graph/render/GraphViewportLazy'
 
-const selectGraphCanvasState = (state: AppStore) => ({
+const selectGraphCanvasRenderState = (state: AppStore) => ({
   nodes: state.nodes,
   links: state.links,
   inboundLinks: state.inboundLinks,
   zapEdges: state.zapLayer.edges,
   zapLayerStatus: state.zapLayer.status,
   keywordLayer: state.keywordLayer,
-  relayUrls: state.relayUrls,
-  relayHealth: state.relayHealth,
   rootNodePubkey: state.rootNodePubkey,
   selectedNodePubkey: state.selectedNodePubkey,
   comparedNodePubkeys: state.comparedNodePubkeys,
@@ -72,9 +72,10 @@ const selectGraphCanvasState = (state: AppStore) => ({
   capReached: state.graphCaps.capReached,
   maxNodes: state.graphCaps.maxNodes,
   renderConfig: state.renderConfig,
-  isNodeDetailOpen:
-    state.openPanel === 'node-detail' && state.selectedNodePubkey !== null,
-  isPathfindingOpen: state.openPanel === 'pathfinding',
+})
+
+const selectGraphCanvasPanelState = (state: AppStore) => ({
+  openPanel: state.openPanel,
 })
 
 const NodeDetailPanel = lazy(async () => {
@@ -125,6 +126,20 @@ const EMPTY_NODE_SCREEN_RADII = new Map<string, number>()
 const QUIET_VIEWPORT_READY_MS = 10_000
 const AVATAR_HD_VIEWPORT_QUIET_MS = 120
 const AVATAR_FULL_HD_VIEWPORT_QUIET_MS = 250
+const COALESCED_FRAME_DELAY_MS = 16
+const DIAGNOSTICS_COMMIT_DELAY_MS = 120
+
+interface HoverGraphState {
+  nodePubkey: string | null
+  edgeId: string | null
+  edgePubkeys: readonly string[]
+}
+
+const EMPTY_HOVER_STATE: HoverGraphState = {
+  nodePubkey: null,
+  edgeId: null,
+  edgePubkeys: [],
+}
 
 const equalStringLists = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&
@@ -291,6 +306,95 @@ const emptyStateCopy = (
   }
 }
 
+interface GraphCanvasRecoveryChromeProps {
+  browserOnline: boolean
+  links: AppStore['links']
+  rootLoadMessage: string | null
+  rootLoadStatus: AppStore['rootLoad']['status']
+  rootNodePubkey: string | null
+  shouldMountRenderer: boolean
+  onTrySampleRoot: () => void
+}
+
+const GraphCanvasRecoveryChrome = memo(function GraphCanvasRecoveryChrome({
+  browserOnline,
+  links,
+  rootLoadMessage,
+  rootLoadStatus,
+  rootNodePubkey,
+  shouldMountRenderer,
+  onTrySampleRoot,
+}: GraphCanvasRecoveryChromeProps) {
+  const { relayUrls, relayHealth } = useAppStore(
+    useShallow(selectRelayHealthData),
+  )
+  const coverageRecovery = useMemo(
+    () =>
+      deriveCoverageRecovery({
+        browserOnline,
+        relayUrls,
+        relayHealth,
+        rootNodePubkey,
+        rootLoadStatus,
+        links,
+      }),
+    [browserOnline, links, relayHealth, relayUrls, rootLoadStatus, rootNodePubkey],
+  )
+  const shouldShowRecoveryOverlay =
+    shouldMountRenderer && coverageRecovery.shouldOfferRecovery
+
+  return (
+    <>
+      {shouldShowRecoveryOverlay && coverageRecovery.reason ? (
+        <div className="graph-panel__overlay-stack">
+          <CoverageRecoveryCard
+            onChangeRelays={() => {
+              appStore.getState().setOpenPanel('relay-config')
+            }}
+            onTrySampleRoot={onTrySampleRoot}
+            reason={coverageRecovery.reason}
+            relaySummary={coverageRecovery.relaySummary}
+            rootLoadMessage={rootLoadMessage}
+            variant="overlay"
+          />
+        </div>
+      ) : null}
+    </>
+  )
+})
+
+interface GraphCanvasPanelsProps {
+  hasSelectedNode: boolean
+  imageRuntime: ImageRuntime | null
+  runtime: RootLoader
+}
+
+const GraphCanvasPanels = memo(function GraphCanvasPanels({
+  hasSelectedNode,
+  imageRuntime,
+  runtime,
+}: GraphCanvasPanelsProps) {
+  const { openPanel } = useAppStore(useShallow(selectGraphCanvasPanelState))
+  const isNodeDetailOpen = openPanel === 'node-detail' && hasSelectedNode
+  const isPathfindingOpen = openPanel === 'pathfinding'
+
+  return (
+    <>
+      {isNodeDetailOpen ? (
+        <Suspense fallback={null}>
+          <NodeDetailPanel imageRuntime={imageRuntime} runtime={runtime} />
+        </Suspense>
+      ) : null}
+
+      {isPathfindingOpen ? (
+        <Suspense fallback={null}>
+          <PathfindingPanel runtime={runtime} />
+        </Suspense>
+      ) : null}
+    </>
+  )
+})
+
 export function GraphCanvas({
   runtime,
   onTrySampleRoot,
@@ -303,8 +407,6 @@ export function GraphCanvas({
     zapEdges,
     zapLayerStatus,
     keywordLayer,
-    relayUrls,
-    relayHealth,
     rootNodePubkey,
     selectedNodePubkey,
     comparedNodePubkeys,
@@ -318,18 +420,10 @@ export function GraphCanvas({
     capReached,
     maxNodes,
     renderConfig,
-    isNodeDetailOpen,
-    isPathfindingOpen,
-  } = useAppStore(useShallow(selectGraphCanvasState))
+  } = useAppStore(useShallow(selectGraphCanvasRenderState))
   const containerRef = useRef<HTMLDivElement | null>(null)
   const perfCountersRef = useRef(createPerfCounters())
-  const [hoveredNodePubkey, setHoveredNodePubkey] = useState<string | null>(
-    null,
-  )
-  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
-  const [hoveredEdgePubkeys, setHoveredEdgePubkeys] = useState<readonly string[]>(
-    [],
-  )
+  const [hoverState, setHoverState] = useState<HoverGraphState>(EMPTY_HOVER_STATE)
   const [interactionViewState, setInteractionViewState] = useState<{
     signature: string
     viewState: GraphViewState
@@ -346,7 +440,7 @@ export function GraphCanvas({
     activeLayer,
     rootLoadStatus,
     size,
-    hoveredNodePubkey,
+    hoveredNodePubkey: hoverState.nodePubkey,
     viewState: null as GraphViewState | null,
     renderConfig,
     comparedNodePubkeys,
@@ -371,9 +465,13 @@ export function GraphCanvas({
 
   const imageRuntimeRef = useRef<ImageRuntime | null>(null)
   const refreshImageFrameRef = useRef<() => void>(() => undefined)
+  const imageRefreshTimerRef = useRef<number | null>(null)
+  const diagnosticsCommitTimerRef = useRef<number | null>(null)
   const [imageRuntime, setImageRuntime] = useState<ImageRuntime | null>(null)
   const [imageFrame, setImageFrame] =
     useState<ImageRenderPayload>(EMPTY_IMAGE_FRAME)
+  const imageDiagnosticsSnapshotRef =
+    useRef<ImageResidencySnapshot>(EMPTY_IMAGE_DIAGNOSTICS)
   const [imageDiagnosticsSnapshot, setImageDiagnosticsSnapshot] =
     useState<ImageResidencySnapshot>(EMPTY_IMAGE_DIAGNOSTICS)
   const stableViewStateRef = useRef<GraphViewState | null>(null)
@@ -388,32 +486,14 @@ export function GraphCanvas({
     zoom: number
   } | null>(null)
   const lastViewportInteractionAtRef = useRef<number | null>(null)
-  const [viewportVelocity, setViewportVelocity] = useState(0)
-  const [viewportQuietForMs, setViewportQuietForMs] = useState(
-    QUIET_VIEWPORT_READY_MS,
-  )
+  const viewportVelocityRef = useRef(0)
+  const viewportQuietForMsRef = useRef(QUIET_VIEWPORT_READY_MS)
   const [isBrowserOnline, setIsBrowserOnline] = useState(() =>
     typeof navigator === 'undefined' ? true : navigator.onLine,
   )
-  const coverageRecovery = useMemo(
-    () =>
-      deriveCoverageRecovery({
-        browserOnline: isBrowserOnline,
-        relayUrls,
-        relayHealth,
-        rootNodePubkey,
-        rootLoadStatus,
-        links,
-      }),
-    [
-      isBrowserOnline,
-      links,
-      relayHealth,
-      relayUrls,
-      rootLoadStatus,
-      rootNodePubkey,
-    ],
-  )
+  const hoveredNodePubkey = hoverState.nodePubkey
+  const hoveredEdgeId = hoverState.edgeId
+  const hoveredEdgePubkeys = hoverState.edgePubkeys
 
   useEffect(() => {
     const handleOnline = () => {
@@ -437,7 +517,14 @@ export function GraphCanvas({
     const nextImageRuntime = new ImageRuntime()
     imageRuntimeRef.current = nextImageRuntime
     const unsubscribe = nextImageRuntime.subscribe(() => {
-      refreshImageFrameRef.current()
+      if (imageRefreshTimerRef.current !== null) {
+        return
+      }
+
+      imageRefreshTimerRef.current = window.setTimeout(() => {
+        imageRefreshTimerRef.current = null
+        refreshImageFrameRef.current()
+      }, COALESCED_FRAME_DELAY_MS)
     })
 
     setImageRuntime(nextImageRuntime)
@@ -446,7 +533,16 @@ export function GraphCanvas({
       unsubscribe()
       nextImageRuntime.dispose()
       imageRuntimeRef.current = null
+      if (imageRefreshTimerRef.current !== null) {
+        window.clearTimeout(imageRefreshTimerRef.current)
+        imageRefreshTimerRef.current = null
+      }
+      if (diagnosticsCommitTimerRef.current !== null) {
+        window.clearTimeout(diagnosticsCommitTimerRef.current)
+        diagnosticsCommitTimerRef.current = null
+      }
       setImageFrame(EMPTY_IMAGE_FRAME)
+      imageDiagnosticsSnapshotRef.current = EMPTY_IMAGE_DIAGNOSTICS
       setImageDiagnosticsSnapshot(EMPTY_IMAGE_DIAGNOSTICS)
       setImageRuntime(null)
     }
@@ -523,14 +619,33 @@ export function GraphCanvas({
         ? QUIET_VIEWPORT_READY_MS
         : Math.max(0, readNowMs() - lastInteractionAt)
 
-    setViewportQuietForMs((current) =>
-      Math.abs(current - nextQuietForMs) < 8 ? current : nextQuietForMs,
-    )
+    if (Math.abs(viewportQuietForMsRef.current - nextQuietForMs) < 8) {
+      return
+    }
+
+    viewportQuietForMsRef.current = nextQuietForMs
   }, [])
 
   const markViewportInteraction = useCallback(() => {
     lastViewportInteractionAtRef.current = readNowMs()
-    setViewportQuietForMs((current) => (current === 0 ? current : 0))
+    viewportQuietForMsRef.current = 0
+  }, [])
+
+  const scheduleImageDiagnosticsCommit = useCallback(() => {
+    if (diagnosticsCommitTimerRef.current !== null) {
+      return
+    }
+
+    diagnosticsCommitTimerRef.current = window.setTimeout(() => {
+      diagnosticsCommitTimerRef.current = null
+      if (!isMountedRef.current) {
+        return
+      }
+
+      startTransition(() => {
+        setImageDiagnosticsSnapshot(imageDiagnosticsSnapshotRef.current)
+      })
+    }, DIAGNOSTICS_COMMIT_DELAY_MS)
   }, [])
 
   const workerQueueRefs = useRef({
@@ -541,18 +656,42 @@ export function GraphCanvas({
     > | null,
   })
   const triggerFlushRef = useRef<() => void>(undefined)
+  const workerFlushTimerRef = useRef<number | null>(null)
   const isMountedRef = useRef(true)
 
   useEffect(() => {
     isMountedRef.current = true
     return () => {
       isMountedRef.current = false
+      if (workerFlushTimerRef.current !== null) {
+        window.clearTimeout(workerFlushTimerRef.current)
+        workerFlushTimerRef.current = null
+      }
+      if (imageRefreshTimerRef.current !== null) {
+        window.clearTimeout(imageRefreshTimerRef.current)
+        imageRefreshTimerRef.current = null
+      }
+      if (diagnosticsCommitTimerRef.current !== null) {
+        window.clearTimeout(diagnosticsCommitTimerRef.current)
+        diagnosticsCommitTimerRef.current = null
+      }
     }
   }, [])
 
   useEffect(() => {
     if (!graphRenderWorker) {
       return
+    }
+
+    const scheduleWorkerFlush = () => {
+      if (workerFlushTimerRef.current !== null) {
+        return
+      }
+
+      workerFlushTimerRef.current = window.setTimeout(() => {
+        workerFlushTimerRef.current = null
+        triggerFlushRef.current?.()
+      }, COALESCED_FRAME_DELAY_MS)
     }
 
     workerQueueRefs.current.pendingInput = {
@@ -600,7 +739,7 @@ export function GraphCanvas({
 
       const onWorkerSettled = () => {
         workerQueueRefs.current.isBusy = false
-        triggerFlushRef.current?.()
+        scheduleWorkerFlush()
       }
 
       const commitModel = (nextModel: GraphRenderModel) => {
@@ -663,7 +802,7 @@ export function GraphCanvas({
     }
 
     triggerFlushRef.current = flushWorkerQueue
-    flushWorkerQueue()
+    scheduleWorkerFlush()
   }, [
     activeLayer,
     comparedNodePubkeys,
@@ -887,8 +1026,9 @@ export function GraphCanvas({
             ? current
             : EMPTY_IMAGE_FRAME,
         )
-        setImageDiagnosticsSnapshot(EMPTY_IMAGE_DIAGNOSTICS)
       })
+      imageDiagnosticsSnapshotRef.current = EMPTY_IMAGE_DIAGNOSTICS
+      scheduleImageDiagnosticsCommit()
       return
     }
 
@@ -896,8 +1036,8 @@ export function GraphCanvas({
       width: size.width,
       height: size.height,
       viewState,
-      velocityScore: viewportVelocity,
-      viewportQuietForMs,
+      velocityScore: viewportVelocityRef.current,
+      viewportQuietForMs: viewportQuietForMsRef.current,
       nodes: model.nodes,
       nodeScreenRadii: stableNodeScreenRadii,
       selectedNodePubkey,
@@ -907,6 +1047,7 @@ export function GraphCanvas({
       avatarFullHdZoomThreshold: renderConfig.avatarFullHdZoomThreshold,
     })
     const nextImageDiagnostics = runtimeInstance.debugSnapshot()
+    imageDiagnosticsSnapshotRef.current = nextImageDiagnostics
 
     startTransition(() => {
       setImageFrame((current) =>
@@ -914,12 +1055,19 @@ export function GraphCanvas({
           ? current
           : nextImageFrame,
       )
-      setImageDiagnosticsSnapshot(nextImageDiagnostics)
     })
+    scheduleImageDiagnosticsCommit()
   }
 
   useEffect(() => {
-    refreshImageFrameRef.current()
+    if (imageRefreshTimerRef.current !== null) {
+      window.clearTimeout(imageRefreshTimerRef.current)
+    }
+
+    imageRefreshTimerRef.current = window.setTimeout(() => {
+      imageRefreshTimerRef.current = null
+      refreshImageFrameRef.current()
+    }, COALESCED_FRAME_DELAY_MS)
   }, [
     hoveredNodePubkey,
     imageRuntime,
@@ -932,8 +1080,6 @@ export function GraphCanvas({
     size.height,
     size.width,
     viewState,
-    viewportVelocity,
-    viewportQuietForMs,
   ])
 
   useEffect(() => {
@@ -955,7 +1101,13 @@ export function GraphCanvas({
       .map((delayMs) =>
         window.setTimeout(() => {
           refreshViewportQuietState()
-          refreshImageFrameRef.current()
+          if (imageRefreshTimerRef.current !== null) {
+            window.clearTimeout(imageRefreshTimerRef.current)
+          }
+          imageRefreshTimerRef.current = window.setTimeout(() => {
+            imageRefreshTimerRef.current = null
+            refreshImageFrameRef.current()
+          }, COALESCED_FRAME_DELAY_MS)
         }, delayMs + 1),
       )
 
@@ -1038,36 +1190,37 @@ export function GraphCanvas({
         | { type: 'edge'; edgeId: string; pubkeys: [string, string] }
         | null,
     ) => {
-      if (hover === null) {
-        setHoveredNodePubkey((current) => (current === null ? current : null))
-        setHoveredEdgeId((current) => (current === null ? current : null))
-        setHoveredEdgePubkeys((current) =>
-          current.length === 0 ? current : [],
-        )
-        return
-      }
+      const nextHoverState: HoverGraphState =
+        hover === null
+          ? EMPTY_HOVER_STATE
+          : hover.type === 'node'
+            ? {
+                nodePubkey: hover.pubkey,
+                edgeId: null,
+                edgePubkeys: EMPTY_HOVER_STATE.edgePubkeys,
+              }
+            : {
+                nodePubkey: null,
+                edgeId: hover.edgeId,
+                edgePubkeys: hover.pubkeys,
+              }
 
-      if (hover.type === 'node') {
-        setHoveredNodePubkey((current) =>
-          current === hover.pubkey ? current : hover.pubkey,
-        )
-        setHoveredEdgeId((current) => (current === null ? current : null))
-        setHoveredEdgePubkeys((current) =>
-          current.length === 0 ? current : [],
-        )
-        return
-      }
+      startTransition(() => {
+        setHoverState((current) => {
+          if (
+            current.nodePubkey === nextHoverState.nodePubkey &&
+            current.edgeId === nextHoverState.edgeId &&
+            current.edgePubkeys.length === nextHoverState.edgePubkeys.length &&
+            current.edgePubkeys.every(
+              (value, index) => value === nextHoverState.edgePubkeys[index],
+            )
+          ) {
+            return current
+          }
 
-      setHoveredNodePubkey((current) => (current === null ? current : null))
-      setHoveredEdgeId((current) =>
-        current === hover.edgeId ? current : hover.edgeId,
-      )
-      setHoveredEdgePubkeys((current) =>
-        current.length === hover.pubkeys.length &&
-        current.every((value, index) => value === hover.pubkeys[index])
-          ? current
-          : [...hover.pubkeys],
-      )
+          return nextHoverState
+        })
+      })
     },
     [],
   )
@@ -1085,9 +1238,9 @@ export function GraphCanvas({
         const nextVelocity =
           (Math.hypot(deltaX, deltaY) / elapsedMs) * 1000 + deltaZoom * 800
 
-        setViewportVelocity((current) =>
-          Math.abs(current - nextVelocity) < 1 ? current : nextVelocity,
-        )
+        if (Math.abs(viewportVelocityRef.current - nextVelocity) >= 1) {
+          viewportVelocityRef.current = nextVelocity
+        }
       }
 
       lastViewSampleRef.current = {
@@ -1178,8 +1331,8 @@ export function GraphCanvas({
   useEffect(() => {
     lastViewSampleRef.current = null
     lastViewportInteractionAtRef.current = null
-    setViewportVelocity(0)
-    setViewportQuietForMs(QUIET_VIEWPORT_READY_MS)
+    viewportVelocityRef.current = 0
+    viewportQuietForMsRef.current = QUIET_VIEWPORT_READY_MS
   }, [fitSignature])
 
   const overlayCopy = emptyStateCopy(renderState, activeLayer)
@@ -1197,10 +1350,6 @@ export function GraphCanvas({
     (total, matches) => total + matches.length,
     0,
   )
-  const shouldShowRecoveryEmptyState =
-    shouldShowEmptyState && coverageRecovery.shouldOfferRecovery
-  const shouldShowRecoveryOverlay =
-    shouldMountRenderer && coverageRecovery.shouldOfferRecovery
   const statusCopy = capReached
     ? `Cap ${maxNodes} alcanzado`
     : activeLayer === 'mutuals'
@@ -1348,32 +1497,21 @@ export function GraphCanvas({
             containerRef.current = element
           }}
         >
-          {shouldShowRecoveryOverlay && coverageRecovery.reason ? (
-            <div className="graph-panel__overlay-stack">
-              <CoverageRecoveryCard
-                onChangeRelays={() => {
-                  appStore.getState().setOpenPanel('relay-config')
-                }}
-                onTrySampleRoot={onTrySampleRoot}
-                reason={coverageRecovery.reason}
-                relaySummary={coverageRecovery.relaySummary}
-                rootLoadMessage={rootLoadMessage}
-                variant="overlay"
-              />
-            </div>
-          ) : null}
+          <GraphCanvasRecoveryChrome
+            browserOnline={isBrowserOnline}
+            links={links}
+            onTrySampleRoot={onTrySampleRoot}
+            rootLoadMessage={rootLoadMessage}
+            rootLoadStatus={rootLoadStatus}
+            rootNodePubkey={rootNodePubkey}
+            shouldMountRenderer={shouldMountRenderer}
+          />
 
-          {isNodeDetailOpen ? (
-            <Suspense fallback={null}>
-              <NodeDetailPanel imageRuntime={imageRuntime} runtime={runtime} />
-            </Suspense>
-          ) : null}
-
-          {isPathfindingOpen ? (
-            <Suspense fallback={null}>
-              <PathfindingPanel runtime={runtime} />
-            </Suspense>
-          ) : null}
+          <GraphCanvasPanels
+            hasSelectedNode={selectedNodePubkey !== null}
+            imageRuntime={imageRuntime}
+            runtime={runtime}
+          />
 
           {shouldMountRenderer && viewState ? (
             <GraphViewportLazy
@@ -1396,20 +1534,7 @@ export function GraphCanvas({
             />
           ) : null}
 
-          {shouldShowRecoveryEmptyState && coverageRecovery.reason ? (
-            <CoverageRecoveryCard
-              onChangeRelays={() => {
-                appStore.getState().setOpenPanel('relay-config')
-              }}
-              onTrySampleRoot={onTrySampleRoot}
-              reason={coverageRecovery.reason}
-              relaySummary={coverageRecovery.relaySummary}
-              rootLoadMessage={rootLoadMessage}
-              variant="empty"
-            />
-          ) : null}
-
-          {shouldShowEmptyState && !shouldShowRecoveryEmptyState ? (
+          {shouldShowEmptyState ? (
             <div aria-live="polite" className="graph-panel__empty">
               <p className="graph-panel__empty-title">{overlayCopy.title}</p>
               <p className="graph-panel__empty-copy">{overlayCopy.body}</p>

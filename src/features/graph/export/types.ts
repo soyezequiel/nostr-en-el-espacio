@@ -35,6 +35,8 @@ export interface FrozenSnapshot {
   nodes: GraphNode[]
   links: GraphLink[]
   adjacency: Record<string, string[]>
+  inboundLinks: GraphLink[]
+  inboundAdjacency: Record<string, string[]>
   keywordSearch: {
     keyword: string | null
     totalHits: number

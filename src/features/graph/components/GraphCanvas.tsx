@@ -1182,7 +1182,7 @@ export function GraphCanvas({
     setViewportQuietForMs(QUIET_VIEWPORT_READY_MS)
   }, [fitSignature])
 
-  const overlayCopy = emptyStateCopy(renderState)
+  const overlayCopy = emptyStateCopy(renderState, activeLayer)
   const shouldMountRenderer =
     model.nodes.length > 0 &&
     size.width > 0 &&
@@ -1203,6 +1203,10 @@ export function GraphCanvas({
     shouldMountRenderer && coverageRecovery.shouldOfferRecovery
   const statusCopy = capReached
     ? `Cap ${maxNodes} alcanzado`
+    : activeLayer === 'mutuals'
+      ? `${model.edges.length} relaciones reciprocas`
+    : activeLayer === 'followers'
+      ? `${model.edges.length} followers visibles`
     : activeLayer === 'pathfinding' && pathfinding.path
       ? `Camino de ${Math.max(0, pathfinding.path.length - 1)} saltos`
     : activeLayer === 'zaps'
@@ -1215,7 +1219,15 @@ export function GraphCanvas({
             : keywordLayer.message ?? 'Keywords sin corpus'
       : `${model.edges.length} links visibles`
   const layerStatusNote =
-    activeLayer === 'keywords'
+    activeLayer === 'followers'
+      ? model.edges.length > 0
+        ? 'Followers inbound reales descubiertos en esta sesion.'
+        : 'No hay follows entrantes descubiertos todavia; expande root u otros nodos.'
+    : activeLayer === 'mutuals'
+      ? model.edges.length > 0
+        ? 'Mutuals derivados de evidencia saliente e inbound deduplicada.'
+        : 'No hay relaciones reciprocas visibles todavia.'
+    : activeLayer === 'keywords'
       ? keywordLayer.message
       : activeLayer === 'zaps'
         ? zapLayerStatus === 'enabled'
@@ -1433,6 +1445,16 @@ export function GraphCanvas({
                 type="button"
               >
                 Mutuals
+              </button>
+              <button
+                aria-pressed={activeLayer === 'followers'}
+                className={`graph-panel__control-btn${
+                  activeLayer === 'followers' ? ' graph-panel__control-btn--primary' : ''
+                }`}
+                onClick={() => handleToggleLayer('followers')}
+                type="button"
+              >
+                Followers
               </button>
               <button
                 aria-pressed={activeLayer === 'keywords'}

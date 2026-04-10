@@ -168,7 +168,7 @@ const getEdgeWidth = (
 
   let baseWidth = 1
   if (edge.relation !== 'zap') {
-    baseWidth = edge.relation === 'follow' ? 1.4 : 1
+    baseWidth = 1.4
   } else {
     const normalizedWeight =
       maxZapWeight > 0 ? Math.max(0.15, edge.weight / maxZapWeight) : 0.15

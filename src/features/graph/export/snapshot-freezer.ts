@@ -18,9 +18,15 @@ export async function freezeSnapshot(
   const nodes = Object.values(state.nodes)
   const links = [...state.links]
   const adjacency: Record<string, string[]> = {}
+  const inboundLinks = [...state.inboundLinks]
+  const inboundAdjacency: Record<string, string[]> = {}
 
   for (const [pubkey, neighbors] of Object.entries(state.adjacency)) {
     adjacency[pubkey] = [...neighbors].sort()
+  }
+
+  for (const [pubkey, followers] of Object.entries(state.inboundAdjacency)) {
+    inboundAdjacency[pubkey] = [...followers].sort()
   }
 
   const relays = [...state.relayUrls].sort()
@@ -51,6 +57,12 @@ export async function freezeSnapshot(
       return a.target.localeCompare(b.target)
     }),
     adjacency,
+    inboundLinks: inboundLinks.sort((a, b) => {
+      const srcCmp = a.source.localeCompare(b.source)
+      if (srcCmp !== 0) return srcCmp
+      return a.target.localeCompare(b.target)
+    }),
+    inboundAdjacency,
     keywordSearch: {
       keyword: activeKeyword || null,
       totalHits: nodes.reduce((total, node) => total + node.keywordHits, 0),

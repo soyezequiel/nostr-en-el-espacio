@@ -1,6 +1,10 @@
 import { zipSync } from 'fflate'
 
 import { canonicalJson, canonicalNdjson, encodeUtf8, sha256Hex } from '@/features/graph/export/canonical'
+import {
+  deriveDirectedEvidence,
+  type DirectedEvidenceSnapshot,
+} from '@/features/graph/evidence/directedEvidence'
 import type {
   ArchiveResult,
   ExportManifest,
@@ -28,6 +32,10 @@ export async function buildFileTree(
   snapshot: FrozenSnapshot,
 ): Promise<FileTree> {
   const files: Record<string, Uint8Array<ArrayBuffer>> = {}
+  const evidence = deriveDirectedEvidence({
+    links: snapshot.links,
+    inboundLinks: snapshot.inboundLinks,
+  })
 
   const captureProfileBytes = encodeUtf8(canonicalJson(captureProfileV1))
   const captureProfileHash = await sha256Hex(captureProfileBytes)
@@ -40,7 +48,7 @@ export async function buildFileTree(
 
   for (const pubkey of pubkeys) {
     const userData = snapshot.users.get(pubkey)!
-    addUserFiles(files, pubkey, userData, snapshot)
+    addUserFiles(files, pubkey, userData, snapshot, evidence)
   }
 
   const manifest: ExportManifest = {
@@ -97,7 +105,16 @@ export function buildUserFileTree(
   snapshot: FrozenSnapshot,
 ): Record<string, Uint8Array<ArrayBuffer>> {
   const files: Record<string, Uint8Array<ArrayBuffer>> = {}
-  addUserFiles(files, pubkey, userData, snapshot)
+  addUserFiles(
+    files,
+    pubkey,
+    userData,
+    snapshot,
+    deriveDirectedEvidence({
+      links: snapshot.links,
+      inboundLinks: snapshot.inboundLinks,
+    }),
+  )
   return files
 }
 
@@ -308,6 +325,19 @@ function addGraphFiles(
   files['grafo/nodes.json'] = encodeUtf8(canonicalJson(nodesData))
   files['grafo/links.json'] = encodeUtf8(canonicalJson(linksData))
   files['grafo/adjacency.json'] = encodeUtf8(canonicalJson(snapshot.adjacency))
+  files['grafo/inbound-links.json'] = encodeUtf8(
+    canonicalJson(
+      snapshot.inboundLinks.map((link) => ({
+        source: link.source,
+        target: link.target,
+        relation: link.relation,
+        weight: link.weight ?? null,
+      })),
+    ),
+  )
+  files['grafo/inbound-adjacency.json'] = encodeUtf8(
+    canonicalJson(snapshot.inboundAdjacency),
+  )
   files['grafo/keyword-search.json'] = encodeUtf8(
     canonicalJson(snapshot.keywordSearch),
   )
@@ -318,35 +348,26 @@ function addUserFiles(
   pubkey: string,
   user: FrozenUserData,
   snapshot: FrozenSnapshot,
+  evidence: DirectedEvidenceSnapshot,
 ): void {
   const base = `usuarios/${pubkey}`
 
   files[`${base}/resumen.json`] = encodeUtf8(
-    canonicalJson(buildResumen(pubkey, user, snapshot)),
+    canonicalJson(buildResumen(pubkey, user, snapshot, evidence)),
   )
 
   addCanonicalFiles(files, base, user)
   addRawFiles(files, base, user)
-  addGraphUserFiles(files, base, pubkey, user, snapshot)
+  addGraphUserFiles(files, base, pubkey, user, snapshot, evidence)
 }
 
 function buildResumen(
   pubkey: string,
   user: FrozenUserData,
   snapshot: FrozenSnapshot,
+  evidence: DirectedEvidenceSnapshot,
 ): UserResumen {
-  const adjacency = snapshot.adjacency
   const followCount = user.contactList?.follows.length ?? 0
-
-  const followersDiscovered = Object.entries(adjacency).filter(
-    ([src, neighbors]) => src !== pubkey && neighbors.includes(pubkey),
-  ).length
-
-  const following = new Set(adjacency[pubkey] ?? [])
-  const mutualsDiscovered = Object.entries(adjacency).filter(
-    ([src, neighbors]) =>
-      src !== pubkey && neighbors.includes(pubkey) && following.has(src),
-  ).length
 
   return {
     pubkey,
@@ -361,8 +382,8 @@ function buildResumen(
         }
       : null,
     followCount,
-    followerDiscoveredCount: followersDiscovered,
-    mutualDiscoveredCount: mutualsDiscovered,
+    followerDiscoveredCount: evidence.inboundAdjacency[pubkey]?.length ?? 0,
+    mutualDiscoveredCount: evidence.mutualAdjacency[pubkey]?.length ?? 0,
     rawEventCount: user.rawEvents.length,
     zapsSentCount: user.zapsSent.length,
     zapsReceivedCount: user.zapsReceived.length,
@@ -488,20 +509,17 @@ function addGraphUserFiles(
   pubkey: string,
   user: FrozenUserData,
   snapshot: FrozenSnapshot,
+  evidence: DirectedEvidenceSnapshot,
 ): void {
   const outgoing = (snapshot.adjacency[pubkey] ?? []).sort()
   files[`${base}/graph/following.json`] = encodeUtf8(canonicalJson(outgoing))
 
-  const incoming = Object.entries(snapshot.adjacency)
-    .filter(([src, neighbors]) => src !== pubkey && neighbors.includes(pubkey))
-    .map(([src]) => src)
-    .sort()
+  const incoming = [...(evidence.inboundAdjacency[pubkey] ?? [])].sort()
   files[`${base}/graph/followers-discovered.json`] = encodeUtf8(
     canonicalJson(incoming),
   )
 
-  const outgoingSet = new Set(outgoing)
-  const mutuals = incoming.filter((p) => outgoingSet.has(p)).sort()
+  const mutuals = [...(evidence.mutualAdjacency[pubkey] ?? [])].sort()
   files[`${base}/graph/mutuals-discovered.json`] = encodeUtf8(
     canonicalJson(mutuals),
   )

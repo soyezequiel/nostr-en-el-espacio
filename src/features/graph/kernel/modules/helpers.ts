@@ -543,6 +543,7 @@ export function mapProfileRecordToNodeProfile(
   return {
     eventId: profile.eventId,
     fetchedAt: profile.fetchedAt,
+    profileSource: profile.profileSource ?? null,
     name: profile.name,
     about: profile.about,
     picture: profile.picture,
@@ -555,6 +556,7 @@ export function buildNodeProfileFromNode(node: GraphNode): NodeDetailProfile {
   return {
     eventId: node.profileEventId ?? '',
     fetchedAt: node.profileFetchedAt ?? 0,
+    profileSource: node.profileSource ?? null,
     name: node.label ?? null,
     about: node.about ?? null,
     picture: node.picture ?? null,

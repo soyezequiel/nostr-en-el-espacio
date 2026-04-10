@@ -97,6 +97,7 @@ const hasGraphNodeChanged = (left: GraphNode, right: GraphNode) =>
   left.lud16 !== right.lud16 ||
   left.profileEventId !== right.profileEventId ||
   left.profileFetchedAt !== right.profileFetchedAt ||
+  left.profileSource !== right.profileSource ||
   left.profileState !== right.profileState ||
   left.keywordHits !== right.keywordHits ||
   left.discoveredAt !== right.discoveredAt ||

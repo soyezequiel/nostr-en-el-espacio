@@ -10,6 +10,14 @@ import {
 } from '@/features/graph/kernel/modules/helpers'
 import type { ProfileHydrationModule } from '@/features/graph/kernel/modules/profile-hydration'
 
+interface PersistProfileEventOptions {
+  cacheUrl?: string
+  source?: 'relay' | 'primal-cache'
+  profileOverrides?: {
+    picture?: string | null
+  }
+}
+
 export function createPersistenceModule(
   ctx: KernelContext,
   collaborators: { profileHydration: ProfileHydrationModule },
@@ -52,10 +60,14 @@ export function createPersistenceModule(
     })
   }
 
-  async function persistProfileEvent(envelope: RelayEventEnvelope): Promise<void> {
+  async function persistProfileEvent(
+    envelope: RelayEventEnvelope,
+    options: PersistProfileEventOptions = {},
+  ): Promise<void> {
     const fetchedAt = envelope.receivedAtMs
     const event = envelope.event
     const parsedProfile = safeParseProfile(event.content)
+    const source = options.source ?? 'relay'
 
     await ctx.repositories.rawEvents.upsert({
       id: event.id,
@@ -63,7 +75,8 @@ export function createPersistenceModule(
       kind: event.kind,
       createdAt: event.created_at,
       fetchedAt,
-      relayUrls: [envelope.relayUrl],
+      relayUrls: source === 'relay' ? [envelope.relayUrl] : [],
+      cacheUrls: options.cacheUrl ? [options.cacheUrl] : [],
       tags: event.tags,
       content: event.content,
       sig: event.sig,
@@ -89,9 +102,10 @@ export function createPersistenceModule(
       eventId: event.id,
       createdAt: event.created_at,
       fetchedAt,
+      profileSource: source,
       name: parsedProfile.name,
       about: parsedProfile.about,
-      picture: parsedProfile.picture,
+      picture: options.profileOverrides?.picture ?? parsedProfile.picture,
       nip05: parsedProfile.nip05,
       lud16: parsedProfile.lud16,
     })

@@ -3,7 +3,6 @@ export const DEFAULT_SESSION_RELAY_URLS = [
   'wss://relay.nostr.band',
   'wss://nos.lol',
   'wss://relay.primal.net',
-  'wss://cache2.primal.net/v1',
   'wss://nostr.bitcoiner.social',
   'wss://nostr.mom',
   'wss://purplepag.es',

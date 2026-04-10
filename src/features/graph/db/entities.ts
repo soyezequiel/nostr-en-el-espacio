@@ -11,6 +11,7 @@ export interface RawEventRecord {
   firstSeenAt: number
   lastSeenAt: number
   relayUrls: string[]
+  cacheUrls?: string[]
   tags: NostrTag[]
   content: string
   sig: string
@@ -52,6 +53,7 @@ export interface ProfileRecord {
   eventId: string
   createdAt: number
   fetchedAt: number
+  profileSource?: 'relay' | 'primal-cache'
   name: string | null
   about: string | null
   picture: string | null

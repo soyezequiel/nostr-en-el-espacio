@@ -6,6 +6,7 @@ import type {
 } from '@/features/graph/analysis/types'
 
 export type GraphNodeSource = 'root' | 'follow' | 'inbound' | 'zap' | 'keyword'
+export type ProfileDataSource = 'relay' | 'primal-cache'
 export type GraphLinkRelation = 'follow' | 'inbound' | 'zap'
 export type ZapLayerStatus =
   | 'disabled'
@@ -84,6 +85,7 @@ export interface GraphNode {
   lud16?: string | null
   profileEventId?: string | null
   profileFetchedAt?: number | null
+  profileSource?: ProfileDataSource | null
   profileState?: 'idle' | 'loading' | 'ready' | 'missing'
   keywordHits: number
   discoveredAt: number | null
@@ -93,6 +95,7 @@ export interface GraphNode {
 export interface GraphNodeProfile {
   eventId: string
   fetchedAt: number
+  profileSource?: ProfileDataSource | null
   name: string | null
   about: string | null
   picture: string | null

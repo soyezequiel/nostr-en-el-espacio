@@ -69,6 +69,7 @@ export interface SelectNodeResult {
 export interface NodeDetailProfile {
   eventId: string
   fetchedAt: number
+  profileSource?: 'relay' | 'primal-cache' | null
   name: string | null
   about: string | null
   picture: string | null

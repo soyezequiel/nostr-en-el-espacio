@@ -476,6 +476,7 @@ export function createRootLoaderModule(
           lud16: previousNode.lud16 ?? null,
           profileFetchedAt: previousNode.profileFetchedAt ?? null,
           profileEventId: previousNode.profileEventId ?? null,
+          profileSource: previousNode.profileSource ?? null,
           profileState: 'ready' as const,
         }
       }
@@ -489,6 +490,7 @@ export function createRootLoaderModule(
           lud16: fallbackProfile.lud16,
           profileFetchedAt: fallbackProfile.fetchedAt,
           profileEventId: fallbackProfile.eventId,
+          profileSource: fallbackProfile.profileSource ?? null,
           profileState: 'ready' as const,
         }
       }
@@ -501,6 +503,7 @@ export function createRootLoaderModule(
           lud16: null,
           profileFetchedAt: null,
           profileEventId: null,
+          profileSource: null,
           profileState: 'missing' as const,
         }
       }

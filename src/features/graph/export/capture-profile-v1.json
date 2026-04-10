@@ -23,6 +23,12 @@
     "allowMidExportRelayChanges": false,
     "maxRelaysPerSession": 8
   },
+  "cachePlan": {
+    "source": "pre-export-profile-enrichment",
+    "providers": ["primal"],
+    "useForGraphStructure": false,
+    "persistSeparateFromRelayUrls": true
+  },
   "time": {
     "captureUpperBoundSec": "floor(nowUtc / 3600) * 3600",
     "inboundLookbackDays": 365
@@ -74,6 +80,7 @@
     "persistPageRound": true,
     "persistQueryFilter": true,
     "persistRelayStatus": true,
+    "persistCacheProviders": true,
     "persistEventVerification": true
   }
 }

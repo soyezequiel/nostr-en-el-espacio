@@ -54,6 +54,7 @@ export interface ExportManifest {
   captureUpperBoundSec: number
   executionMode: 'snapshot'
   relays: string[]
+  cacheProviders?: string[]
   graphCaps: GraphCaps
   nodeCount: number
   linkCount: number
@@ -73,6 +74,7 @@ export interface UserResumen {
     picture: string | null
     nip05: string | null
     lud16: string | null
+    profileSource: 'relay' | 'primal-cache' | null
   } | null
   followCount: number
   followerDiscoveredCount: number

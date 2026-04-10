@@ -36,6 +36,7 @@ export class RawEventsRepository {
     const normalizedRecord: RawEventRecord = {
       ...input,
       relayUrls: toSortedUniqueStrings(input.relayUrls),
+      cacheUrls: toSortedUniqueStrings(input.cacheUrls ?? []),
       dTag: input.dTag ?? null,
       firstSeenAt: input.firstSeenAt ?? input.fetchedAt,
       lastSeenAt: input.lastSeenAt ?? input.fetchedAt,
@@ -53,6 +54,10 @@ export class RawEventsRepository {
       firstSeenAt: Math.min(existing.firstSeenAt, normalizedRecord.firstSeenAt),
       lastSeenAt: Math.max(existing.lastSeenAt, normalizedRecord.lastSeenAt),
       relayUrls: toSortedUniqueStrings([...existing.relayUrls, ...normalizedRecord.relayUrls]),
+      cacheUrls: toSortedUniqueStrings([
+        ...(existing.cacheUrls ?? []),
+        ...(normalizedRecord.cacheUrls ?? []),
+      ]),
       captureScope: mergeCaptureScope(existing.captureScope, normalizedRecord.captureScope),
     }
 
@@ -140,7 +145,13 @@ export class ProfilesRepository {
   public async upsert(record: ProfileRecord): Promise<ProfileRecord> {
     const existing = await this.db.profiles.get(record.pubkey)
 
-    if (!existing || shouldReplaceProjection(existing, record)) {
+    const shouldPromoteRelaySource =
+      existing?.profileSource === 'primal-cache' &&
+      record.profileSource === 'relay' &&
+      existing.eventId === record.eventId &&
+      existing.createdAt === record.createdAt
+
+    if (!existing || shouldReplaceProjection(existing, record) || shouldPromoteRelaySource) {
       await this.db.profiles.put(record)
       return record
     }

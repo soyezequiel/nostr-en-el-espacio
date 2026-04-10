@@ -41,6 +41,7 @@ const buildNodeProfileSnapshot = (
   return {
     eventId: node.profileEventId ?? '',
     fetchedAt: node.profileFetchedAt ?? 0,
+    profileSource: node.profileSource ?? null,
     name: node.label ?? null,
     about: node.about ?? null,
     picture: node.picture ?? null,
@@ -57,6 +58,7 @@ const buildProfileSignature = (profile: GraphNodeProfile | null) => {
   return [
     profile.eventId,
     profile.fetchedAt,
+    profile.profileSource ?? '',
     profile.name ?? '',
     profile.about ?? '',
     profile.picture ?? '',
@@ -455,6 +457,11 @@ export function NodeDetailPanel({
             {status === 'stale' ? (
               <span className="node-detail-panel__badge node-detail-panel__badge--warn">
                 Datos nuevos
+              </span>
+            ) : null}
+            {selectedNode.profileSource === 'primal-cache' ? (
+              <span className="node-detail-panel__badge node-detail-panel__badge--warn">
+                Primal cache
               </span>
             ) : null}
             {isExpanded ? (

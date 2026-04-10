@@ -4,6 +4,7 @@ import type { NodeDetailProfile } from '@/features/graph/kernel/runtime'
 import type { KernelContext } from '@/features/graph/kernel/modules/context'
 import type { ProfileRecord } from '@/features/graph/db/entities'
 import type { RelayEventEnvelope } from '@/features/graph/nostr'
+import { PrimalCacheClient } from '@/features/graph/nostr'
 import {
   NODE_PROFILE_HYDRATION_BATCH_CONCURRENCY,
   NODE_PROFILE_HYDRATION_BATCH_SIZE,
@@ -32,7 +33,14 @@ export function createProfileHydrationModule(ctx: KernelContext) {
     relayUrls: string[],
     isStale: () => boolean,
     collaborators?: {
-      persistProfileEvent?: (pubkeyEnvelope: RelayEventEnvelope) => Promise<void>
+      persistProfileEvent?: (
+        pubkeyEnvelope: RelayEventEnvelope,
+        options?: {
+          cacheUrl?: string
+          source?: 'relay' | 'primal-cache'
+          profileOverrides?: { picture?: string | null }
+        },
+      ) => Promise<void>
     },
   ): Promise<void> {
     const uniquePubkeys = Array.from(new Set(pubkeys.filter(Boolean)))
@@ -74,6 +82,7 @@ export function createProfileHydrationModule(ctx: KernelContext) {
     }
 
     const adapter = ctx.createRelayAdapter({ relayUrls })
+    const primalCacheClient = new PrimalCacheClient()
 
     try {
       const processBatch = async (batch: string[]) => {
@@ -88,15 +97,47 @@ export function createProfileHydrationModule(ctx: KernelContext) {
 
           const syncedPubkeys = new Set<string>()
           const latestEnvelopesByPubkey = new Map<string, RelayEventEnvelope>()
+          const latestEnvelopeSourcesByPubkey = new Map<
+            string,
+            'relay' | 'primal-cache'
+          >()
+          const latestProfileOverridesByPubkey = new Map<
+            string,
+            { picture?: string | null }
+          >()
 
-          const syncProfileEnvelope = (envelope: RelayEventEnvelope) => {
+          const syncProfileEnvelope = (
+            envelope: RelayEventEnvelope,
+            options: {
+              profileSource?: 'relay' | 'primal-cache'
+              mediaFallbacks?: Record<string, string>
+            } = {},
+          ): boolean => {
+            const profileSource = options.profileSource ?? 'relay'
             if (isStale()) {
-              return
+              return false
             }
 
             const current = latestEnvelopesByPubkey.get(envelope.event.pubkey)
-            if (current && !isNewerReplaceableEnvelope(envelope, current)) {
-              return
+            const parsed = safeParseProfile(envelope.event.content)
+            if (!parsed) {
+              return false
+            }
+            const pictureFallback =
+              parsed.picture && options.mediaFallbacks
+                ? options.mediaFallbacks[parsed.picture]
+                : undefined
+            const profileOverrides =
+              pictureFallback && pictureFallback !== parsed.picture
+                ? { picture: pictureFallback }
+                : undefined
+
+            if (
+              current &&
+              !isNewerReplaceableEnvelope(envelope, current) &&
+              !isSameReplaceableEnvelope(envelope, current, profileOverrides)
+            ) {
+              return false
             }
 
             const cachedProfile = cachedProfilesByPubkey.get(
@@ -104,27 +145,43 @@ export function createProfileHydrationModule(ctx: KernelContext) {
             )
             if (
               cachedProfile &&
-              !isEnvelopeNewerThanProfile(envelope, cachedProfile)
+              !isEnvelopeNewerThanProfile(envelope, cachedProfile) &&
+              !shouldPromoteRelayProfileSource(
+                envelope,
+                cachedProfile,
+                profileSource,
+                profileOverrides,
+              )
             ) {
-              return
+              return false
             }
 
             latestEnvelopesByPubkey.set(envelope.event.pubkey, envelope)
-            const parsed = safeParseProfile(envelope.event.content)
-            if (!parsed) {
-              return
+            latestEnvelopeSourcesByPubkey.set(
+              envelope.event.pubkey,
+              profileSource,
+            )
+            if (profileOverrides) {
+              latestProfileOverridesByPubkey.set(
+                envelope.event.pubkey,
+                profileOverrides,
+              )
+            } else {
+              latestProfileOverridesByPubkey.delete(envelope.event.pubkey)
             }
 
             syncNodeProfile(envelope.event.pubkey, {
               eventId: envelope.event.id,
               fetchedAt: envelope.receivedAtMs,
+              profileSource,
               name: parsed.name,
               about: parsed.about,
-              picture: parsed.picture,
+              picture: profileOverrides?.picture ?? parsed.picture,
               nip05: parsed.nip05,
               lud16: parsed.lud16,
             })
             syncedPubkeys.add(envelope.event.pubkey)
+            return true
           }
 
           await new Promise<void>((resolve) => {
@@ -159,6 +216,42 @@ export function createProfileHydrationModule(ctx: KernelContext) {
             return
           }
 
+          const primalCandidatePubkeys = batch.filter((pubkey) =>
+            shouldQueryPrimalCache(
+              pubkey,
+              latestEnvelopesByPubkey,
+              cachedProfilesByPubkey,
+            ),
+          )
+
+          if (primalCandidatePubkeys.length > 0) {
+            try {
+              const cachedProfiles =
+                await primalCacheClient.fetchUserInfoProfileEvents(
+                  primalCandidatePubkeys,
+                )
+
+              if (isStale()) {
+                return
+              }
+
+              for (const cacheProfile of cachedProfiles) {
+                const envelope: RelayEventEnvelope = {
+                  event: cacheProfile.event,
+                  relayUrl: cacheProfile.cacheUrl,
+                  receivedAtMs: cacheProfile.receivedAtMs,
+                  attempt: 1,
+                }
+                syncProfileEnvelope(envelope, {
+                  profileSource: 'primal-cache',
+                  mediaFallbacks: cacheProfile.mediaFallbacks,
+                })
+              }
+            } catch (error) {
+              console.warn('Primal cache profile fallback failed:', error)
+            }
+          }
+
           const envelopes = Array.from(latestEnvelopesByPubkey.values()).sort(
             (left, right) => left.event.pubkey.localeCompare(right.event.pubkey),
           )
@@ -168,7 +261,22 @@ export function createProfileHydrationModule(ctx: KernelContext) {
               envelopes,
               NODE_PROFILE_PERSIST_CONCURRENCY,
               async (envelope) => {
-                await collaborators.persistProfileEvent?.(envelope)
+                const profileSource =
+                  latestEnvelopeSourcesByPubkey.get(envelope.event.pubkey) ??
+                  'relay'
+                await collaborators.persistProfileEvent?.(
+                  envelope,
+                  profileSource === 'primal-cache'
+                    ? {
+                        cacheUrl: envelope.relayUrl,
+                        source: 'primal-cache',
+                        profileOverrides:
+                          latestProfileOverridesByPubkey.get(
+                            envelope.event.pubkey,
+                          ),
+                      }
+                    : { source: 'relay' },
+                )
               },
             ).catch(console.warn)
           }
@@ -224,6 +332,51 @@ export function createProfileHydrationModule(ctx: KernelContext) {
     return envelope.event.id.localeCompare(profile.eventId) < 0
   }
 
+  function shouldQueryPrimalCache(
+    pubkey: string,
+    latestEnvelopesByPubkey: ReadonlyMap<string, RelayEventEnvelope>,
+    cachedProfilesByPubkey: ReadonlyMap<string, ProfileRecord>,
+  ): boolean {
+    const latestEnvelope = latestEnvelopesByPubkey.get(pubkey)
+    if (latestEnvelope) {
+      return Boolean(safeParseProfile(latestEnvelope.event.content)?.picture)
+    }
+
+    const cachedProfile = cachedProfilesByPubkey.get(pubkey)
+    return !cachedProfile || Boolean(cachedProfile.picture)
+  }
+
+  function isSameReplaceableEnvelope(
+    next: RelayEventEnvelope,
+    current: RelayEventEnvelope,
+    profileOverrides?: { picture?: string | null },
+  ): boolean {
+    return (
+      Boolean(profileOverrides) &&
+      next.event.created_at === current.event.created_at &&
+      next.event.id === current.event.id
+    )
+  }
+
+  function shouldPromoteRelayProfileSource(
+    envelope: RelayEventEnvelope,
+    profile: ProfileRecord,
+    profileSource: 'relay' | 'primal-cache',
+    profileOverrides?: { picture?: string | null },
+  ): boolean {
+    return (
+      profile.profileSource === 'primal-cache' &&
+      profileSource === 'relay' &&
+      envelope.event.created_at === profile.createdAt &&
+      envelope.event.id === profile.eventId
+    ) || (
+      Boolean(profileOverrides) &&
+      envelope.event.created_at === profile.createdAt &&
+      envelope.event.id === profile.eventId &&
+      profile.picture !== profileOverrides?.picture
+    )
+  }
+
   function syncNodeProfile(pubkey: string, profile: NodeDetailProfile): void {
     const existingNode = ctx.store.getState().nodes[pubkey]
 
@@ -241,6 +394,7 @@ export function createProfileHydrationModule(ctx: KernelContext) {
         lud16: profile.lud16,
         profileEventId: profile.eventId,
         profileFetchedAt: profile.fetchedAt,
+        profileSource: profile.profileSource ?? null,
         profileState: 'ready',
       },
     ])
@@ -262,6 +416,7 @@ export function createProfileHydrationModule(ctx: KernelContext) {
         lud16: null,
         profileEventId: null,
         profileFetchedAt: null,
+        profileSource: null,
         profileState: 'missing',
       },
     ])

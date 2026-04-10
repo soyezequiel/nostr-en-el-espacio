@@ -60,6 +60,7 @@ export async function buildFileTree(
     captureUpperBoundSec: snapshot.captureUpperBoundSec,
     executionMode: 'snapshot',
     relays: snapshot.relays,
+    cacheProviders: hasPrimalCacheEvidence(snapshot) ? ['primal'] : undefined,
     graphCaps: snapshot.graphCaps,
     nodeCount: snapshot.nodes.length,
     linkCount: snapshot.links.length,
@@ -268,6 +269,7 @@ export async function buildMultipartArchive(
     captureUpperBoundSec: snapshot.captureUpperBoundSec,
     executionMode: 'snapshot',
     relays: snapshot.relays,
+    cacheProviders: hasPrimalCacheEvidence(snapshot) ? ['primal'] : undefined,
     graphCaps: snapshot.graphCaps,
     nodeCount: snapshot.nodes.length,
     linkCount: snapshot.links.length,
@@ -379,6 +381,7 @@ function buildResumen(
           picture: user.profile.picture,
           nip05: user.profile.nip05,
           lud16: user.profile.lud16,
+          profileSource: user.profile.profileSource ?? null,
         }
       : null,
     followCount,
@@ -408,6 +411,7 @@ function addCanonicalFiles(
             picture: user.profile.picture,
             nip05: user.profile.nip05,
             lud16: user.profile.lud16,
+            profileSource: user.profile.profileSource ?? null,
           }
         : null,
     ),
@@ -537,7 +541,22 @@ function rawEventToExportRecord(event: RawEventRecord): Record<string, unknown> 
     content: event.content,
     sig: event.sig,
     relayUrls: event.relayUrls,
+    cacheUrls: event.cacheUrls ?? [],
   }
+}
+
+function hasPrimalCacheEvidence(snapshot: FrozenSnapshot): boolean {
+  for (const user of snapshot.users.values()) {
+    if (user.profile?.profileSource === 'primal-cache') {
+      return true
+    }
+
+    if (user.rawEvents.some((event) => (event.cacheUrls ?? []).length > 0)) {
+      return true
+    }
+  }
+
+  return false
 }
 
 function compareRawForExport(a: RawEventRecord, b: RawEventRecord): number {

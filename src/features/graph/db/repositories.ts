@@ -151,6 +151,12 @@ export class ProfilesRepository {
   public async get(pubkey: string): Promise<ProfileRecord | undefined> {
     return this.db.profiles.get(pubkey)
   }
+
+  public async getMany(
+    pubkeys: readonly string[],
+  ): Promise<(ProfileRecord | undefined)[]> {
+    return this.db.profiles.bulkGet([...pubkeys])
+  }
 }
 
 export class ContactListsRepository {

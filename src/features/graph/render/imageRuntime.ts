@@ -315,7 +315,7 @@ type InFlightVariantRequest = ScheduledVariantRequest & {
 const IMAGE_VARIANT_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const DEFAULT_STORAGE_BUDGET_BYTES = 256 * 1024 * 1024
 const MAX_STORAGE_BUDGET_BYTES = 512 * 1024 * 1024
-const PREFETCH_RING_FACTOR = 0.25
+const PREFETCH_RING_FACTOR = 1
 const MAX_UPLOADS_PER_FRAME = 8
 const MAX_UPLOAD_BYTES_PER_FRAME = 4 * 1024 * 1024
 const BASE_FETCH_CONCURRENCY = 12
@@ -1339,6 +1339,7 @@ export class ImageRuntime {
   private readonly sourceFailures = new Map<string, SourceFailure>()
   private readonly proxyFallbacks = new Map<string, ProxyFallbackState>()
   private readonly pendingPersistentLookups = new Set<string>()
+  private readonly cacheOnlyPersistentMisses = new Set<string>()
   private readonly listeners = new Set<() => void>()
   private disposed = false
   private timedOutRequests = 0
@@ -1410,6 +1411,7 @@ export class ImageRuntime {
     this.sourceFailures.clear()
     this.proxyFallbacks.clear()
     this.pendingPersistentLookups.clear()
+    this.cacheOnlyPersistentMisses.clear()
     this.listeners.clear()
     this.queuedRequests.clear()
     this.inFlightRequests.clear()
@@ -1456,6 +1458,7 @@ export class ImageRuntime {
     const prefetchX = suppressPrefetch ? 0 : visibleWidth * PREFETCH_RING_FACTOR
     const prefetchY = suppressPrefetch ? 0 : visibleHeight * PREFETCH_RING_FACTOR
     const frameCandidates: FrameCandidate[] = []
+    const cacheOnlyRequests: CandidateRequest[] = []
     const activeVisiblePubkeys = new Set<string>()
     const visibilitySnapshot = createEmptyVisibilitySnapshot()
     const qualityGuideSnapshot: AvatarQualityGuideSnapshot = {
@@ -1514,6 +1517,16 @@ export class ImageRuntime {
 
       if (!visible && !prefetch) {
         visibilitySnapshot.offscreenNodes += 1
+        cacheOnlyRequests.push({
+          pubkey: node.pubkey,
+          sourceUrl: node.pictureUrl,
+          targetBucket: BASE_ATLAS_MAX_BUCKET,
+          provisionalBucket: BASE_ATLAS_MIN_BUCKET,
+          score: 0,
+          critical: false,
+          visible: false,
+          lane: 'base',
+        })
         continue
       }
 
@@ -1763,6 +1776,9 @@ export class ImageRuntime {
 
     // Batch-cargar desde IndexedDB todos los que no están en memoria de una sola transacción
     this.batchPreloadFromPersistent(requests, frameNow)
+    this.batchPreloadFromPersistent(cacheOnlyRequests, frameNow, {
+      cacheOnly: true,
+    })
 
     for (const request of requests) {
       this.scheduleEnsureVariant({
@@ -2165,7 +2181,11 @@ export class ImageRuntime {
 
   // Lee todas las imágenes faltantes de IndexedDB en una sola transacción (bulkGet),
   // las pone en compressedCache para que scheduleEnsureVariant las decodifique sin red.
-  private batchPreloadFromPersistent(requests: CandidateRequest[], frameNow: number) {
+  private batchPreloadFromPersistent(
+    requests: CandidateRequest[],
+    frameNow: number,
+    options: { cacheOnly?: boolean } = {},
+  ) {
     const seen = new Set<string>()
     const keysToFetch: Array<{ sourceUrl: string; bucket: ImageLodBucket }> = []
 
@@ -2178,6 +2198,7 @@ export class ImageRuntime {
           this.decodedCache.has(key) ||
           this.compressedCache.has(key) ||
           this.pendingPersistentLookups.has(key) ||
+          (options.cacheOnly && this.cacheOnlyPersistentMisses.has(key)) ||
           this.isSourceCoolingDown(request.sourceUrl)
         ) {
           continue
@@ -2203,9 +2224,17 @@ export class ImageRuntime {
         let loaded = 0
         for (let i = 0; i < keysToFetch.length; i++) {
           const record = records[i]
-          if (!record) continue
+          const request = keysToFetch[i]
+          const requestKey = buildVariantKey(request.sourceUrl, request.bucket)
+          if (!record) {
+            if (options.cacheOnly) {
+              this.cacheOnlyPersistentMisses.add(requestKey)
+            }
+            continue
+          }
           const bucket = record.bucket as ImageLodBucket
           const key = buildVariantKey(record.sourceUrl, bucket)
+          this.cacheOnlyPersistentMisses.delete(key)
           if (this.compressedCache.has(key)) continue
           this.compressedCache.set(key, this.toCompressedEntry(record))
           loaded++
@@ -2603,6 +2632,7 @@ export class ImageRuntime {
     }
 
     await this.repositories.imageVariants.put(persistedRecord)
+    this.cacheOnlyPersistentMisses.delete(buildVariantKey(sourceUrl, bucket))
     await this.persistentBudgetPromise
     await this.repositories.imageVariants.enforceByteBudget(this.persistentBudgetBytes)
     this.schedulePersistentSummaryRefresh()

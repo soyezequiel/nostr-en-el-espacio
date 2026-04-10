@@ -40,6 +40,28 @@ export function createProfileHydrationModule(ctx: KernelContext) {
       return
     }
 
+    const cachedProfilesByPubkey = new Map<string, ProfileRecord>()
+    try {
+      const cachedProfiles = await ctx.repositories.profiles.getMany(uniquePubkeys)
+      if (isStale()) {
+        return
+      }
+
+      for (const cachedProfile of cachedProfiles) {
+        if (!cachedProfile) {
+          continue
+        }
+
+        cachedProfilesByPubkey.set(cachedProfile.pubkey, cachedProfile)
+        syncNodeProfile(
+          cachedProfile.pubkey,
+          mapProfileRecordToNodeProfile(cachedProfile),
+        )
+      }
+    } catch (error) {
+      console.warn('Cached profile hydration failed:', error)
+    }
+
     const batches: string[][] = []
     for (
       let index = 0;
@@ -60,27 +82,6 @@ export function createProfileHydrationModule(ctx: KernelContext) {
         }
 
         try {
-          const cachedProfiles = await Promise.all(
-            batch.map((pubkey) => ctx.repositories.profiles.get(pubkey)),
-          )
-
-          if (isStale()) {
-            return
-          }
-
-          const cachedProfilesByPubkey = new Map<string, ProfileRecord>()
-          for (const cachedProfile of cachedProfiles) {
-            if (!cachedProfile) {
-              continue
-            }
-
-            cachedProfilesByPubkey.set(cachedProfile.pubkey, cachedProfile)
-            syncNodeProfile(
-              cachedProfile.pubkey,
-              mapProfileRecordToNodeProfile(cachedProfile),
-            )
-          }
-
           if (isStale()) {
             return
           }

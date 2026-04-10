@@ -17,6 +17,7 @@ import {
 
 const INLINE_WORKERS_FLAG = '1'
 const WORKER_PROBE_TIMEOUT_MS = 5_000
+const WORKER_PROBE_ATTEMPTS = 2
 const EVENTS_WORKER_SCRIPT_URL = '/workers/events.worker.js'
 const GRAPH_WORKER_SCRIPT_URL = '/workers/graph.worker.js'
 
@@ -40,7 +41,7 @@ const isProbeResponse = (
   'ok' in data &&
   data.requestId === requestId
 
-function probeNativeWorker(worker: Worker, workerName: string): Promise<void> {
+function probeNativeWorkerOnce(worker: Worker, workerName: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const requestId = createProbeRequestId(workerName)
 
@@ -90,6 +91,39 @@ function probeNativeWorker(worker: Worker, workerName: string): Promise<void> {
       payload: null,
     })
   })
+}
+
+const yieldToNextTask = () =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 0)
+  })
+
+async function probeNativeWorker(worker: Worker, workerName: string): Promise<void> {
+  let lastError: unknown = null
+
+  for (let attempt = 1; attempt <= WORKER_PROBE_ATTEMPTS; attempt += 1) {
+    try {
+      await probeNativeWorkerOnce(worker, workerName)
+      return
+    } catch (error) {
+      lastError = error
+
+      const isTimeoutError =
+        error instanceof Error &&
+        error.message === `${workerName} did not acknowledge the startup probe.`
+
+      if (!isTimeoutError || attempt >= WORKER_PROBE_ATTEMPTS) {
+        throw error
+      }
+
+      // A busy main thread can delay delivery of an already-posted worker
+      // message long enough for the timeout callback to win the race. Yield and
+      // probe once more before assuming native workers are unavailable.
+      await yieldToNextTask()
+    }
+  }
+
+  throw lastError
 }
 
 class BrowserWorkerGateway<TMap extends WorkerActionMap>

@@ -29,7 +29,10 @@ import {
   type ImageRendererDeliverySnapshot,
   type ImageSourceHandle,
 } from '@/features/graph/render/imageRuntime'
-import { AvatarAtlasManager } from '@/features/graph/render/avatarAtlasManager'
+import {
+  AvatarAtlasManager,
+  createAvatarAtlasEntry,
+} from '@/features/graph/render/avatarAtlasManager'
 import type {
   GraphRenderEdge,
   GraphRenderLabel,
@@ -409,6 +412,10 @@ const imageHandleRecordSignatureCache = new WeakMap<
 >()
 const HD_ATLAS_MAX_TEXTURE_SIZE = 4096
 const HD_ATLAS_BUCKETS = [256, 512, 1024] as const
+// Favor the first visible paint with a bounded burst, then fall back to the
+// steady 2-pages-per-frame atlas cadence from the manager.
+const AVATAR_ATLAS_INITIAL_BURST_PAGE_COMMITS = 4
+const AVATAR_ATLAS_INITIAL_BURST_PIXEL_BUDGET = 1024 * 1024 * 4
 
 const resolveGraphSceneTopologySignature = (model: GraphRenderModel) =>
   `${model.topologySignature}|${model.layoutKey}|${model.nodes.length}n:${model.edges.length}e`
@@ -854,26 +861,21 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       arrowType !== 'none' && model.activeLayer !== 'mutuals' ? arrowData : []
 
     const baseAvatarLayerId = `${this.props.id}-avatars-base`
-    const avatarAtlas = getRendererAvatarAtlas(baseAvatarLayerId)
+    const avatarAtlas = getRendererAvatarAtlas(baseAvatarLayerId, {
+      maxBurstPageCommitsPerFrame: AVATAR_ATLAS_INITIAL_BURST_PAGE_COMMITS,
+      burstCommitPixelBudget: AVATAR_ATLAS_INITIAL_BURST_PIXEL_BUDGET,
+    })
     avatarAtlas.setSnapshotChangeListener(() => {
       this.setNeedsUpdate()
       this.setNeedsRedraw()
     })
     const avatarAtlasSnapshot = avatarAtlas.updateVisibleEntries({
-      entries: baseAvatarNodes.map((node) => {
-        const handle = baseReadyImagesByPubkey[node.pubkey]
-
-        return {
+      entries: baseAvatarNodes.map((node) =>
+        createAvatarAtlasEntry({
           pubkey: node.pubkey,
-          icon: {
-            id: handle.key,
-            url: handle.url,
-            width: handle.bucket,
-            height: handle.bucket,
-            mask: false,
-          },
-        }
-      }),
+          handle: baseReadyImagesByPubkey[node.pubkey],
+        }),
+      ),
     })
     const avatarDeliveryAggregator = getRendererAvatarDeliveryAggregator(
       `${this.props.id}-avatars`,
@@ -927,6 +929,8 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       maxWidth: HD_ATLAS_MAX_TEXTURE_SIZE,
       maxHeight: HD_ATLAS_MAX_TEXTURE_SIZE,
       supportedBuckets: HD_ATLAS_BUCKETS,
+      maxBurstPageCommitsPerFrame: AVATAR_ATLAS_INITIAL_BURST_PAGE_COMMITS,
+      burstCommitPixelBudget: AVATAR_ATLAS_INITIAL_BURST_PIXEL_BUDGET,
     })
     hdAvatarAtlas.setSnapshotChangeListener(() => {
       this.setNeedsUpdate()
@@ -936,20 +940,12 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       // Full HD already usa variantes listas del runtime; aca solo evitamos el
       // auto-packing interno de deck.gl para no crecer una sola textura vertical
       // con iconos 1024x1024 y terminar en quads negros.
-      entries: hdAvatarNodes.map((node) => {
-        const handle = hdReadyImagesByPubkey[node.pubkey]
-
-        return {
+      entries: hdAvatarNodes.map((node) =>
+        createAvatarAtlasEntry({
           pubkey: node.pubkey,
-          icon: {
-            id: handle.key,
-            url: handle.url,
-            width: handle.bucket,
-            height: handle.bucket,
-            mask: false,
-          },
-        }
-      }),
+          handle: hdReadyImagesByPubkey[node.pubkey],
+        }),
+      ),
     })
     const hdAvatarLayers =
       hdAvatarAtlasSnapshot.pages.length > 0

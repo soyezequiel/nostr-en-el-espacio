@@ -36,6 +36,7 @@ export interface ImageSourceHandle {
   sourceUrl: string
   bucket: ImageLodBucket
   url: string
+  image: CanvasImageSource
   byteSize: number
 }
 
@@ -55,9 +56,11 @@ export interface ImagePendingWorkSnapshot {
   queuedRequests: number
   inFlightRequests: number
   totalRequests: number
+  queuedCriticalVisibleBaseRequests: number
   queuedVisibleBaseRequests: number
   queuedVisibleHdRequests: number
   queuedPrefetchRequests: number
+  inFlightCriticalVisibleBaseRequests: number
   inFlightVisibleBaseRequests: number
   inFlightVisibleHdRequests: number
   inFlightPrefetchRequests: number
@@ -236,6 +239,7 @@ type CompressedEntry = TierEntry & {
 
 type DecodedEntry = TierEntry & {
   url: string
+  image: CanvasImageSource
 }
 
 type ResidentEntry = TierEntry & {
@@ -250,6 +254,7 @@ type CandidateRequest = {
   targetBucket: ImageLodBucket
   provisionalBucket: ImageLodBucket
   score: number
+  critical: boolean
   visible: boolean
   lane: 'base' | 'hd'
 }
@@ -295,6 +300,8 @@ type ScheduledVariantRequest = {
   sourceUrl: string
   bucket: ImageLodBucket
   priorityClass: RequestPriorityClass
+  priorityScore: number
+  critical: boolean
   enqueuedAt: number
   lastRequestedAt: number
   visible: boolean
@@ -311,7 +318,8 @@ const MAX_STORAGE_BUDGET_BYTES = 512 * 1024 * 1024
 const PREFETCH_RING_FACTOR = 0.25
 const MAX_UPLOADS_PER_FRAME = 4
 const MAX_UPLOAD_BYTES_PER_FRAME = 2 * 1024 * 1024
-const FETCH_CONCURRENCY = 6
+const BASE_FETCH_CONCURRENCY = 6
+const BOOSTED_FETCH_CONCURRENCY = 8
 const IMAGE_FETCH_TIMEOUT_MS = 5_000
 const FETCH_FAILURE_BASE_COOLDOWN_MS = 30_000
 const FETCH_FAILURE_TIMEOUT_COOLDOWN_MS = 5_000
@@ -323,8 +331,6 @@ const HD_VIEWPORT_QUIET_MS = 400
 const FULL_HD_VIEWPORT_QUIET_MS = 400
 const IDLE_VISIBLE_HD_WEIGHT_BUDGET = 48
 const MOTION_VISIBLE_HD_WEIGHT_BUDGET = 12
-const PRELOAD_BATCH_SIZE = 24
-const PRELOAD_SUMMARY_BATCH_INTERVAL = 6
 const PROXY_FALLBACK_COOLDOWN_MS = 5 * 60 * 1000
 
 const QUALITY_BUDGETS = {
@@ -435,6 +441,36 @@ const isCancelledError = (error: unknown) =>
   'isCancelled' in error &&
   error.isCancelled === true
 
+const isTerminalProxyFailure = (error: unknown) => {
+  if (isCancelledError(error) || isTimeoutError(error)) {
+    return false
+  }
+
+  const status = readErrorStatus(error)
+  return status !== null ? status >= 400 : true
+}
+
+const describeProxyFallback = ({
+  error,
+  strategy,
+}: {
+  error: unknown
+  strategy: 'immediate-direct' | 'direct-after-timeout' | 'direct-cooldown'
+}) => {
+  const status = readErrorStatus(error)
+  const suffix = status !== null ? ` (status ${status})` : ''
+
+  if (strategy === 'immediate-direct') {
+    return `Proxy failed fast${suffix}; direct fallback started immediately.`
+  }
+
+  if (strategy === 'direct-after-timeout') {
+    return `Proxy timed out${suffix}; direct fallback engaged.`
+  }
+
+  return `Proxy fallback active${suffix}; direct mode cooling down proxy retries.`
+}
+
 const pickAggregateImageError = (error: unknown) => {
   if (!(error instanceof AggregateError)) {
     return error
@@ -496,16 +532,43 @@ const scheduleNextFrame = (callback: () => void) => {
   setTimeout(callback, 0)
 }
 
-const yieldToBrowser = () =>
-  new Promise<void>((resolve) => {
-    scheduleNextFrame(resolve)
-  })
-
 const canCreateObjectUrl = () =>
   typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
 
 const canRevokeObjectUrl = () =>
   typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function'
+
+const canCloseImageBitmap = (image: CanvasImageSource): image is ImageBitmap =>
+  typeof ImageBitmap !== 'undefined' &&
+  image instanceof ImageBitmap &&
+  typeof image.close === 'function'
+
+const loadDecodedImageElement = (url: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    if (typeof Image === 'undefined') {
+      reject(new Error('Image API no disponible para preparar avatars.'))
+      return
+    }
+
+    const image = new Image()
+    image.decoding = 'async'
+    image.onload = () => resolve(image)
+    image.onerror = () =>
+      reject(new Error(`No se pudo decodificar el avatar preparado: ${url}`))
+    image.src = url
+  })
+
+const decodePreparedImage = async (blob: Blob, url: string) => {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return await createImageBitmap(blob)
+    } catch {
+      // Fall back to HTMLImageElement when ImageBitmap decode is unavailable.
+    }
+  }
+
+  return loadDecodedImageElement(url)
+}
 
 const pickModeBudgets = (mode: PrepareFrameInput['mode']) => QUALITY_BUDGETS[mode]
 
@@ -518,6 +581,11 @@ const REQUEST_PRIORITY_ORDER: Record<RequestPriorityClass, number> = {
   'prefetch-base': 2,
   'prefetch-hd': 3,
 }
+
+const MAX_VISIBLE_HD_IN_FLIGHT_WITH_CRITICAL_BASE_BACKLOG = 0
+const MAX_VISIBLE_HD_IN_FLIGHT_WITH_BASE_BACKLOG = 1
+const MAX_PREFETCH_IN_FLIGHT_WITH_BASE_BACKLOG = 0
+const MAX_PREFETCH_IN_FLIGHT_WITH_VISIBLE_BACKLOG = 1
 
 const resolveRequestPriorityClass = ({
   visible,
@@ -549,12 +617,20 @@ const compareScheduledVariantRequests = (
     return priorityDiff
   }
 
+  if (left.critical !== right.critical) {
+    return left.critical ? -1 : 1
+  }
+
+  if (left.priorityScore !== right.priorityScore) {
+    return right.priorityScore - left.priorityScore
+  }
+
   if (left.lastRequestedAt !== right.lastRequestedAt) {
     return right.lastRequestedAt - left.lastRequestedAt
   }
 
   if (left.enqueuedAt !== right.enqueuedAt) {
-    return right.enqueuedAt - left.enqueuedAt
+    return left.enqueuedAt - right.enqueuedAt
   }
 
   return left.key.localeCompare(right.key)
@@ -572,6 +648,8 @@ const mergeScheduledVariantRequest = <
   return {
     ...existing,
     priorityClass: preferredRequest.priorityClass,
+    priorityScore: Math.max(existing.priorityScore, next.priorityScore),
+    critical: existing.critical || next.critical,
     visible: preferredRequest.visible,
     lane: preferredRequest.lane,
     lastRequestedAt: Math.max(existing.lastRequestedAt, next.lastRequestedAt),
@@ -788,7 +866,13 @@ const summarizePendingWork = (snapshot: ImagePendingWorkSnapshot) => {
     return null
   }
 
-  return `Pendiente: cola ${snapshot.queuedRequests}, en vuelo ${snapshot.inFlightRequests}.`
+  const visibleBaseCriticalSummary =
+    snapshot.queuedCriticalVisibleBaseRequests > 0 ||
+    snapshot.inFlightCriticalVisibleBaseRequests > 0
+      ? ` Criticos base visibles: cola ${snapshot.queuedCriticalVisibleBaseRequests}, en vuelo ${snapshot.inFlightCriticalVisibleBaseRequests}.`
+      : ''
+
+  return `Pendiente: cola ${snapshot.queuedRequests}, en vuelo ${snapshot.inFlightRequests}. Base visible: cola ${snapshot.queuedVisibleBaseRequests}, en vuelo ${snapshot.inFlightVisibleBaseRequests}. Visible HD: cola ${snapshot.queuedVisibleHdRequests}, en vuelo ${snapshot.inFlightVisibleHdRequests}.${visibleBaseCriticalSummary}`
 }
 
 const summarizeHydrationStatus = (
@@ -1048,9 +1132,11 @@ export const createEmptyImageResidencySnapshot =
       queuedRequests: 0,
       inFlightRequests: 0,
       totalRequests: 0,
+      queuedCriticalVisibleBaseRequests: 0,
       queuedVisibleBaseRequests: 0,
       queuedVisibleHdRequests: 0,
       queuedPrefetchRequests: 0,
+      inFlightCriticalVisibleBaseRequests: 0,
       inFlightVisibleBaseRequests: 0,
       inFlightVisibleHdRequests: 0,
       inFlightPrefetchRequests: 0,
@@ -1252,9 +1338,11 @@ export class ImageRuntime {
   private readonly inFlightRequests = new Map<string, InFlightVariantRequest>()
   private readonly sourceFailures = new Map<string, SourceFailure>()
   private readonly proxyFallbacks = new Map<string, ProxyFallbackState>()
+  private readonly pendingPersistentLookups = new Set<string>()
   private readonly listeners = new Set<() => void>()
   private disposed = false
   private timedOutRequests = 0
+  private memoryPressureHigh = false
   private persistentBudgetBytes = DEFAULT_STORAGE_BUDGET_BYTES
   private persistentBudgetPromise: Promise<void> | null = null
   private persistentSummarySyncActive = false
@@ -1291,86 +1379,6 @@ export class ImageRuntime {
       this.persistentBudgetBytes = budget
     })
     this.schedulePersistentSummaryRefresh()
-    this.preloadCachedVariants()
-  }
-
-  private async preloadCachedVariants() {
-    try {
-      this.persistentHydrationStage = 'preloading-persistent'
-      const records = await this.repositories.imageVariants.getAll()
-      if (this.disposed) {
-        return
-      }
-
-      this.persistentHydrationBacklog = records.length
-      this.scheduleNotify()
-
-      const expiredKeys: Array<[string, number]> = []
-      let batchesSinceSummary = 0
-
-      for (
-        let startIndex = 0;
-        startIndex < records.length;
-        startIndex += PRELOAD_BATCH_SIZE
-      ) {
-        if (this.disposed) {
-          return
-        }
-
-        const batchEnd = Math.min(startIndex + PRELOAD_BATCH_SIZE, records.length)
-        const batchNow = now()
-        let loadedInBatch = 0
-
-        for (let index = startIndex; index < batchEnd; index += 1) {
-          const record = records[index]
-          const bucket = record.bucket as ImageLodBucket
-          const key = buildVariantKey(record.sourceUrl, bucket)
-
-          if (this.compressedCache.has(key)) {
-            continue
-          }
-
-          if (record.expiresAt <= batchNow) {
-            expiredKeys.push([record.sourceUrl, bucket])
-            continue
-          }
-
-          this.compressedCache.set(key, this.toCompressedEntry(record))
-          loadedInBatch += 1
-        }
-
-        this.persistentHydrationBacklog = records.length - batchEnd
-        batchesSinceSummary += 1
-
-        if (
-          loadedInBatch > 0 &&
-          (batchesSinceSummary >= PRELOAD_SUMMARY_BATCH_INTERVAL ||
-            batchEnd === records.length)
-        ) {
-          this.refreshMemoryTierSnapshots()
-          batchesSinceSummary = 0
-        }
-
-        this.scheduleNotify()
-
-        if (batchEnd < records.length) {
-          await yieldToBrowser()
-        }
-      }
-
-      if (expiredKeys.length > 0) {
-        void this.repositories.imageVariants.bulkDelete(expiredKeys).catch(console.warn)
-      }
-
-      this.persistentHydrationStage = 'ready'
-      this.persistentHydrationBacklog = 0
-      this.refreshMemoryTierSnapshots()
-      this.scheduleNotify()
-    } catch (error) {
-      this.persistentHydrationStage = 'ready'
-      this.persistentHydrationBacklog = 0
-      console.warn('Failed to preload cached image variants:', error)
-    }
   }
 
   public subscribe(listener: () => void) {
@@ -1388,6 +1396,9 @@ export class ImageRuntime {
       }
     }
     for (const entry of this.decodedCache.values()) {
+      if (canCloseImageBitmap(entry.image)) {
+        entry.image.close()
+      }
       if (canRevokeObjectUrl()) {
         URL.revokeObjectURL(entry.url)
       }
@@ -1398,6 +1409,7 @@ export class ImageRuntime {
     this.previousBuckets.clear()
     this.sourceFailures.clear()
     this.proxyFallbacks.clear()
+    this.pendingPersistentLookups.clear()
     this.listeners.clear()
     this.queuedRequests.clear()
     this.inFlightRequests.clear()
@@ -1427,6 +1439,7 @@ export class ImageRuntime {
     const budgets = pickModeBudgets(input.mode)
     const viewportQuietForMs = Math.max(0, input.viewportQuietForMs)
     const memoryPressureHigh = this.isMemoryPressureHigh(budgets)
+    this.memoryPressureHigh = memoryPressureHigh
     const suppressPrefetch = input.isViewportActive || memoryPressureHigh
     const visibleHdWeightBudget = input.isViewportActive
       ? MOTION_VISIBLE_HD_WEIGHT_BUDGET
@@ -1714,6 +1727,7 @@ export class ImageRuntime {
         targetBucket: candidate.baseTargetBucket,
         provisionalBucket: candidate.baseProvisionalBucket,
         score: candidate.score,
+        critical: candidate.score >= 100,
         visible: candidate.visible,
         lane: 'base',
       })
@@ -1725,6 +1739,7 @@ export class ImageRuntime {
           targetBucket: candidate.hdTargetBucket,
           provisionalBucket: pickProvisionalBucket(candidate.hdTargetBucket, true),
           score: candidate.hdScore,
+          critical: candidate.score >= 100,
           visible: true,
           lane: 'hd',
         })
@@ -1753,6 +1768,8 @@ export class ImageRuntime {
       this.scheduleEnsureVariant({
         sourceUrl: request.sourceUrl,
         bucket: request.provisionalBucket,
+        priorityScore: request.score,
+        critical: request.critical,
         visible: request.visible,
         lane: request.lane,
       })
@@ -1760,6 +1777,8 @@ export class ImageRuntime {
         this.scheduleEnsureVariant({
           sourceUrl: request.sourceUrl,
           bucket: request.targetBucket,
+          priorityScore: request.score,
+          critical: request.critical,
           visible: request.visible,
           lane: request.lane,
         })
@@ -1865,6 +1884,7 @@ export class ImageRuntime {
         targetBucket: candidate.baseTargetBucket,
         provisionalBucket: candidate.baseProvisionalBucket,
         score: candidate.score,
+        critical: candidate.score >= 100,
         visible: candidate.visible,
         lane: 'base',
       })
@@ -1948,6 +1968,7 @@ export class ImageRuntime {
         sourceUrl: cached.sourceUrl,
         bucket: cached.bucket,
         url: cached.url,
+        image: cached.image,
         byteSize: cached.byteSize,
       }
     }
@@ -1972,6 +1993,7 @@ export class ImageRuntime {
       sourceUrl: decoded.sourceUrl,
       bucket: decoded.bucket,
       url: decoded.url,
+      image: decoded.image,
       byteSize: decoded.byteSize,
     }
   }
@@ -2155,6 +2177,7 @@ export class ImageRuntime {
         if (
           this.decodedCache.has(key) ||
           this.compressedCache.has(key) ||
+          this.pendingPersistentLookups.has(key) ||
           this.isSourceCoolingDown(request.sourceUrl)
         ) {
           continue
@@ -2164,6 +2187,15 @@ export class ImageRuntime {
     }
 
     if (keysToFetch.length === 0) return
+
+    for (const request of keysToFetch) {
+      this.pendingPersistentLookups.add(
+        buildVariantKey(request.sourceUrl, request.bucket),
+      )
+    }
+    if (this.syncPersistentHydrationState()) {
+      this.scheduleNotify()
+    }
 
     void this.repositories.imageVariants
       .getManyFresh(keysToFetch, frameNow)
@@ -2179,6 +2211,17 @@ export class ImageRuntime {
           loaded++
         }
         if (loaded > 0) {
+          this.refreshMemoryTierSnapshots()
+          this.scheduleNotify()
+        }
+      })
+      .finally(() => {
+        for (const request of keysToFetch) {
+          this.pendingPersistentLookups.delete(
+            buildVariantKey(request.sourceUrl, request.bucket),
+          )
+        }
+        if (this.syncPersistentHydrationState()) {
           this.scheduleNotify()
         }
       })
@@ -2188,11 +2231,15 @@ export class ImageRuntime {
   private scheduleEnsureVariant({
     sourceUrl,
     bucket,
+    priorityScore,
+    critical,
     visible,
     lane,
   }: {
     sourceUrl: string
     bucket: ImageLodBucket
+    priorityScore: number
+    critical: boolean
     visible: boolean
     lane: 'base' | 'hd'
   }) {
@@ -2204,18 +2251,13 @@ export class ImageRuntime {
     // Si está en compressed cache, decodificamos inmediatamente sin pasar por la cola
     const compressed = this.compressedCache.get(key)
     if (compressed) {
-      const frameNow = now()
-      const url = this.createBlobUrl(sourceUrl, bucket, compressed.blob)
-      this.decodedCache.set(key, {
-        key,
-        sourceUrl,
-        bucket,
-        byteSize: compressed.byteSize,
-        lastUsedAt: frameNow,
-        url,
-      })
-      this.refreshMemoryTierSnapshots()
-      this.scheduleNotify()
+      void this.ensureVariant(sourceUrl, bucket)
+        .then(() => {
+          this.scheduleNotify()
+        })
+        .catch((error) => {
+          this.recordSourceFailure(sourceUrl, error)
+        })
       return
     }
 
@@ -2228,6 +2270,8 @@ export class ImageRuntime {
         visible,
         lane,
       }),
+      priorityScore,
+      critical: visible && lane === 'base' && critical,
       enqueuedAt: requestNow,
       lastRequestedAt: requestNow,
       visible,
@@ -2259,43 +2303,88 @@ export class ImageRuntime {
   }
 
   private drainQueue() {
-    this.preemptPrefetchRequestsForVisibleBacklog()
+    this.preemptLowerPriorityRequestsForVisibleBacklog()
+    const targetConcurrency = this.resolveTargetFetchConcurrency()
 
-    while (this.inFlightRequests.size < FETCH_CONCURRENCY) {
+    while (this.inFlightRequests.size < targetConcurrency) {
       const nextRequest = this.pickNextQueuedRequest()
       if (!nextRequest) {
         break
       }
 
       this.startQueuedRequest(nextRequest)
-      this.preemptPrefetchRequestsForVisibleBacklog()
+      this.preemptLowerPriorityRequestsForVisibleBacklog()
     }
   }
 
-  private preemptPrefetchRequestsForVisibleBacklog() {
+  private resolveTargetFetchConcurrency() {
     const queuedVisibleBaseRequests = this.countQueuedRequests(
       (request) => request.priorityClass === 'visible-base',
     )
-    const queuedVisibleRequests = this.countQueuedRequests((request) => request.visible)
+    if (queuedVisibleBaseRequests === 0 || this.memoryPressureHigh) {
+      return BASE_FETCH_CONCURRENCY
+    }
+
+    return BOOSTED_FETCH_CONCURRENCY
+  }
+
+  private preemptLowerPriorityRequestsForVisibleBacklog() {
+    const queuedCriticalVisibleBaseRequests = this.countQueuedRequests(
+      (request) => request.priorityClass === 'visible-base' && request.critical,
+    )
+    const queuedVisibleBaseRequests = this.countQueuedRequests(
+      (request) => request.priorityClass === 'visible-base',
+    )
+    const queuedVisibleRequests = this.countQueuedRequests(
+      (request) => request.visible,
+    )
     if (queuedVisibleRequests === 0) {
       return
     }
 
-    const maxPrefetchInFlight = queuedVisibleBaseRequests > 0 ? 0 : 1
+    const maxVisibleHdInFlight =
+      queuedCriticalVisibleBaseRequests > 0
+        ? MAX_VISIBLE_HD_IN_FLIGHT_WITH_CRITICAL_BASE_BACKLOG
+        : queuedVisibleBaseRequests > 0
+          ? MAX_VISIBLE_HD_IN_FLIGHT_WITH_BASE_BACKLOG
+          : this.resolveTargetFetchConcurrency()
+    const maxPrefetchInFlight =
+      queuedVisibleBaseRequests > 0
+        ? MAX_PREFETCH_IN_FLIGHT_WITH_BASE_BACKLOG
+        : MAX_PREFETCH_IN_FLIGHT_WITH_VISIBLE_BACKLOG
+
+    const cancelOverflow = (
+      requests: InFlightVariantRequest[],
+      maxInFlight: number,
+    ) => {
+      const requestsToCancel = Math.max(0, requests.length - maxInFlight)
+
+      for (let index = 0; index < requestsToCancel; index += 1) {
+        const request = requests[index]
+        if (!request || request.abortController.signal.aborted) {
+          continue
+        }
+        request.abortController.abort('priority-preempted')
+      }
+    }
+
+    const inFlightVisibleHdRequests = Array.from(this.inFlightRequests.values())
+      .filter((request) => request.priorityClass === 'visible-hd')
+      .sort((left, right) => compareScheduledVariantRequests(right, left))
+    cancelOverflow(inFlightVisibleHdRequests, maxVisibleHdInFlight)
+
     const inFlightPrefetchRequests = Array.from(this.inFlightRequests.values())
       .filter((request) => request.priorityClass.startsWith('prefetch'))
       .sort((left, right) => compareScheduledVariantRequests(right, left))
-    const requestsToCancel = Math.max(
-      0,
-      inFlightPrefetchRequests.length - maxPrefetchInFlight,
-    )
 
-    for (let index = 0; index < requestsToCancel; index += 1) {
+    for (let index = 0; index < inFlightPrefetchRequests.length; index += 1) {
       const request = inFlightPrefetchRequests[index]
       if (!request || request.abortController.signal.aborted) {
         continue
       }
-      request.abortController.abort('priority-preempted')
+      if (index >= maxPrefetchInFlight) {
+        request.abortController.abort('priority-preempted')
+      }
     }
   }
 
@@ -2411,6 +2500,7 @@ export class ImageRuntime {
     this.refreshFailureSnapshot(frameNow)
 
     const url = this.createBlobUrl(sourceUrl, bucket, compressed.blob)
+    const image = await decodePreparedImage(compressed.blob, url)
     this.decodedCache.set(key, {
       key,
       sourceUrl,
@@ -2418,6 +2508,7 @@ export class ImageRuntime {
       byteSize: compressed.byteSize,
       lastUsedAt: frameNow,
       url,
+      image,
     })
     this.refreshMemoryTierSnapshots()
   }
@@ -2448,7 +2539,11 @@ export class ImageRuntime {
             }
 
         blob = result.blob
-        this.clearProxyFallback(sourceUrl)
+        if (result.transport === 'direct' && result.proxyFallbackError) {
+          this.noteProxyFallback(sourceUrl, result.proxyFallbackError)
+        } else {
+          this.clearProxyFallback(sourceUrl)
+        }
       } catch (error) {
         proxyError = error
         if (isCancelledError(error)) {
@@ -2517,7 +2612,11 @@ export class ImageRuntime {
     proxyUrl: string
     sourceUrl: string
     abortController: AbortController | null
-  }): Promise<{ blob: Blob; transport: 'proxy' | 'direct' }> {
+  }): Promise<{
+    blob: Blob
+    transport: 'proxy' | 'direct'
+    proxyFallbackError?: Error
+  }> {
     const proxyAbort = createLinkedAbortController(
       abortController,
       'avatar-proxy-cancelled',
@@ -2529,34 +2628,77 @@ export class ImageRuntime {
     let winner: 'proxy' | 'direct' | null = null
     let directStarted = false
     let directTimer: ReturnType<typeof setTimeout> | null = null
+    let proxyFailureForDiagnostics: unknown = null
 
-    const proxyRequest = this.fetchBlob(proxyUrl, proxyAbort.abortController, true).then(
-      (blob) => ({
+    const startDirectRequest = (
+      resolve: (value: { blob: Blob; transport: 'direct' }) => void,
+      reject: (reason?: unknown) => void,
+    ) => {
+      if (directStarted) {
+        return
+      }
+
+      if (directTimer !== null) {
+        clearTimeout(directTimer)
+        directTimer = null
+      }
+
+      directStarted = true
+      this.fetchBlob(sourceUrl, directAbort.abortController, true)
+        .then((blob) => {
+          resolve({
+            blob,
+            transport: 'direct',
+          })
+        })
+        .catch(reject)
+    }
+
+    const proxyRequest = this.fetchBlob(proxyUrl, proxyAbort.abortController, true)
+      .then((blob) => ({
         blob,
         transport: 'proxy' as const,
-      }),
-    )
+      }))
+      .catch((error) => {
+        proxyFailureForDiagnostics = error
+        throw error
+      })
     const directRequest = new Promise<{ blob: Blob; transport: 'direct' }>(
       (resolve, reject) => {
         directTimer = setTimeout(() => {
-          directTimer = null
-          directStarted = true
-          this.fetchBlob(sourceUrl, directAbort.abortController, true)
-            .then((blob) => {
-              resolve({
-                blob,
-                transport: 'direct',
-              })
-            })
-            .catch(reject)
+          startDirectRequest(resolve, reject)
         }, HIGH_PRIORITY_DIRECT_FALLBACK_DELAY_MS)
+
+        void proxyRequest.catch((error) => {
+          if (!isTerminalProxyFailure(error)) {
+            return
+          }
+
+          startDirectRequest(resolve, reject)
+        })
       },
     )
 
     try {
       const result = await Promise.any([proxyRequest, directRequest])
       winner = result.transport
-      return result
+      return {
+        ...result,
+        ...(result.transport === 'direct' && proxyFailureForDiagnostics !== null
+          ? {
+              proxyFallbackError: buildImageFetchError(
+                describeProxyFallback({
+                  error: proxyFailureForDiagnostics,
+                  strategy: isTimeoutError(proxyFailureForDiagnostics)
+                    ? 'direct-after-timeout'
+                    : 'immediate-direct',
+                }),
+                readErrorStatus(proxyFailureForDiagnostics),
+                sourceUrl,
+              ),
+            }
+          : {}),
+      }
     } catch (error) {
       throw pickAggregateImageError(error)
     } finally {
@@ -2903,6 +3045,7 @@ export class ImageRuntime {
         sourceUrl,
         bucket,
         url: decoded.url,
+        image: decoded.image,
         byteSize: decoded.byteSize,
       }
     }
@@ -2969,7 +3112,7 @@ export class ImageRuntime {
   private hasRenderableHandle(handle: ImageSourceHandle) {
     return (
       this.residentCache.has(handle.key) &&
-      this.decodedCache.has(handle.key)
+      this.decodedCache.get(handle.key)?.image === handle.image
     )
   }
 
@@ -3117,6 +3260,9 @@ export class ImageRuntime {
         continue
       }
 
+      if (canCloseImageBitmap(victim.image)) {
+        victim.image.close()
+      }
       if (canRevokeObjectUrl()) {
         URL.revokeObjectURL(victim.url)
       }
@@ -3168,6 +3314,27 @@ export class ImageRuntime {
     this.decodedSnapshot = summarizeTierEntries(this.decodedCache.values())
     this.residentSnapshot = summarizeTierEntries(this.residentCache.values())
     this.residentKeysSnapshot = Array.from(this.residentCache.keys()).sort()
+  }
+
+  private syncPersistentHydrationState() {
+    const nextBacklog = this.pendingPersistentLookups.size
+    const nextStage =
+      nextBacklog > 0
+        ? 'preloading-persistent'
+        : this.persistentHydrationStage === 'idle'
+        ? 'idle'
+        : 'ready'
+
+    if (
+      nextStage === this.persistentHydrationStage &&
+      nextBacklog === this.persistentHydrationBacklog
+    ) {
+      return false
+    }
+
+    this.persistentHydrationStage = nextStage
+    this.persistentHydrationBacklog = nextBacklog
+    return true
   }
 
   private refreshFailureSnapshot(currentTime = now()) {
@@ -3245,6 +3412,9 @@ export class ImageRuntime {
   private getPendingWorkSnapshot(): ImagePendingWorkSnapshot {
     const queuedRequests = this.queuedRequests.size
     const inFlightRequests = this.inFlightRequests.size
+    const queuedCriticalVisibleBaseRequests = this.countQueuedRequests(
+      (request) => request.priorityClass === 'visible-base' && request.critical,
+    )
     const queuedVisibleBaseRequests = this.countQueuedRequests(
       (request) => request.priorityClass === 'visible-base',
     )
@@ -3257,6 +3427,9 @@ export class ImageRuntime {
     const inFlightVisibleBaseRequests = this.countInFlightRequests(
       (request) => request.priorityClass === 'visible-base',
     )
+    const inFlightCriticalVisibleBaseRequests = this.countInFlightRequests(
+      (request) => request.priorityClass === 'visible-base' && request.critical,
+    )
     const inFlightVisibleHdRequests = this.countInFlightRequests(
       (request) => request.priorityClass === 'visible-hd',
     )
@@ -3268,9 +3441,11 @@ export class ImageRuntime {
       queuedRequests,
       inFlightRequests,
       totalRequests: queuedRequests + inFlightRequests,
+      queuedCriticalVisibleBaseRequests,
       queuedVisibleBaseRequests,
       queuedVisibleHdRequests,
       queuedPrefetchRequests,
+      inFlightCriticalVisibleBaseRequests,
       inFlightVisibleBaseRequests,
       inFlightVisibleHdRequests,
       inFlightPrefetchRequests,

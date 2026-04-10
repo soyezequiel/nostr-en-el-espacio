@@ -1,8 +1,11 @@
-import type { ImageRendererDeliverySnapshot } from '@/features/graph/render/imageRuntime'
+import type {
+  ImageRendererDeliverySnapshot,
+  ImageSourceHandle,
+} from '@/features/graph/render/imageRuntime'
 
 type AvatarIconDescriptor = {
   id: string
-  url: string
+  image: CanvasImageSource
   width: number
   height: number
   mask: false
@@ -13,11 +16,26 @@ export type AvatarAtlasEntry = {
   icon: AvatarIconDescriptor
 }
 
+export const createAvatarAtlasEntry = ({
+  pubkey,
+  handle,
+}: {
+  pubkey: string
+  handle: ImageSourceHandle
+}): AvatarAtlasEntry => ({
+  pubkey,
+  icon: {
+    id: handle.key,
+    image: handle.image,
+    width: handle.bucket,
+    height: handle.bucket,
+    mask: false,
+  },
+})
+
 type AvatarAtlasRecord = {
   icon: AvatarIconDescriptor
-  image: HTMLImageElement | null
-  status: 'pending' | 'loaded' | 'failed'
-  token: number
+  status: 'loaded'
 }
 
 type AvatarAtlasSlot = {
@@ -42,6 +60,18 @@ type AvatarAtlasPageSurface = {
   backCanvas: HTMLCanvasElement
   backContext2d: CanvasRenderingContext2D
   revision: number
+}
+
+type AvatarDirtyPageEntry = {
+  icon: AvatarIconDescriptor
+  image: CanvasImageSource
+  slot: AvatarAtlasSlot
+}
+
+type AvatarDirtyPagePlan = {
+  pageKey: string
+  entries: AvatarDirtyPageEntry[]
+  estimatedPixels: number
 }
 
 export type AvatarIconMapping = {
@@ -74,9 +104,10 @@ type AvatarAtlasManagerOptions = {
   maxWidth?: number
   maxHeight?: number
   supportedBuckets?: readonly number[]
-  loadImage?: (url: string) => Promise<HTMLImageElement>
   scheduleFrame?: (flush: () => void) => void
   maxPageCommitsPerFrame?: number
+  maxBurstPageCommitsPerFrame?: number
+  burstCommitPixelBudget?: number
 }
 
 export type AvatarAtlasLayoutDebugSnapshot = {
@@ -92,6 +123,9 @@ const DEFAULT_PADDING = 4
 const DEFAULT_MAX_WIDTH = 1024
 const DEFAULT_MAX_HEIGHT = 1024
 const DEFAULT_MAX_PAGE_COMMITS_PER_FRAME = 2
+const DEFAULT_MAX_BURST_PAGE_COMMITS_PER_FRAME = 4
+const DEFAULT_BURST_COMMIT_PIXEL_BUDGET =
+  DEFAULT_MAX_WIDTH * DEFAULT_MAX_HEIGHT * 4
 const BASE_ATLAS_BUCKETS = new Set([64, 128])
 
 const createEmptyAvatarAtlasSnapshot = (): AvatarAtlasSnapshot => ({
@@ -114,21 +148,6 @@ const nextPowerOfTwo = (value: number) => {
   return 2 ** Math.ceil(Math.log2(value))
 }
 
-const loadAvatarAtlasImage = (url: string) =>
-  new Promise<HTMLImageElement>((resolve, reject) => {
-    if (typeof Image === 'undefined') {
-      reject(new Error('Image API no disponible para el atlas de avatars.'))
-      return
-    }
-
-    const image = new Image()
-    image.decoding = 'async'
-    image.onload = () => resolve(image)
-    image.onerror = () =>
-      reject(new Error(`No se pudo cargar el avatar del atlas controlado: ${url}`))
-    image.src = url
-  })
-
 const scheduleAvatarAtlasFrame = (flush: () => void) => {
   if (typeof requestAnimationFrame === 'function') {
     requestAnimationFrame(() => flush())
@@ -147,9 +166,10 @@ export class AvatarAtlasManager {
   private readonly maxWidth: number
   private readonly maxHeight: number
   private readonly supportedBuckets: ReadonlySet<number>
-  private readonly loadImage: (url: string) => Promise<HTMLImageElement>
   private readonly scheduleFrame: (flush: () => void) => void
   private readonly maxPageCommitsPerFrame: number
+  private readonly maxBurstPageCommitsPerFrame: number
+  private readonly burstCommitPixelBudget: number
   private readonly recordsByIconId = new Map<string, AvatarAtlasRecord>()
   private readonly slotsByIconId = new Map<string, AvatarAtlasSlot>()
   private readonly pageLayoutsByBucket = new Map<number, AvatarAtlasPageLayout[]>()
@@ -167,10 +187,17 @@ export class AvatarAtlasManager {
     this.maxWidth = options.maxWidth ?? DEFAULT_MAX_WIDTH
     this.maxHeight = options.maxHeight ?? DEFAULT_MAX_HEIGHT
     this.supportedBuckets = new Set(options.supportedBuckets ?? [...BASE_ATLAS_BUCKETS])
-    this.loadImage = options.loadImage ?? loadAvatarAtlasImage
     this.scheduleFrame = options.scheduleFrame ?? scheduleAvatarAtlasFrame
     this.maxPageCommitsPerFrame =
       options.maxPageCommitsPerFrame ?? DEFAULT_MAX_PAGE_COMMITS_PER_FRAME
+    this.maxBurstPageCommitsPerFrame = Math.max(
+      this.maxPageCommitsPerFrame,
+      options.maxBurstPageCommitsPerFrame ?? DEFAULT_MAX_BURST_PAGE_COMMITS_PER_FRAME,
+    )
+    this.burstCommitPixelBudget = Math.max(
+      0,
+      options.burstCommitPixelBudget ?? DEFAULT_BURST_COMMIT_PIXEL_BUDGET,
+    )
   }
 
   public setSnapshotChangeListener(listener?: () => void) {
@@ -232,7 +259,7 @@ export class AvatarAtlasManager {
       const currentRecord = this.recordsByIconId.get(entry.icon.id)
       const shouldReuseRecord =
         currentRecord &&
-        currentRecord.icon.url === entry.icon.url &&
+        currentRecord.icon.image === entry.icon.image &&
         currentRecord.icon.width === entry.icon.width &&
         currentRecord.icon.height === entry.icon.height
 
@@ -254,14 +281,11 @@ export class AvatarAtlasManager {
 
       this.ensureSlot(entry.icon)
 
-      const nextToken = (currentRecord?.token ?? 0) + 1
       this.recordsByIconId.set(entry.icon.id, {
         icon: entry.icon,
-        image: null,
-        status: 'pending',
-        token: nextToken,
+        status: 'loaded',
       })
-      this.loadIcon(entry.icon.id, nextToken)
+      this.markPageDirtyForIcon(entry.icon.id)
     }
   }
 
@@ -349,36 +373,6 @@ export class AvatarAtlasManager {
     }
   }
 
-  private loadIcon(iconId: string, token: number) {
-    const record = this.recordsByIconId.get(iconId)
-    if (!record || record.token !== token) {
-      return
-    }
-
-    void this.loadImage(record.icon.url)
-      .then((image) => {
-        const currentRecord = this.recordsByIconId.get(iconId)
-        if (!currentRecord || currentRecord.token !== token) {
-          return
-        }
-
-        currentRecord.image = image
-        currentRecord.status = 'loaded'
-        this.markPageDirtyForIcon(iconId)
-        this.scheduleSnapshotFlush()
-      })
-      .catch(() => {
-        const currentRecord = this.recordsByIconId.get(iconId)
-        if (!currentRecord || currentRecord.token !== token) {
-          return
-        }
-
-        currentRecord.image = null
-        currentRecord.status = 'failed'
-        this.scheduleSnapshotFlush()
-      })
-  }
-
   private markPageDirtyForIcon(iconId: string) {
     const slot = this.slotsByIconId.get(iconId)
     if (!slot) {
@@ -416,10 +410,7 @@ export class AvatarAtlasManager {
       this.snapshot.delivery.failedPubkeys,
       failedPubkeys,
     )
-    const pendingPageCommits =
-      this.dirtyPageKeys.size > 0
-        ? Math.min(this.maxPageCommitsPerFrame, this.dirtyPageKeys.size)
-        : 0
+    const pendingPageCommits = this.resolvePageCommitCount(this.collectDirtyPagePlans())
     const metricsChanged =
       this.snapshot.dirtyPages !== dirtyPages ||
       this.snapshot.pendingPageCommits !== pendingPageCommits ||
@@ -469,42 +460,16 @@ export class AvatarAtlasManager {
       }
     }
 
-    const dirtyPageKeys = [...this.dirtyPageKeys]
-      .sort()
-      .slice(0, this.maxPageCommitsPerFrame)
-    const dirtyPageKeySet = new Set(dirtyPageKeys)
+    const dirtyPagePlans = this.collectDirtyPagePlans()
+    const dirtyPageKeys = dirtyPagePlans
+      .slice(0, this.resolvePageCommitCount(dirtyPagePlans))
+      .map((plan) => plan.pageKey)
+    const entriesByPageKey = new Map(
+      dirtyPagePlans.map((plan) => [plan.pageKey, plan.entries]),
+    )
+
     for (const pageKey of dirtyPageKeys) {
       this.dirtyPageKeys.delete(pageKey)
-    }
-
-    const entriesByPageKey = new Map<
-      string,
-      Array<{
-        icon: AvatarIconDescriptor
-        image: HTMLImageElement
-        slot: AvatarAtlasSlot
-      }>
-    >()
-
-    for (const entry of this.visibleEntries) {
-      const record = this.recordsByIconId.get(entry.icon.id)
-      const slot = this.slotsByIconId.get(entry.icon.id)
-      if (record?.status !== 'loaded' || !record.image || !slot) {
-        continue
-      }
-
-      const pageKey = this.buildPageKey(slot.bucket, slot.pageIndex)
-      if (!dirtyPageKeySet.has(pageKey)) {
-        continue
-      }
-
-      const pageEntries = entriesByPageKey.get(pageKey) ?? []
-      pageEntries.push({
-        icon: entry.icon,
-        image: record.image,
-        slot,
-      })
-      entriesByPageKey.set(pageKey, pageEntries)
     }
 
     let pagesChanged = false
@@ -535,10 +500,145 @@ export class AvatarAtlasManager {
   }
 
   private buildFailedPubkeys() {
-    return this.visibleEntries
-      .filter((entry) => this.recordsByIconId.get(entry.icon.id)?.status === 'failed')
-      .map((entry) => entry.pubkey)
-      .sort()
+    return []
+  }
+
+  private collectDirtyPagePlans(): AvatarDirtyPagePlan[] {
+    if (this.dirtyPageKeys.size === 0) {
+      return []
+    }
+
+    const dirtyPageKeySet = new Set(this.dirtyPageKeys)
+    const entriesByPageKey = new Map<string, AvatarDirtyPageEntry[]>()
+
+    for (const entry of this.visibleEntries) {
+      const record = this.recordsByIconId.get(entry.icon.id)
+      const slot = this.slotsByIconId.get(entry.icon.id)
+      if (record?.status !== 'loaded' || !slot) {
+        continue
+      }
+
+      const pageKey = this.buildPageKey(slot.bucket, slot.pageIndex)
+      if (!dirtyPageKeySet.has(pageKey)) {
+        continue
+      }
+
+      const pageEntries = entriesByPageKey.get(pageKey) ?? []
+      pageEntries.push({
+        icon: entry.icon,
+        image: record.icon.image,
+        slot,
+      })
+      entriesByPageKey.set(pageKey, pageEntries)
+    }
+
+    const shouldBurstCommit = this.shouldBurstCommit(dirtyPageKeySet)
+
+    return [...dirtyPageKeySet]
+      .map((pageKey) => ({
+        pageKey,
+        entries: entriesByPageKey.get(pageKey) ?? [],
+        estimatedPixels: this.resolvePageEstimatedPixels(pageKey),
+      }))
+      .sort((left, right) => {
+        if (left.entries.length !== right.entries.length) {
+          // Paint the pages that unblock the most visible avatars first.
+          return right.entries.length - left.entries.length
+        }
+
+        if (shouldBurstCommit && left.estimatedPixels !== right.estimatedPixels) {
+          return left.estimatedPixels - right.estimatedPixels
+        }
+
+        return left.pageKey.localeCompare(right.pageKey)
+      })
+  }
+
+  private resolvePageCommitCount(dirtyPagePlans: readonly AvatarDirtyPagePlan[]) {
+    const steadyCommitCount = Math.min(
+      this.maxPageCommitsPerFrame,
+      dirtyPagePlans.length,
+    )
+    if (
+      dirtyPagePlans.length <= steadyCommitCount ||
+      this.burstCommitPixelBudget <= 0 ||
+      steadyCommitCount === 0 ||
+      !this.shouldBurstCommit(new Set(dirtyPagePlans.map((plan) => plan.pageKey)))
+    ) {
+      return steadyCommitCount
+    }
+
+    let burstCommitCount = steadyCommitCount
+    // Initial paint can safely spend a little more canvas work to avoid a long
+    // runtime-ready -> on-screen gap, but we still cap the burst by texel budget.
+    let remainingPixelBudget = this.burstCommitPixelBudget
+
+    for (
+      let index = steadyCommitCount;
+      index < dirtyPagePlans.length &&
+      burstCommitCount < this.maxBurstPageCommitsPerFrame;
+      index += 1
+    ) {
+      const nextPlan = dirtyPagePlans[index]
+      if (nextPlan.estimatedPixels > remainingPixelBudget) {
+        break
+      }
+
+      remainingPixelBudget -= nextPlan.estimatedPixels
+      burstCommitCount += 1
+    }
+
+    return burstCommitCount
+  }
+
+  private shouldBurstCommit(dirtyPageKeySet: ReadonlySet<string>) {
+    if (dirtyPageKeySet.size === 0) {
+      return false
+    }
+
+    const visiblePageKeys = new Set<string>()
+    for (const entry of this.visibleEntries) {
+      const slot = this.slotsByIconId.get(entry.icon.id)
+      if (!slot) {
+        continue
+      }
+
+      visiblePageKeys.add(this.buildPageKey(slot.bucket, slot.pageIndex))
+    }
+
+    if (visiblePageKeys.size === 0) {
+      return false
+    }
+
+    const cleanVisibleCommittedPageCount = [...visiblePageKeys].filter(
+      (pageKey) => !dirtyPageKeySet.has(pageKey) && this.pagesByKey.has(pageKey),
+    ).length
+
+    return cleanVisibleCommittedPageCount === 0
+  }
+
+  private resolvePageEstimatedPixels(pageKey: string) {
+    const slot = this.parsePageKey(pageKey)
+    if (!slot) {
+      return this.maxWidth * this.maxHeight
+    }
+
+    const pageLayout = this.pageLayoutsByBucket.get(slot.bucket)?.[slot.pageIndex]
+    if (!pageLayout) {
+      return this.maxWidth * this.maxHeight
+    }
+
+    const stride = pageLayout.bucket + this.padding
+    const width = Math.min(
+      this.maxWidth,
+      this.padding + pageLayout.columns * stride,
+    )
+    const height = Math.min(
+      this.maxHeight,
+      this.padding + pageLayout.rows * stride,
+    )
+
+    return nextPowerOfTwo(width) * nextPowerOfTwo(height)
   }
 
   private buildSortedPages() {
@@ -551,7 +651,7 @@ export class AvatarAtlasManager {
     pageKey: string,
     entries: Array<{
       icon: AvatarIconDescriptor
-      image: HTMLImageElement
+      image: CanvasImageSource
       slot: AvatarAtlasSlot
     }>,
   ) {
@@ -684,5 +784,17 @@ export class AvatarAtlasManager {
 
   private buildPageKey(bucket: number, pageIndex: number) {
     return `bucket-${bucket}-page-${pageIndex}`
+  }
+
+  private parsePageKey(pageKey: string) {
+    const match = /^bucket-(\d+)-page-(\d+)$/.exec(pageKey)
+    if (!match) {
+      return null
+    }
+
+    return {
+      bucket: Number(match[1]),
+      pageIndex: Number(match[2]),
+    }
   }
 }

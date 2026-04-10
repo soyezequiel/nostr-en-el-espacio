@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "avatar:compare": "node scripts/compare-avatar-pipeline.mjs",
+    "avatar:validate": "node scripts/validate-avatar-pipeline.mjs",
     "workers:build": "node scripts/build-graph-workers.mjs",
     "predev": "npm run workers:build",
     "dev": "next dev",

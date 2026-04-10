@@ -22,6 +22,10 @@ import {
   useAppStore,
 } from '@/features/graph/app/store'
 import type { AppStore } from '@/features/graph/app/store/types'
+import {
+  clearAvatarPipelineProbe,
+  publishAvatarPipelineProbe,
+} from '@/features/graph/components/avatarPipelineProbe'
 import { CoverageRecoveryCard } from '@/features/graph/components/CoverageRecoveryCard'
 import { GraphControlRail } from '@/features/graph/components/GraphControlRail'
 import { NodeExpansionProgressCard } from '@/features/graph/components/NodeExpansionProgressCard'
@@ -810,6 +814,7 @@ export function GraphCanvas({
   }, [])
 
   useEffect(() => {
+    clearAvatarPipelineProbe()
     const nextImageRuntime = new ImageRuntime()
     imageRuntimeRef.current = nextImageRuntime
     const unsubscribe = nextImageRuntime.subscribe(() => {
@@ -843,6 +848,7 @@ export function GraphCanvas({
       setImageFrame(EMPTY_IMAGE_FRAME)
       imageDiagnosticsSnapshotRef.current = EMPTY_IMAGE_DIAGNOSTICS
       setImageDiagnosticsSnapshot(EMPTY_IMAGE_DIAGNOSTICS)
+      clearAvatarPipelineProbe()
       setImageRuntime(null)
     }
   }, [])
@@ -1570,6 +1576,12 @@ export function GraphCanvas({
           : EMPTY_IMAGE_FRAME,
       )
       imageDiagnosticsSnapshotRef.current = nextImageDiagnostics
+      publishAvatarPipelineProbe({
+        activeLayer,
+        readyImageCount: 0,
+        rootLoadStatus,
+        snapshot: nextImageDiagnostics,
+      })
       scheduleImageDiagnosticsCommit()
       return
     }
@@ -1605,6 +1617,12 @@ export function GraphCanvas({
           : undefined,
     })
     imageDiagnosticsSnapshotRef.current = nextImageDiagnostics
+    publishAvatarPipelineProbe({
+      activeLayer,
+      readyImageCount: Object.keys(nextImageFrame.readyImagesByPubkey).length,
+      rootLoadStatus,
+      snapshot: nextImageDiagnostics,
+    })
 
     if (!shouldUseBootstrapFrame) {
       imageBootstrapPendingRef.current = false
@@ -1622,6 +1640,15 @@ export function GraphCanvas({
     )
     scheduleImageDiagnosticsCommit()
   }
+
+  useEffect(() => {
+    publishAvatarPipelineProbe({
+      activeLayer,
+      readyImageCount: Object.keys(imageFrame.readyImagesByPubkey).length,
+      rootLoadStatus,
+      snapshot: imageDiagnosticsSnapshotRef.current,
+    })
+  }, [activeLayer, imageFrame, rootLoadStatus])
 
   useEffect(() => {
     scheduleImageFrameRefresh()

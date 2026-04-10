@@ -109,6 +109,7 @@ src/
 ## Documentacion util
 
 - [Guia del codebase actual](./docs/current-codebase.md)
+- [Workflow de validacion del avatar pipeline](./docs/avatar-pipeline-validation.md)
 - [Instrucciones del repo para agentes](./AGENTS.md)
 
 ## Nota importante

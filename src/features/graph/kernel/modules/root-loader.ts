@@ -46,6 +46,27 @@ interface ActiveLoadSession {
   adapter: RelayAdapterInstance
   detachRelayHealth: () => void
 }
+
+function mergeRelayUrls(
+  ...relayGroups: Array<readonly string[] | undefined>
+): string[] {
+  const merged: string[] = []
+  const seen = new Set<string>()
+
+  for (const group of relayGroups) {
+    for (const url of group ?? []) {
+      if (!url || seen.has(url)) {
+        continue
+      }
+
+      seen.add(url)
+      merged.push(url)
+    }
+  }
+
+  return merged
+}
+
 export function createRootLoaderModule(
   ctx: KernelContext,
   collaborators: {
@@ -118,12 +139,14 @@ export function createRootLoaderModule(
     loadSequence = loadId
     const storeState = ctx.store.getState()
     const preserveExistingGraph = options.preserveExistingGraph ?? false
-    const relayUrls = options.useDefaultRelays
+    const bootstrapRelayUrls = mergeRelayUrls(options.bootstrapRelayUrls)
+    const baseRelayUrls = options.useDefaultRelays
       ? ctx.defaultRelayUrls.slice()
       : options.relayUrls?.slice() ??
         (storeState.relayUrls.length > 0
           ? storeState.relayUrls.slice()
           : ctx.defaultRelayUrls.slice())
+    const relayUrls = mergeRelayUrls(bootstrapRelayUrls, baseRelayUrls)
     ctx.emitter.emit({ type: 'root-load-started', pubkey: rootPubkey })
     storeState.setRelayUrls(relayUrls)
     if (options.useDefaultRelays) {

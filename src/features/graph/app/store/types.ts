@@ -298,6 +298,7 @@ export interface SavedRootEntry {
   npub: string
   addedAt: number
   lastOpenedAt: number
+  relayHints?: string[]
   profile: SavedRootProfileSnapshot | null
   profileFetchedAt: number | null
 }
@@ -325,6 +326,7 @@ export interface UiSlice {
     pubkey: string
     npub: string
     openedAt?: number
+    relayHints?: string[]
     profile?: SavedRootProfileSnapshot | null
     profileFetchedAt?: number | null
   }) => void

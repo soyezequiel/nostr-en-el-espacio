@@ -11,6 +11,8 @@ import {
 } from '@/features/graph/render/avatarQualityGuide'
 
 const MAX_SAVED_ROOTS = 12
+const sortRelayHints = (relayHints: readonly string[] | undefined) =>
+  relayHints ? Array.from(new Set(relayHints.filter(Boolean))).sort() : []
 
 const sortSavedRoots = (savedRoots: SavedRootEntry[]) =>
   savedRoots
@@ -152,6 +154,10 @@ export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
         npub: entry.npub,
         addedAt: existingEntry?.addedAt ?? openedAt,
         lastOpenedAt: openedAt,
+        relayHints:
+          entry.relayHints !== undefined
+            ? sortRelayHints(entry.relayHints)
+            : sortRelayHints(existingEntry?.relayHints),
         profile: mergeSavedRootProfile(existingEntry?.profile ?? null, entry.profile),
         profileFetchedAt:
           entry.profileFetchedAt ?? existingEntry?.profileFetchedAt ?? null,

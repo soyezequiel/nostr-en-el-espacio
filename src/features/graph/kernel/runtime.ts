@@ -77,6 +77,7 @@ export interface LoadRootOptions {
   preserveExistingGraph?: boolean
   useDefaultRelays?: boolean
   relayUrls?: string[]
+  bootstrapRelayUrls?: string[]
 }
 
 export interface RootLoader {

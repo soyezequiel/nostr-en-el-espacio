@@ -431,20 +431,26 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     kind,
     npub,
     pubkey,
+    relays = [],
   }: {
     npub?: string
     pubkey: string
     kind: 'npub' | 'nprofile'
+    relays?: string[]
   }, loadOptions?: LoadRootOptions) => {
     setRootKind(kind)
     upsertSavedRoot({
       pubkey,
       npub: npub ?? nip19.npubEncode(pubkey),
       openedAt: Date.now(),
+      relayHints: relays,
     })
     setIsSettingsOpen(false)
     setIsRootEntryOpen(false)
-    void rootLoader.loadRoot(pubkey, loadOptions)
+    void rootLoader.loadRoot(pubkey, {
+      ...loadOptions,
+      bootstrapRelayUrls: relays,
+    })
   }
 
   const handleSelectSavedRoot = (savedRoot: SavedRootEntry) => {
@@ -452,6 +458,7 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
       pubkey: savedRoot.pubkey,
       kind: 'npub',
       npub: savedRoot.npub,
+      relays: savedRoot.relayHints ?? [],
     })
   }
 

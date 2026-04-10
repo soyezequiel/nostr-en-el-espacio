@@ -116,12 +116,22 @@ export type ImageDiagnosticStage =
   | 'screen'
 
 export type ImageHydrationStage = 'idle' | 'preloading-persistent' | 'ready'
+export type ImageFrameComputationMode = 'idle' | 'bootstrap' | 'settled'
+export type ImageFrameSkipReason =
+  | 'none'
+  | 'no-runtime'
+  | 'no-viewstate'
+  | 'no-size'
+  | 'waiting-settle'
+  | 'bootstrap-fallback'
 
 export interface ImageDiagnosticsSnapshot {
   health: ImageDiagnosticHealth
   bottleneckStage: ImageDiagnosticStage | null
   primarySummary: string
   secondarySummary: string | null
+  frameComputationMode: ImageFrameComputationMode
+  frameSkipReason: ImageFrameSkipReason
   hydrationStage: ImageHydrationStage
   hydrationBacklog: number
   proxyFallbackReason: string | null
@@ -590,6 +600,8 @@ const createEmptyDiagnosticsSnapshot = (): ImageDiagnosticsSnapshot => ({
   bottleneckStage: null,
   primarySummary: 'No hay nodos visibles en este frame.',
   secondarySummary: null,
+  frameComputationMode: 'idle',
+  frameSkipReason: 'none',
   hydrationStage: 'idle',
   hydrationBacklog: 0,
   proxyFallbackReason: null,
@@ -619,6 +631,8 @@ const cloneDiagnosticsSnapshot = (
   bottleneckStage: snapshot.bottleneckStage,
   primarySummary: snapshot.primarySummary,
   secondarySummary: snapshot.secondarySummary,
+  frameComputationMode: snapshot.frameComputationMode,
+  frameSkipReason: snapshot.frameSkipReason,
   hydrationStage: snapshot.hydrationStage,
   hydrationBacklog: snapshot.hydrationBacklog,
   proxyFallbackReason: snapshot.proxyFallbackReason,
@@ -893,6 +907,8 @@ const resolveDiagnosticsSnapshot = ({
         hydrationSummary,
         fallbackSummary,
       ),
+      frameComputationMode: 'settled',
+      frameSkipReason: 'none',
       hydrationStage,
       hydrationBacklog,
       proxyFallbackReason,
@@ -916,6 +932,8 @@ const resolveDiagnosticsSnapshot = ({
         hydrationSummary,
         fallbackSummary,
       ),
+      frameComputationMode: 'settled',
+      frameSkipReason: 'none',
       hydrationStage,
       hydrationBacklog,
       proxyFallbackReason,
@@ -960,6 +978,8 @@ const resolveDiagnosticsSnapshot = ({
       hydrationSummary,
       fallbackSummary,
     ),
+    frameComputationMode: 'settled',
+    frameSkipReason: 'none',
     hydrationStage,
     hydrationBacklog,
     proxyFallbackReason,
@@ -1499,11 +1519,16 @@ export class ImageRuntime {
         previousBucket: this.previousBuckets.get(node.pictureUrl) ?? null,
         requestedPixels,
       })
-      const requestedBucket = clampImageBucketForMotion({
-        bucket: hysteresisBucket,
-        velocityScore: input.velocityScore,
-        priorityLane,
-      })
+      // Los nodos prioritarios (root y seleccionado) cargan siempre a su bucket
+      // objetivo sin importar la velocidad del viewport. Esto asegura que el
+      // perfil principal aparezca en alta calidad desde el primer frame.
+      const requestedBucket = priorityLane
+        ? hysteresisBucket
+        : clampImageBucketForMotion({
+            bucket: hysteresisBucket,
+            velocityScore: input.velocityScore,
+            priorityLane,
+          })
       this.previousBuckets.set(node.pictureUrl, requestedBucket)
 
       const baseTargetBucket = normalizeBaseAtlasBucket(requestedBucket)
@@ -2769,6 +2794,10 @@ export class ImageRuntime {
     let promotedCount = 0
     let promotedBytes = 0
     let changed = false
+    // Rastrear si quedaron candidatos visibles listos para promover pero no
+    // alcanzados por el límite de este frame. Si los hay, auto-notificamos
+    // para que prepareFrame corra de nuevo y continue el trabajo.
+    let pendingAfterLimit = false
 
     for (const request of requests) {
       if (!request.visible) {
@@ -2805,10 +2834,14 @@ export class ImageRuntime {
       }
 
       if (promotedCount >= MAX_UPLOADS_PER_FRAME) {
+        // Hay decoded listo que no cabió en este frame.
+        // Marcar para auto-notificar y continuar en el siguiente.
+        pendingAfterLimit = true
         break
       }
 
       if (promotedBytes + decoded.byteSize > MAX_UPLOAD_BYTES_PER_FRAME) {
+        pendingAfterLimit = true
         break
       }
 
@@ -2835,6 +2868,13 @@ export class ImageRuntime {
 
     if (changed) {
       this.refreshMemoryTierSnapshots()
+    }
+
+    // Si quedaron candidatos visibles decodificados sin promover por el límite de
+    // frame, auto-notificar para que el siguiente prepareFrame continue sin
+    // necesitar que arrive una nueva imagen o que el usuario haga una interacción.
+    if (pendingAfterLimit) {
+      this.scheduleNotify()
     }
   }
 

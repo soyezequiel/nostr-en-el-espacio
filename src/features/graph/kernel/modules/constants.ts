@@ -1,7 +1,8 @@
 export const DEFAULT_SESSION_RELAY_URLS = [
   'wss://relay.damus.io',
+  'wss://relay.nostr.band',
   'wss://nos.lol',
-  'wss://offchain.pub',
+  'wss://relay.primal.net',
   'wss://purplepag.es',
 ] as const
 

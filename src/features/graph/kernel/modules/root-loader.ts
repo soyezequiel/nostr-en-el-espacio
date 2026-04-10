@@ -7,14 +7,20 @@ import type {
   NodeDetailProfile,
 } from '@/features/graph/kernel/runtime'
 import type { KernelContext, RelayAdapterInstance } from '@/features/graph/kernel/modules/context'
-import { ROOT_LOADING_MESSAGE, COVERAGE_RECOVERY_MESSAGE } from '@/features/graph/kernel/modules/constants'
-import { NODE_EXPAND_INBOUND_QUERY_LIMIT } from '@/features/graph/kernel/modules/constants'
+import {
+  COVERAGE_RECOVERY_MESSAGE,
+  MAX_SESSION_RELAYS,
+  NODE_EXPAND_INBOUND_QUERY_LIMIT,
+  ROOT_LOADING_MESSAGE,
+} from '@/features/graph/kernel/modules/constants'
 import {
   collectInboundFollowerEvidence,
   collectRelayEvents,
   collectTargetedReciprocalFollowerEvidence,
+  mergeBoundedRelayUrlSets,
   mapProfileRecordToNodeProfile,
   mergeInboundFollowerEvidence,
+  mergeRelayUrlSets,
   selectLatestReplaceableEvent,
   selectLatestReplaceableEventsByPubkey,
   serializeContactListEvent,
@@ -33,6 +39,7 @@ interface CachedRootSnapshot {
   rootLabel: string | null
   rootProfile: NodeDetailProfile | null
   followPubkeys: string[]
+  relayHints: string[]
 }
 interface RootGraphReplacementResult {
   discoveredFollowCount: number
@@ -52,25 +59,7 @@ interface ActiveLoadSession {
   detachRelayHealth: () => void
 }
 
-function mergeRelayUrls(
-  ...relayGroups: Array<readonly string[] | undefined>
-): string[] {
-  const merged: string[] = []
-  const seen = new Set<string>()
-
-  for (const group of relayGroups) {
-    for (const url of group ?? []) {
-      if (!url || seen.has(url)) {
-        continue
-      }
-
-      seen.add(url)
-      merged.push(url)
-    }
-  }
-
-  return merged
-}
+const MAX_PROFILE_HYDRATION_RELAY_URLS = MAX_SESSION_RELAYS
 
 export function createRootLoaderModule(
   ctx: KernelContext,
@@ -144,14 +133,14 @@ export function createRootLoaderModule(
     loadSequence = loadId
     const storeState = ctx.store.getState()
     const preserveExistingGraph = options.preserveExistingGraph ?? false
-    const bootstrapRelayUrls = mergeRelayUrls(options.bootstrapRelayUrls)
+    const bootstrapRelayUrls = mergeRelayUrlSets(options.bootstrapRelayUrls)
     const baseRelayUrls = options.useDefaultRelays
       ? ctx.defaultRelayUrls.slice()
       : options.relayUrls?.slice() ??
         (storeState.relayUrls.length > 0
           ? storeState.relayUrls.slice()
           : ctx.defaultRelayUrls.slice())
-    const relayUrls = mergeRelayUrls(bootstrapRelayUrls, baseRelayUrls)
+    const relayUrls = mergeRelayUrlSets(bootstrapRelayUrls, baseRelayUrls)
     ctx.emitter.emit({ type: 'root-load-started', pubkey: rootPubkey })
     storeState.setRelayUrls(relayUrls)
     if (options.useDefaultRelays) {
@@ -172,7 +161,7 @@ export function createRootLoaderModule(
       loadedFrom: 'none',
     })
     const cachedSnapshot = preserveExistingGraph
-      ? { rootLabel: null, rootProfile: null, followPubkeys: [] }
+      ? { rootLabel: null, rootProfile: null, followPubkeys: [], relayHints: [] }
       : await loadCachedSnapshot(rootPubkey)
     if (isStaleLoad(loadId)) {
       return finalize(rootPubkey, createCancelledResult(relayUrls))
@@ -255,12 +244,17 @@ export function createRootLoaderModule(
             loadedFrom: fallbackResult.loadedFrom,
           })
         }
-        if (!preserveExistingGraph) {
-          void collaborators.profileHydration.hydrateNodeProfiles(
-            [rootPubkey, ...cachedSnapshot.followPubkeys],
-            relayUrls,
-            () => isStaleLoad(loadId),
-            {
+          if (!preserveExistingGraph) {
+            const profileHydrationRelayUrls = mergeBoundedRelayUrlSets(
+              MAX_PROFILE_HYDRATION_RELAY_URLS,
+              relayUrls,
+              cachedSnapshot.relayHints,
+            )
+            void collaborators.profileHydration.hydrateNodeProfiles(
+              [rootPubkey, ...cachedSnapshot.followPubkeys],
+              profileHydrationRelayUrls,
+              () => isStaleLoad(loadId),
+              {
               persistProfileEvent: collaborators.persistence.persistProfileEvent,
             },
           )
@@ -284,20 +278,29 @@ export function createRootLoaderModule(
       if (isStaleLoad(loadId)) {
         return finalize(rootPubkey, createCancelledResult(relayUrls))
       }
-      const targetedReciprocalFollowerEvidence =
-        await collectTargetedReciprocalFollowerEvidence({
-          adapter,
-          eventsWorker: ctx.eventsWorker,
-          followPubkeys: parsedContactList.followPubkeys,
-          targetPubkey: rootPubkey,
-        })
+      let targetedReciprocalFollowerPartial = false
+      try {
+        const targetedReciprocalFollowerEvidence =
+          await collectTargetedReciprocalFollowerEvidence({
+            adapter,
+            eventsWorker: ctx.eventsWorker,
+            followPubkeys: parsedContactList.followPubkeys,
+            targetPubkey: rootPubkey,
+          })
+        inboundFollowerEvidence = mergeInboundFollowerEvidence(
+          inboundFollowerEvidence,
+          targetedReciprocalFollowerEvidence,
+        )
+      } catch (error) {
+        targetedReciprocalFollowerPartial = true
+        console.warn(
+          'Targeted reciprocal follower evidence failed during root load:',
+          error,
+        )
+      }
       if (isStaleLoad(loadId)) {
         return finalize(rootPubkey, createCancelledResult(relayUrls))
       }
-      inboundFollowerEvidence = mergeInboundFollowerEvidence(
-        inboundFollowerEvidence,
-        targetedReciprocalFollowerEvidence,
-      )
       await collaborators.persistence.persistContactListEvent(
         latestContactListEvent,
         parsedContactList,
@@ -314,6 +317,12 @@ export function createRootLoaderModule(
       const restoredExpandedPubkeys = restoreExpandedNeighborhood(
         preservedExpandedNeighborhood,
       )
+      const profileHydrationRelayUrls = mergeBoundedRelayUrlSets(
+        MAX_PROFILE_HYDRATION_RELAY_URLS,
+        relayUrls,
+        parsedContactList.relayHints,
+        cachedSnapshot.relayHints,
+      )
       void collaborators.profileHydration.hydrateNodeProfiles(
         Array.from(
           new Set([
@@ -321,7 +330,7 @@ export function createRootLoaderModule(
             ...restoredExpandedPubkeys,
           ]),
         ),
-        relayUrls,
+        profileHydrationRelayUrls,
         () => isStaleLoad(loadId),
         {
           persistProfileEvent: collaborators.persistence.persistProfileEvent,
@@ -339,7 +348,8 @@ export function createRootLoaderModule(
         parsedContactList.diagnostics.length > 0 ||
         replacementResult.rejectedPubkeys.length > 0 ||
         inboundFollowerEvidence.partial ||
-        inboundFollowerResult.error !== null
+        inboundFollowerResult.error !== null ||
+        targetedReciprocalFollowerPartial
       const status =
         replacementResult.discoveredFollowCount === 0
           ? 'empty'
@@ -406,6 +416,7 @@ export function createRootLoaderModule(
       rootLabel: profile?.name ?? null,
       rootProfile: profile ? mapProfileRecordToNodeProfile(profile) : null,
       followPubkeys: contactList?.follows ?? [],
+      relayHints: contactList?.relayHints ?? [],
     }
   }
   function replaceRootGraph(

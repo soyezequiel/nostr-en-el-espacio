@@ -169,6 +169,37 @@ export function validateRelayOverrideInput(
   }
 }
 
+export function mergeRelayUrlSets(
+  ...relayGroups: Array<readonly string[] | undefined>
+): string[] {
+  const merged: string[] = []
+  const seen = new Set<string>()
+
+  for (const group of relayGroups) {
+    for (const relayUrl of group ?? []) {
+      if (!relayUrl || seen.has(relayUrl)) {
+        continue
+      }
+
+      seen.add(relayUrl)
+      merged.push(relayUrl)
+    }
+  }
+
+  return merged
+}
+
+export function mergeBoundedRelayUrlSets(
+  limit: number,
+  ...relayGroups: Array<readonly string[] | undefined>
+): string[] {
+  if (limit <= 0) {
+    return []
+  }
+
+  return mergeRelayUrlSets(...relayGroups).slice(0, limit)
+}
+
 export function createIdleRelayHealthSnapshotMap(
   relayUrls: readonly string[],
   now: number,

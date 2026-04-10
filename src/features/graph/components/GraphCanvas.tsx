@@ -46,6 +46,8 @@ import {
   type ImageResidencySnapshot,
 } from '@/features/graph/render'
 import type {
+  ImageFrameComputationMode,
+  ImageFrameSkipReason,
   ImageRendererDeliverySnapshot,
   ImageSourceHandle,
 } from '@/features/graph/render/imageRuntime'
@@ -153,6 +155,7 @@ const COALESCED_FRAME_DELAY_MS = 16
 const DIAGNOSTICS_COMMIT_DELAY_MS = 250
 const RESIZE_SETTLE_DELAY_MS = 80
 const VIEWPORT_SETTLE_DELAY_MS = 400
+const BOOTSTRAP_IMAGE_QUALITY_MODE = 'performance'
 
 interface HoverGraphState {
   nodePubkey: string | null
@@ -196,6 +199,35 @@ const getRelationshipToggleState = (activeLayer: AppStore['activeLayer']) => ({
 const equalStringLists = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&
   left.every((value, index) => value === right[index])
+
+const hasRenderableFrameSize = (size: { width: number; height: number }) =>
+  size.width > 0 && size.height > 0
+
+const applyImageFrameDiagnostics = ({
+  snapshot,
+  frameComputationMode,
+  frameSkipReason,
+  primarySummary,
+  secondarySummary,
+}: {
+  snapshot: ImageResidencySnapshot
+  frameComputationMode: ImageFrameComputationMode
+  frameSkipReason: ImageFrameSkipReason
+  primarySummary?: string
+  secondarySummary?: string | null
+}): ImageResidencySnapshot => ({
+  ...snapshot,
+  diagnostics: {
+    ...snapshot.diagnostics,
+    frameComputationMode,
+    frameSkipReason,
+    primarySummary: primarySummary ?? snapshot.diagnostics.primarySummary,
+    secondarySummary:
+      secondarySummary !== undefined
+        ? secondarySummary
+        : snapshot.diagnostics.secondarySummary,
+  },
+})
 
 const createSortedCollectionSignature = (values?: ReadonlySet<string>) =>
   values ? Array.from(values).sort().join(',') : ''
@@ -684,6 +716,7 @@ export function GraphCanvas({
     viewState: GraphViewState
   } | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
+  const sizeRef = useRef({ width: 0, height: 0 })
   const [heavyWorkSize, setHeavyWorkSize] = useState({ width: 0, height: 0 })
   const [heavyWorkViewState, setHeavyWorkViewState] =
     useState<GraphViewState | null>(null)
@@ -745,6 +778,8 @@ export function GraphCanvas({
   const lastViewportInteractionAtRef = useRef<number | null>(null)
   const viewportActiveRef = useRef(false)
   const pendingSettledViewStateRef = useRef<GraphViewState | null>(null)
+  const imageBootstrapPendingRef = useRef(false)
+  const lastImageBootstrapSignatureRef = useRef<string | null>(null)
   const lastBuildJobKeyRef = useRef<string | null>(null)
   const lastQueuedBuildJobKeyRef = useRef<string | null>(null)
   const viewportVelocityRef = useRef(0)
@@ -782,10 +817,13 @@ export function GraphCanvas({
         return
       }
 
+      const nextDelayMs = imageBootstrapPendingRef.current
+        ? 0
+        : COALESCED_FRAME_DELAY_MS
       imageRefreshTimerRef.current = window.setTimeout(() => {
         imageRefreshTimerRef.current = null
         refreshImageFrameRef.current()
-      }, COALESCED_FRAME_DELAY_MS)
+      }, nextDelayMs)
     })
 
     setImageRuntime(nextImageRuntime)
@@ -863,6 +901,7 @@ export function GraphCanvas({
       if (nextViewState) {
         pendingSettledViewStateRef.current = nextViewState
         setHeavyWorkViewState(nextViewState)
+        imageBootstrapPendingRef.current = false
       }
       scheduleImageFrameRefresh()
     },
@@ -883,35 +922,30 @@ export function GraphCanvas({
 
       const nextWidth = Math.max(0, Math.floor(entry.contentRect.width))
       const nextHeight = Math.max(0, Math.floor(entry.contentRect.height))
+      const previousSize = sizeRef.current
+      if (previousSize.width === nextWidth && previousSize.height === nextHeight) {
+        return
+      }
 
-      setSize((previous) => {
-        if (previous.width === nextWidth && previous.height === nextHeight) {
-          return previous
-        }
+      if (resizeSettleTimerRef.current !== null) {
+        window.clearTimeout(resizeSettleTimerRef.current)
+      }
+      resizeSettleTimerRef.current = window.setTimeout(() => {
+        resizeSettleTimerRef.current = null
+        setHeavyWorkSize({ width: nextWidth, height: nextHeight })
+        markViewportSettled(readNowMs(), pendingSettledViewStateRef.current)
+      }, RESIZE_SETTLE_DELAY_MS)
 
-        viewportActiveRef.current = true
-        appStore.getState().markViewportInteraction(readNowMs())
-        lastViewportInteractionAtRef.current = readNowMs()
-        viewportQuietForMsRef.current = 0
+      if (previousSize.width === 0 && previousSize.height === 0) {
+        setHeavyWorkSize({ width: nextWidth, height: nextHeight })
+      }
 
-        if (resizeSettleTimerRef.current !== null) {
-          window.clearTimeout(resizeSettleTimerRef.current)
-        }
-        resizeSettleTimerRef.current = window.setTimeout(() => {
-          resizeSettleTimerRef.current = null
-          setHeavyWorkSize({ width: nextWidth, height: nextHeight })
-          markViewportSettled(readNowMs(), pendingSettledViewStateRef.current)
-        }, RESIZE_SETTLE_DELAY_MS)
-
-        if (previous.width === 0 && previous.height === 0) {
-          setHeavyWorkSize({ width: nextWidth, height: nextHeight })
-        }
-
-        return {
-          width: nextWidth,
-          height: nextHeight,
-        }
-      })
+      const nextSize = {
+        width: nextWidth,
+        height: nextHeight,
+      }
+      sizeRef.current = nextSize
+      setSize(nextSize)
     })
 
     resizeObserver.observe(element)
@@ -1010,6 +1044,8 @@ export function GraphCanvas({
         window.clearTimeout(viewportSettleTimerRef.current)
         viewportSettleTimerRef.current = null
       }
+      imageBootstrapPendingRef.current = false
+      lastImageBootstrapSignatureRef.current = null
     }
   }, [])
 
@@ -1095,8 +1131,11 @@ export function GraphCanvas({
         )
         previousLayoutKeyRef.current = nextModel.layoutKey
 
+        // setModel fuera de startTransition: React 19 difiere las transiciones
+        // hasta que el usuario interactúa, lo que dejaba model.nodes vacío y
+        // bloqueaba prepareFrame (mismos motivos que setImageFrame — ver abajo).
+        setModel(nextModel)
         startTransition(() => {
-          setModel(nextModel)
           setModelPhase('ready')
           setModelErrorMessage(null)
         })
@@ -1122,15 +1161,13 @@ export function GraphCanvas({
       setModelErrorMessage(null)
 
       if (!hasRenderableModel) {
-        startTransition(() => {
-          setModel((current) =>
-            current.nodes.length === 0 &&
-            (current.activeLayer !== input.activeLayer ||
-              current.renderConfig !== input.renderConfig)
-              ? createEmptyGraphRenderModel(input.activeLayer, input.renderConfig)
-              : current,
-          )
-        })
+        setModel((current) =>
+          current.nodes.length === 0 &&
+          (current.activeLayer !== input.activeLayer ||
+            current.renderConfig !== input.renderConfig)
+            ? createEmptyGraphRenderModel(input.activeLayer, input.renderConfig)
+            : current,
+        )
       }
 
       const jobKey = createBuildRenderModelJobKey({
@@ -1266,6 +1303,33 @@ export function GraphCanvas({
     return fittedViewState
   }, [fitSignature, fittedViewState, interactionViewState])
 
+  const imageBootstrapSignature = useMemo(() => {
+    if (
+      !resolvedViewState ||
+      size.width <= 0 ||
+      size.height <= 0 ||
+      model.nodes.length === 0
+    ) {
+      return null
+    }
+
+    return [
+      fitSignature,
+      rootNodePubkey ?? 'none',
+      model.topologySignature,
+      size.width,
+      size.height,
+    ].join('|')
+  }, [
+    fitSignature,
+    model.nodes.length,
+    model.topologySignature,
+    resolvedViewState,
+    rootNodePubkey,
+    size.height,
+    size.width,
+  ])
+
   const viewState = useMemo(() => {
     if (equalGraphViewState(stableViewStateRef.current, resolvedViewState)) {
       return stableViewStateRef.current
@@ -1276,19 +1340,58 @@ export function GraphCanvas({
   }, [resolvedViewState])
 
   useEffect(() => {
+    if (!imageBootstrapSignature) {
+      lastImageBootstrapSignatureRef.current = null
+      imageBootstrapPendingRef.current = false
+      return
+    }
+
+    if (lastImageBootstrapSignatureRef.current === imageBootstrapSignature) {
+      return
+    }
+
+    lastImageBootstrapSignatureRef.current = imageBootstrapSignature
+    imageBootstrapPendingRef.current = true
+
+    if (resolvedViewState) {
+      pendingSettledViewStateRef.current = resolvedViewState
+    }
+
+    if (size.width > 0 && size.height > 0) {
+      scheduleImageFrameRefresh(0)
+    }
+  }, [
+    imageBootstrapSignature,
+    resolvedViewState,
+    scheduleImageFrameRefresh,
+    size.height,
+    size.width,
+  ])
+
+  useEffect(() => {
     if (!resolvedViewState) {
       pendingSettledViewStateRef.current = null
+      imageBootstrapPendingRef.current = false
       setHeavyWorkViewState(null)
       return
     }
 
     pendingSettledViewStateRef.current = resolvedViewState
 
-    if (!viewportActiveRef.current) {
-      setHeavyWorkViewState((current) =>
-        equalGraphViewState(current, resolvedViewState) ? current : resolvedViewState,
-      )
-    }
+    setHeavyWorkViewState((current) => {
+      if (equalGraphViewState(current, resolvedViewState)) {
+        return current
+      }
+      // Durante interacción activa del viewport, preservamos el último estado
+      // settled para no degradar la calidad de imagen mientras el usuario mueve.
+      // Excepción: si todavía no hay ningún estado (carga inicial), lo aplicamos
+      // de inmediato para que el primer prepareFrame arranque las descargas sin
+      // esperar el settle de 400ms.
+      if (viewportActiveRef.current && current !== null) {
+        return current
+      }
+      return resolvedViewState
+    })
   }, [resolvedViewState])
 
   useEffect(() => {
@@ -1421,49 +1524,102 @@ export function GraphCanvas({
 
   refreshImageFrameRef.current = () => {
     const runtimeInstance = imageRuntimeRef.current
-    if (
-      !runtimeInstance ||
-      !heavyWorkViewState ||
-      heavyWorkSize.width === 0 ||
-      heavyWorkSize.height === 0
-    ) {
-      startTransition(() => {
-        setImageFrame((current) =>
-          equalImageRenderPayload(current, EMPTY_IMAGE_FRAME)
-            ? current
-            : EMPTY_IMAGE_FRAME,
-        )
+    const hasSettledFrame =
+      heavyWorkViewState !== null && hasRenderableFrameSize(heavyWorkSize)
+    const hasBootstrapFrame =
+      resolvedViewState !== null &&
+      hasRenderableFrameSize(size) &&
+      model.nodes.length > 0
+    const shouldUseBootstrapFrame =
+      imageBootstrapPendingRef.current &&
+      hasBootstrapFrame &&
+      (
+        !hasSettledFrame ||
+        heavyWorkSize.width !== size.width ||
+        heavyWorkSize.height !== size.height ||
+        !equalGraphViewState(heavyWorkViewState, resolvedViewState)
+      )
+
+    if (!runtimeInstance || (!hasSettledFrame && !shouldUseBootstrapFrame)) {
+      const frameSkipReason: ImageFrameSkipReason =
+        !runtimeInstance
+          ? 'no-runtime'
+          : !hasRenderableFrameSize(size)
+            ? 'no-size'
+            : resolvedViewState === null || model.nodes.length === 0
+              ? 'no-viewstate'
+              : 'waiting-settle'
+
+      const nextImageDiagnostics = applyImageFrameDiagnostics({
+        snapshot: createEmptyImageResidencySnapshot(),
+        frameComputationMode: 'idle',
+        frameSkipReason,
+        primarySummary:
+          frameSkipReason === 'waiting-settle'
+            ? 'Esperando viewport settled para refrescar avatars.'
+            : frameSkipReason === 'no-size'
+              ? 'El viewport todavia no tiene tamaño util.'
+              : frameSkipReason === 'no-viewstate'
+                ? 'Todavia no hay un viewState listo para calcular avatars.'
+                : 'El runtime de imagenes todavia no esta listo.',
       })
-      imageDiagnosticsSnapshotRef.current = EMPTY_IMAGE_DIAGNOSTICS
+
+      setImageFrame((current) =>
+        equalImageRenderPayload(current, EMPTY_IMAGE_FRAME)
+          ? current
+          : EMPTY_IMAGE_FRAME,
+      )
+      imageDiagnosticsSnapshotRef.current = nextImageDiagnostics
       scheduleImageDiagnosticsCommit()
       return
     }
 
+    const frameComputationMode: ImageFrameComputationMode =
+      shouldUseBootstrapFrame ? 'bootstrap' : 'settled'
     const nextImageFrame = runtimeInstance.prepareFrame({
-      width: heavyWorkSize.width,
-      height: heavyWorkSize.height,
-      viewState: heavyWorkViewState,
-      velocityScore: viewportVelocityRef.current,
-      viewportQuietForMs: viewportQuietForMsRef.current,
-      isViewportActive: viewportActiveRef.current,
+      width: shouldUseBootstrapFrame ? size.width : heavyWorkSize.width,
+      height: shouldUseBootstrapFrame ? size.height : heavyWorkSize.height,
+      viewState: shouldUseBootstrapFrame ? resolvedViewState! : heavyWorkViewState!,
+      velocityScore: shouldUseBootstrapFrame ? 0 : viewportVelocityRef.current,
+      viewportQuietForMs: shouldUseBootstrapFrame
+        ? QUIET_VIEWPORT_READY_MS
+        : viewportQuietForMsRef.current,
+      isViewportActive: shouldUseBootstrapFrame ? false : viewportActiveRef.current,
       nodes: model.nodes,
       nodeScreenRadii: stableNodeScreenRadii,
       selectedNodePubkey,
       hoveredNodePubkey,
-      mode: renderConfig.imageQualityMode,
+      mode: shouldUseBootstrapFrame
+        ? BOOTSTRAP_IMAGE_QUALITY_MODE
+        : renderConfig.imageQualityMode,
       avatarHdZoomThreshold: renderConfig.avatarHdZoomThreshold,
       avatarFullHdZoomThreshold: renderConfig.avatarFullHdZoomThreshold,
     })
-    const nextImageDiagnostics = runtimeInstance.debugSnapshot()
+    const nextImageDiagnostics = applyImageFrameDiagnostics({
+      snapshot: runtimeInstance.debugSnapshot(),
+      frameComputationMode,
+      frameSkipReason: shouldUseBootstrapFrame ? 'bootstrap-fallback' : 'none',
+      secondarySummary:
+        shouldUseBootstrapFrame
+          ? 'Bootstrap inicial usando viewport vivo para poblar avatars base visibles.'
+          : undefined,
+    })
     imageDiagnosticsSnapshotRef.current = nextImageDiagnostics
 
-    startTransition(() => {
-      setImageFrame((current) =>
-        equalImageRenderPayload(current, nextImageFrame)
-          ? current
-          : nextImageFrame,
-      )
-    })
+    if (!shouldUseBootstrapFrame) {
+      imageBootstrapPendingRef.current = false
+    }
+
+    // imageFrame es datos críticos de renderizado: sacar del startTransition para
+    // que React lo aplique de forma síncrona en el próximo commit. Dentro de
+    // startTransition React 19 lo marca como interruptible y puede diferirlo
+    // indefinidamente hasta que el usuario haga una interacción (el zoom), que
+    // era exactamente el síntoma "las imágenes no cargan hasta hacer zoom".
+    setImageFrame((current) =>
+      equalImageRenderPayload(current, nextImageFrame)
+        ? current
+        : nextImageFrame,
+    )
     scheduleImageDiagnosticsCommit()
   }
 

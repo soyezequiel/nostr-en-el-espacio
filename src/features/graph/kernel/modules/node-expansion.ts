@@ -9,6 +9,7 @@ import type {
 import type { ExpandNodeResult } from '@/features/graph/kernel/runtime'
 import type { KernelContext } from '@/features/graph/kernel/modules/context'
 import {
+  MAX_SESSION_RELAYS,
   NODE_EXPAND_CONNECT_TIMEOUT_MS,
   NODE_EXPAND_INBOUND_QUERY_LIMIT,
   NODE_EXPAND_PAGE_TIMEOUT_MS,
@@ -19,6 +20,7 @@ import {
   collectInboundFollowerEvidence,
   collectRelayEvents,
   collectTargetedReciprocalFollowerEvidence,
+  mergeBoundedRelayUrlSets,
   mergeInboundFollowerEvidence,
   selectLatestReplaceableEvent,
   selectLatestReplaceableEventsByPubkey,
@@ -38,6 +40,7 @@ import {
 } from '@/features/graph/kernel/modules/text-helpers'
 
 const NODE_EXPANSION_TOTAL_STEPS = 4
+const MAX_PROFILE_HYDRATION_RELAY_URLS = MAX_SESSION_RELAYS
 
 export function createNodeExpansionModule(
   ctx: KernelContext,
@@ -211,6 +214,7 @@ export function createNodeExpansionModule(
           [],
           {
             relayUrls: state.relayUrls,
+            relayHints: cachedContactList.relayHints,
             authoredHasPartialSignals: true,
             inboundHasPartialSignals: false,
             authoredDiagnostics: [],
@@ -264,19 +268,28 @@ export function createNodeExpansionModule(
         pubkey,
       )
       const latestContactListEvent = selectLatestReplaceableEvent(contactListResult.events)
+      let reciprocalEvidencePartial = false
       const augmentReciprocalEvidence = async (followPubkeys: readonly string[]) => {
-        const targetedReciprocalFollowerEvidence =
-          await collectTargetedReciprocalFollowerEvidence({
-            adapter,
-            eventsWorker: ctx.eventsWorker,
-            followPubkeys,
-            targetPubkey: pubkey,
-          })
+        try {
+          const targetedReciprocalFollowerEvidence =
+            await collectTargetedReciprocalFollowerEvidence({
+              adapter,
+              eventsWorker: ctx.eventsWorker,
+              followPubkeys,
+              targetPubkey: pubkey,
+            })
 
-        inboundFollowerEvidence = mergeInboundFollowerEvidence(
-          inboundFollowerEvidence,
-          targetedReciprocalFollowerEvidence,
-        )
+          inboundFollowerEvidence = mergeInboundFollowerEvidence(
+            inboundFollowerEvidence,
+            targetedReciprocalFollowerEvidence,
+          )
+        } catch (error) {
+          reciprocalEvidencePartial = true
+          console.warn(
+            'Targeted reciprocal follower evidence failed during expansion:',
+            error,
+          )
+        }
       }
 
       if (!latestContactListEvent) {
@@ -312,12 +325,15 @@ export function createNodeExpansionModule(
             inboundFollowerEvidence.followerPubkeys,
             {
               relayUrls,
-              authoredHasPartialSignals: true,
-              inboundHasPartialSignals:
-                inboundFollowerEvidence.partial || inboundFollowerResult.error !== null,
-              authoredDiagnostics: [],
-              authoredLoadedFromCache: true,
-              previewMessage:
+            relayHints: cachedContactList.relayHints,
+            authoredHasPartialSignals: true,
+            inboundHasPartialSignals:
+              reciprocalEvidencePartial ||
+              inboundFollowerEvidence.partial ||
+              inboundFollowerResult.error !== null,
+            authoredDiagnostics: [],
+            authoredLoadedFromCache: true,
+            previewMessage:
                 cachedContactList.follows.length > 0
                   ? cachePreviewMessage
                   : `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
@@ -391,6 +407,7 @@ export function createNodeExpansionModule(
           inboundFollowerEvidence.followerPubkeys,
           {
             relayUrls,
+            relayHints: cachedContactListBeforePersist.relayHints,
             authoredHasPartialSignals: true,
             inboundHasPartialSignals:
               inboundFollowerEvidence.partial || inboundFollowerResult.error !== null,
@@ -415,9 +432,12 @@ export function createNodeExpansionModule(
         inboundFollowerEvidence.followerPubkeys,
         {
           relayUrls,
+          relayHints: parsedContactList.relayHints,
           authoredHasPartialSignals: parsedContactList.diagnostics.length > 0,
           inboundHasPartialSignals:
-            inboundFollowerEvidence.partial || inboundFollowerResult.error !== null,
+            reciprocalEvidencePartial ||
+            inboundFollowerEvidence.partial ||
+            inboundFollowerResult.error !== null,
           authoredDiagnostics: parsedContactList.diagnostics,
         },
       )
@@ -442,6 +462,7 @@ export function createNodeExpansionModule(
     inboundFollowerPubkeys: string[],
     options: {
       relayUrls: string[]
+      relayHints?: string[]
       authoredHasPartialSignals: boolean
       inboundHasPartialSignals: boolean
       authoredDiagnostics?: readonly { code: string }[]
@@ -507,9 +528,14 @@ export function createNodeExpansionModule(
     collaborators.analysis.schedule()
 
     const loadSequence = collaborators.rootLoader.getLoadSequence()
+    const profileHydrationRelayUrls = mergeBoundedRelayUrlSets(
+      MAX_PROFILE_HYDRATION_RELAY_URLS,
+      options.relayUrls,
+      options.relayHints,
+    )
     void collaborators.profileHydration.hydrateNodeProfiles(
       [pubkey, ...outboundNodeResult.acceptedPubkeys, ...inboundNodeResult.acceptedPubkeys],
-      options.relayUrls,
+      profileHydrationRelayUrls,
       () => collaborators.rootLoader.isStaleLoad(loadSequence),
       {
         persistProfileEvent: collaborators.persistence.persistProfileEvent,

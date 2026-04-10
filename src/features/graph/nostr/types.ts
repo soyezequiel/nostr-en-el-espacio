@@ -104,6 +104,8 @@ export interface RelayConnection {
     handlers: RelaySubscribeHandlers,
   ) => RelaySubscriptionHandle
   onNotice: (listener: (message: string) => void) => () => void
+  onClose: (listener: () => void) => () => void
+  isOpen: () => boolean
   close: () => void
 }
 

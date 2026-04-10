@@ -26,13 +26,6 @@ const DEFAULT_STRAGGLER_GRACE_MS = 250
 const DEFAULT_MAX_AUTHORS_PER_FILTER = 50
 const INTERACTIVE_FLUSH_DELAY_MS = 32
 const BACKGROUND_FLUSH_DELAY_MS = 32
-const RELAY_SESSION_BACKOFF_BASE_MS = 5_000
-const RELAY_SESSION_BACKOFF_MAX_MS = 60_000
-
-const relayRetryBackoffByUrl = new Map<
-  string,
-  { nextAllowedAtMs: number; failures: number }
->()
 
 type TerminalKind = 'eose' | 'timeout' | 'closed' | 'cancelled'
 
@@ -50,6 +43,7 @@ interface ConnectionEntry {
   connectionPromise?: Promise<RelayConnection>
   connection?: RelayConnection
   detachNotice?: () => void
+  detachClose?: () => void
 }
 
 export class RelayPoolAdapter {
@@ -256,12 +250,8 @@ export class RelayPoolAdapter {
         this.clock.clearTimeout(attempt.graceTimeoutHandle)
       }
 
-      attempt.finished = true
-      this.decrementActiveSubscriptions(attempt.url)
-      this.noteRelayOutcome(
-        attempt.url,
-        terminalKind === 'timeout' || terminalKind === 'closed',
-      )
+        attempt.finished = true
+        this.decrementActiveSubscriptions(attempt.url)
 
       if (cancelled) {
         finishRelay(attempt.url)
@@ -317,6 +307,12 @@ export class RelayPoolAdapter {
         }))
       }
 
+      if (
+        (this.relayHealth.get(attempt.url)?.activeSubscriptions ?? 0) === 0
+      ) {
+        this.evictConnection(attempt.url)
+      }
+
       finishRelay(attempt.url)
     }
 
@@ -337,12 +333,6 @@ export class RelayPoolAdapter {
       let connection: RelayConnection
 
       try {
-        await this.waitForRelayBackoff(url)
-        if (cancelled) {
-          finishRelay(url)
-          return
-        }
-
         connection = await this.withTimeout(
           this.getOrCreateConnection(url),
           this.connectTimeoutMs,
@@ -373,12 +363,11 @@ export class RelayPoolAdapter {
           attempt: attemptNumber,
           consecutiveFailures: current.consecutiveFailures + 1,
           lastErrorCode:
-            relayError instanceof Error && 'code' in relayError
-              ? (relayError.code as RelayHealthSnapshot['lastErrorCode'])
-              : 'RELAY_CONNECT_FAILED',
-          lastCloseReason: relayError.message,
-        }))
-        this.noteRelayOutcome(url, true)
+              relayError instanceof Error && 'code' in relayError
+                ? (relayError.code as RelayHealthSnapshot['lastErrorCode'])
+                : 'RELAY_CONNECT_FAILED',
+            lastCloseReason: relayError.message,
+          }))
 
         if (attemptNumber <= this.retryCount && !cancelled) {
           this.evictConnection(url)
@@ -410,88 +399,132 @@ export class RelayPoolAdapter {
       }
 
       activeAttempt.connection = connection
-      this.incrementActiveSubscriptions(url, attemptNumber)
 
-      activeAttempt.pageTimeoutHandle = this.clock.setTimeout(() => {
-        settleRelay(activeAttempt, 'timeout')
-        activeAttempt.subscription?.close('timeout')
-      }, this.pageTimeoutMs)
-
-      activeAttempt.subscription = connection.subscribe(filters, {
-        onEvent: async (event) => {
-          if (cancelled || activeAttempt.finished) {
-            return
-          }
-
-          const relayEventKey = `${url}:${event.id}`
-
-          if (seenRelayEvents.has(relayEventKey)) {
-            stats.duplicateRelayEvents += 1
-            return
-          }
-
-          addSeenRelayEvent(relayEventKey)
-
-          if (verificationMode === 'verify-worker') {
-            const isValid = await isVerifiedEventAsync(event)
-
-            // After await, we must re-check if the subscription was closed
+      try {
+        activeAttempt.subscription = connection.subscribe(filters, {
+          onEvent: async (event) => {
             if (cancelled || activeAttempt.finished) {
               return
             }
 
-            if (!isValid) {
-              stats.rejectedEvents += 1
-              this.updateRelayHealth(url, (current) => ({
-                ...current,
-                lastErrorCode: 'RELAY_EVENT_INVALID',
-              }))
+            const relayEventKey = `${url}:${event.id}`
+
+            if (seenRelayEvents.has(relayEventKey)) {
+              stats.duplicateRelayEvents += 1
               return
             }
-          }
 
-          stats.acceptedEvents += 1
-          this.updateRelayHealth(url, (current) => ({
-            ...current,
-            status: 'healthy',
-            consecutiveFailures: 0,
-            lastErrorCode: undefined,
-            lastEventMs: this.clock.now(),
+            addSeenRelayEvent(relayEventKey)
+
+            if (verificationMode === 'verify-worker') {
+              const isValid = await isVerifiedEventAsync(event)
+
+              // After await, we must re-check if the subscription was closed
+              if (cancelled || activeAttempt.finished) {
+                return
+              }
+
+              if (!isValid) {
+                stats.rejectedEvents += 1
+                this.updateRelayHealth(url, (current) => ({
+                  ...current,
+                  lastErrorCode: 'RELAY_EVENT_INVALID',
+                }))
+                return
+              }
+            }
+
+            stats.acceptedEvents += 1
+            this.updateRelayHealth(url, (current) => ({
+              ...current,
+              status: 'healthy',
+              consecutiveFailures: 0,
+              lastErrorCode: undefined,
+              lastEventMs: this.clock.now(),
+            }))
+            pendingEvents.push({
+              event,
+              relayUrl: url,
+              receivedAtMs: this.clock.now(),
+              attempt: attemptNumber,
+            })
+            scheduleFlush()
+          },
+          onEose: () => {
+            if (cancelled || activeAttempt.finished) {
+              return
+            }
+
+            this.updateRelayHealth(url, (current) => ({
+              ...current,
+              status: 'healthy',
+              lastEoseMs: this.clock.now(),
+              consecutiveFailures: 0,
+              lastErrorCode: undefined,
+            }))
+
+            activeAttempt.graceTimeoutHandle = this.clock.setTimeout(() => {
+              settleRelay(activeAttempt, 'eose')
+              activeAttempt.subscription?.close('eose')
+            }, this.stragglerGraceMs)
+          },
+          onClose: (reason) => {
+            if (cancelled || activeAttempt.finished) {
+              return
+            }
+
+            settleRelay(activeAttempt, 'closed', reason)
+          },
+        })
+      } catch (error) {
+        const relayError =
+          error instanceof Error
+            ? error
+            : createRelayAdapterError({
+                code: 'RELAY_SUBSCRIPTION_CLOSED',
+                message: 'Relay subscription failed during startup.',
+                relayUrl: url,
+                retryable: true,
+                details: { attempt: attemptNumber },
+              })
+
+        this.updateRelayHealth(url, (current) => ({
+          ...current,
+          status: attemptNumber <= this.retryCount ? 'degraded' : 'offline',
+          attempt: attemptNumber,
+            consecutiveFailures: current.consecutiveFailures + 1,
+            lastErrorCode: 'RELAY_SUBSCRIPTION_CLOSED',
+            lastCloseReason: relayError.message,
           }))
-          pendingEvents.push({
-            event,
-            relayUrl: url,
-            receivedAtMs: this.clock.now(),
-            attempt: attemptNumber,
-          })
-          scheduleFlush()
-        },
-        onEose: () => {
-          if (cancelled || activeAttempt.finished) {
-            return
-          }
 
-          this.updateRelayHealth(url, (current) => ({
-            ...current,
-            status: 'healthy',
-            lastEoseMs: this.clock.now(),
-            consecutiveFailures: 0,
-            lastErrorCode: undefined,
-          }))
+        if (attemptNumber <= this.retryCount && !cancelled) {
+          this.evictConnection(url)
+          void startRelay(url, attemptNumber + 1)
+          return
+        }
 
-          activeAttempt.graceTimeoutHandle = this.clock.setTimeout(() => {
-            settleRelay(activeAttempt, 'eose')
-            activeAttempt.subscription?.close('eose')
-          }, this.stragglerGraceMs)
-        },
-        onClose: (reason) => {
-          if (cancelled || activeAttempt.finished) {
-            return
-          }
+        this.evictConnection(url)
 
-          settleRelay(activeAttempt, 'closed', reason)
-        },
-      })
+        const shouldEmitError =
+          !completed &&
+          !cancelled &&
+          stats.acceptedEvents === 0 &&
+          pendingRelays === 1
+
+        if (shouldEmitError) {
+          completed = true
+          observer.error?.(relayError)
+        }
+
+        finishRelay(url)
+        return
+      }
+
+      this.incrementActiveSubscriptions(url, attemptNumber)
+      activeAttempt.pageTimeoutHandle = this.clock.setTimeout(() => {
+        settleRelay(activeAttempt, 'timeout')
+        activeAttempt.subscription?.close('timeout')
+      }, this.pageTimeoutMs)
     }
 
     if (this.relayUrls.length === 0) {
@@ -558,6 +591,9 @@ export class RelayPoolAdapter {
           lastNotice: message,
         }))
       })
+      connectionEntry.detachClose = connection.onClose(() => {
+        this.dropConnection(url, connectionEntry)
+      })
       return connection
     })
 
@@ -574,49 +610,20 @@ export class RelayPoolAdapter {
       return
     }
 
-    existing.detachNotice?.()
+    this.dropConnection(url, existing)
     existing.connection?.close()
+  }
+
+  private dropConnection(url: string, expected?: ConnectionEntry): void {
+    const existing = this.connections.get(url)
+
+    if (!existing || (expected !== undefined && existing !== expected)) {
+      return
+    }
+
+    existing.detachNotice?.()
+    existing.detachClose?.()
     this.connections.delete(url)
-  }
-
-  private noteRelayOutcome(url: string, failed: boolean): void {
-    if (!failed) {
-      relayRetryBackoffByUrl.delete(url)
-      return
-    }
-
-    const currentTime = this.clock.now()
-    const previous = relayRetryBackoffByUrl.get(url)
-    const failures = Math.min((previous?.failures ?? 0) + 1, 6)
-    const delayMs = Math.min(
-      RELAY_SESSION_BACKOFF_MAX_MS,
-      RELAY_SESSION_BACKOFF_BASE_MS * 2 ** Math.max(0, failures - 1),
-    )
-
-    relayRetryBackoffByUrl.set(url, {
-      failures,
-      nextAllowedAtMs: currentTime + delayMs,
-    })
-  }
-
-  private async waitForRelayBackoff(url: string): Promise<void> {
-    const backoff = relayRetryBackoffByUrl.get(url)
-    if (!backoff) {
-      return
-    }
-
-    const delayMs = backoff.nextAllowedAtMs - this.clock.now()
-    if (delayMs <= 0) {
-      relayRetryBackoffByUrl.delete(url)
-      return
-    }
-
-    await new Promise<void>((resolve) => {
-      const handle = this.clock.setTimeout(() => {
-        this.clock.clearTimeout(handle)
-        resolve()
-      }, delayMs)
-    })
   }
 
   private withTimeout<T>(

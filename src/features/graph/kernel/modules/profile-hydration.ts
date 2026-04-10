@@ -15,26 +15,14 @@ import {
 } from '@/features/graph/kernel/modules/helpers'
 
 export function createProfileHydrationModule(ctx: KernelContext) {
-  const wait = (delayMs: number) =>
-    new Promise<void>((resolve) => {
-      setTimeout(resolve, delayMs)
-    })
-
-  const waitForInteractivePauseToSettle = async (isStale: () => boolean) => {
-    while (!isStale()) {
-      const {
-        interactionState: { isViewportActive, lastViewportInteractionAt },
-      } = ctx.store.getState()
-
-      if (
-        !isViewportActive &&
-        (lastViewportInteractionAt === null ||
-          Date.now() - lastViewportInteractionAt >= 50)
-      ) {
-        return
+  const markBatchProfilesMissing = (batch: readonly string[]) => {
+    for (const pubkey of batch) {
+      const existingNode = ctx.store.getState().nodes[pubkey]
+      if (!existingNode || existingNode.profileState === 'ready') {
+        continue
       }
 
-      await wait(50)
+      markNodeProfileMissing(pubkey)
     }
   }
 
@@ -72,67 +60,69 @@ export function createProfileHydrationModule(ctx: KernelContext) {
           return
         }
 
-        const cachedProfiles = await Promise.all(
-          batch.map((pubkey) => ctx.repositories.profiles.get(pubkey)),
-        )
+        try {
+          const cachedProfiles = await Promise.all(
+            batch.map((pubkey) => ctx.repositories.profiles.get(pubkey)),
+          )
 
-        if (isStale()) {
-          return
-        }
-
-        for (const cachedProfile of cachedProfiles) {
-          if (!cachedProfile) {
-            continue
+          if (isStale()) {
+            return
           }
 
-          syncNodeProfile(
-            cachedProfile.pubkey,
-            mapProfileRecordToNodeProfile(cachedProfile),
-          )
-        }
+          for (const cachedProfile of cachedProfiles) {
+            if (!cachedProfile) {
+              continue
+            }
 
-        if (isStale()) {
-          return
-        }
-
-        await waitForInteractivePauseToSettle(isStale)
-
-        if (isStale()) {
-          return
-        }
-
-        const profileResult = await collectRelayEvents(adapter, [
-          { authors: batch, kinds: [0] } satisfies Filter,
-        ], {
-          priority: 'background',
-          verificationMode: 'trusted-relay',
-        })
-
-        if (isStale()) {
-          return
-        }
-
-        if (collaborators?.persistProfileEvent) {
-          await runWithConcurrencyLimit(
-            selectLatestReplaceableEventsByPubkey(profileResult.events),
-            NODE_PROFILE_PERSIST_CONCURRENCY,
-            async (envelope) => {
-              await collaborators.persistProfileEvent?.(envelope)
-            },
-          )
-        }
-
-        if (isStale()) {
-          return
-        }
-
-        for (const pubkey of batch) {
-          const existingNode = ctx.store.getState().nodes[pubkey]
-          if (!existingNode || existingNode.profileState === 'ready') {
-            continue
+            syncNodeProfile(
+              cachedProfile.pubkey,
+              mapProfileRecordToNodeProfile(cachedProfile),
+            )
           }
 
-          markNodeProfileMissing(pubkey)
+          if (isStale()) {
+            return
+          }
+
+          const profileResult = await collectRelayEvents(
+            adapter,
+            [{ authors: batch, kinds: [0] } satisfies Filter],
+          )
+
+          if (isStale()) {
+            return
+          }
+
+          if (collaborators?.persistProfileEvent) {
+            const envelopes = selectLatestReplaceableEventsByPubkey(
+              profileResult.events,
+            )
+            await runWithConcurrencyLimit(
+              envelopes,
+              NODE_PROFILE_PERSIST_CONCURRENCY,
+              async (envelope) => {
+                await collaborators.persistProfileEvent?.(envelope)
+              },
+            )
+          }
+
+          if (isStale()) {
+            return
+          }
+
+          if (isStale()) {
+            return
+          }
+
+          markBatchProfilesMissing(batch)
+        } catch {
+          if (isStale()) {
+            return
+          }
+
+          // Background hydration should degrade gracefully instead of leaving
+          // nodes stuck in loading forever.
+          markBatchProfilesMissing(batch)
         }
       }
 
@@ -141,8 +131,6 @@ export function createProfileHydrationModule(ctx: KernelContext) {
         NODE_PROFILE_HYDRATION_BATCH_CONCURRENCY,
         processBatch,
       )
-    } catch {
-      // Background hydration failures are non-fatal
     } finally {
       adapter.close()
     }
@@ -190,7 +178,6 @@ export function createProfileHydrationModule(ctx: KernelContext) {
       },
     ])
   }
-
   return { hydrateNodeProfiles, syncNodeProfile, markNodeProfileMissing }
 }
 

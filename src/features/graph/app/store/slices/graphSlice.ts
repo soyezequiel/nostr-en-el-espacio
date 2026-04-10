@@ -70,7 +70,6 @@ const addNeighbor = (
   const neighbors = adjacency[source] ?? []
 
   if (neighbors.includes(target)) {
-    adjacency[source] = neighbors
     return
   }
 
@@ -172,14 +171,31 @@ export const createGraphSlice: AppStateCreator<GraphSlice> = (set, get) => ({
         ([pubkey]) => !removeSet.has(pubkey),
       ),
     )
+    const nextInboundLinks = state.inboundLinks.filter(
+      (link) => !removeSet.has(link.source) && !removeSet.has(link.target),
+    )
+    const nextInboundAdjacency = Object.fromEntries(
+      Object.entries(state.inboundAdjacency)
+        .filter(([pubkey]) => !removeSet.has(pubkey))
+        .map(([pubkey, followers]) => [
+          pubkey,
+          followers.filter((follower) => !removeSet.has(follower)),
+        ]),
+    )
 
     set({
       nodes: nextNodes,
       links: nextLinks,
       adjacency: nextAdjacency,
+      inboundLinks: nextInboundLinks,
+      inboundAdjacency: nextInboundAdjacency,
       expandedNodePubkeys: nextExpandedNodePubkeys,
       nodeExpansionStates: nextNodeExpansionStates,
       nodeStructurePreviewStates: nextNodeStructurePreviewStates,
+      graphCaps: {
+        ...state.graphCaps,
+        capReached: getNodeCount(nextNodes) >= state.graphCaps.maxNodes,
+      },
     })
   },
   upsertLinks: (incomingLinks) => {

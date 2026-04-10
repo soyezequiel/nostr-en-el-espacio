@@ -93,7 +93,7 @@ export default function Profile() {
   const [following, setFollowing] = useState<string[]>([]);
   const [notes, setNotes] = useState<NDKEvent[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'posts' | 'replies' | 'likes'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'replies'>('posts');
 
   useEffect(() => {
     if (!isConnected || !profile) return;
@@ -303,7 +303,7 @@ export default function Profile() {
         {/* Tabs */}
         <div className="border-b border-lc-border mb-6">
           <div className="flex gap-0">
-            {(['posts', 'replies', 'likes'] as const).map((tab) => (
+            {(['posts', 'replies'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -321,17 +321,27 @@ export default function Profile() {
 
         {/* Notes Feed */}
         <div className="space-y-3 pb-12">
-          {notes.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-12 h-12 mx-auto mb-3 bg-lc-dark rounded-xl flex items-center justify-center">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="1.5">
-                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-                </svg>
-              </div>
-              <p className="text-lc-muted text-sm">No notes yet</p>
-            </div>
-          ) : (
-            notes.map((note) => (
+          {(() => {
+            const filteredNotes = activeTab === 'replies'
+              ? notes.filter((note) => note.tags.some((t) => t[0] === 'e'))
+              : notes.filter((note) => !note.tags.some((t) => t[0] === 'e'));
+
+            if (filteredNotes.length === 0) {
+              return (
+                <div className="text-center py-12">
+                  <div className="w-12 h-12 mx-auto mb-3 bg-lc-dark rounded-xl flex items-center justify-center">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="1.5">
+                      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                    </svg>
+                  </div>
+                  <p className="text-lc-muted text-sm">
+                    {activeTab === 'replies' ? 'No replies yet' : 'No posts yet'}
+                  </p>
+                </div>
+              );
+            }
+
+            return filteredNotes.map((note) => (
               <div
                 key={note.id}
                 className="lc-card p-5"
@@ -373,8 +383,8 @@ export default function Profile() {
                   {note.content}
                 </p>
               </div>
-            ))
-          )}
+            ));
+          })()}
         </div>
       </div>
     </div>

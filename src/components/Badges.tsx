@@ -56,7 +56,7 @@ export default function Badges() {
         const ndk = getNDK();
 
         const awardEvents = await Promise.race([
-          ndk.fetchEvents({ kinds: [8], '#p': [profile.pubkey] }),
+          ndk.fetchEvents({ kinds: [8], '#p': [profile.pubkey], limit: 50 }),
           new Promise<Set<NDKEvent>>((resolve) => setTimeout(() => resolve(new Set()), 10000)),
         ]);
 
@@ -66,31 +66,32 @@ export default function Badges() {
           if (aTag) badgeDefIds.add(aTag[1]);
         });
 
-        const parsedBadges: Badge[] = [];
+        const results = await Promise.allSettled(
+          Array.from(badgeDefIds).map(async (defId) => {
+            const [, pubkey, dTag] = defId.split(':');
+            if (!pubkey || !dTag) return null;
 
-        for (const defId of badgeDefIds) {
-          const [, pubkey, dTag] = defId.split(':');
-          if (!pubkey || !dTag) continue;
-
-          try {
             const defEvents = await Promise.race([
               ndk.fetchEvents({ kinds: [30009], authors: [pubkey], '#d': [dTag], limit: 1 }),
               new Promise<Set<NDKEvent>>((resolve) => setTimeout(() => resolve(new Set()), 5000)),
             ]);
 
             const defEvent = Array.from(defEvents)[0];
-            if (defEvent) {
-              const name = defEvent.tags.find(t => t[0] === 'name')?.[1] || dTag;
-              const description = defEvent.tags.find(t => t[0] === 'description')?.[1] || '';
-              const image = defEvent.tags.find(t => t[0] === 'image')?.[1];
-              const thumb = defEvent.tags.find(t => t[0] === 'thumb')?.[1];
+            if (!defEvent) return null;
 
-              parsedBadges.push({ id: defId, name, description, image, thumb, creator: pubkey });
-            }
-          } catch {
-            // skip
-          }
-        }
+            const name = defEvent.tags.find(t => t[0] === 'name')?.[1] || dTag;
+            const description = defEvent.tags.find(t => t[0] === 'description')?.[1] || '';
+            const image = defEvent.tags.find(t => t[0] === 'image')?.[1];
+            const thumb = defEvent.tags.find(t => t[0] === 'thumb')?.[1];
+
+            return { id: defId, name, description, image, thumb, creator: pubkey } as Badge;
+          }),
+        );
+
+        const parsedBadges = results
+          .filter((r): r is PromiseFulfilledResult<Badge | null> => r.status === 'fulfilled')
+          .map((r) => r.value)
+          .filter((b): b is Badge => b !== null);
 
         if (!cancelled) {
           setBadges(parsedBadges);

@@ -1,6 +1,5 @@
 import type { UiLayer } from '@/features/graph/app/store'
 import type {
-  AppKernel,
   LoadRootResult,
   ExpandNodeResult,
   SearchKeywordResult,
@@ -9,6 +8,7 @@ import type {
   SelectNodeResult,
 } from '@/features/graph/kernel/runtime'
 import { KernelCommandError } from '@/features/graph/kernel/runtime'
+import type { KernelFacade } from '@/features/graph/kernel/facade'
 
 export type ScenarioCommand =
   | { type: 'loadRoot'; pubkey: string }
@@ -87,7 +87,7 @@ export interface ScenarioDefinition {
 }
 
 export async function runScenario(
-  kernel: AppKernel,
+  kernel: KernelFacade,
   scenario: ScenarioDefinition,
   clock: () => number,
 ): Promise<ScenarioReport> {
@@ -168,7 +168,7 @@ export async function runScenario(
 }
 
 async function executeCommand(
-  kernel: AppKernel,
+  kernel: KernelFacade,
   command: ScenarioCommand,
 ): Promise<ScenarioCommandResult> {
   switch (command.type) {

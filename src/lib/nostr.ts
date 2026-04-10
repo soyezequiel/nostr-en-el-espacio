@@ -46,7 +46,7 @@ async function addUserRelays(pubkey: string): Promise<void> {
     );
     const relayEvent = Array.from(relayListEvents)[0];
     if (relayEvent) {
-      const relayTags = relayEvent.tags.filter(t => t[0] === 'r');
+      const relayTags = relayEvent.tags.filter((t) => t[0] === 'r');
       for (const tag of relayTags) {
         const url = tag[1];
         if (url && url.startsWith('wss://')) {
@@ -60,7 +60,7 @@ async function addUserRelays(pubkey: string): Promise<void> {
     }
     userRelaysAdded.add(pubkey);
   } catch {
-    // timeout or error — continue with default relays
+    // timeout or error: continue with default relays
   }
 }
 
@@ -70,6 +70,17 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     promise,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
   ]);
+}
+
+async function fetchUserProfileWithTimeout(
+  user: NDKUser,
+  warningMessage: string
+): Promise<void> {
+  try {
+    await withTimeout(user.fetchProfile(), 8000);
+  } catch {
+    console.warn(warningMessage);
+  }
 }
 
 // Login methods
@@ -89,17 +100,10 @@ export async function loginWithExtension(): Promise<NDKUser | null> {
   try {
     // Explicitly request access and wait for the extension to be ready.
     const user = await signer.blockUntilReady();
-
-    // fetchProfile can hang — add a timeout
-    try {
-      await Promise.race([
-        user.fetchProfile(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-      ]);
-    } catch {
-      // Profile fetch failed or timed out — continue with basic user info
-      console.warn('Profile fetch timed out or failed, continuing with pubkey only');
-    }
+    await fetchUserProfileWithTimeout(
+      user,
+      'Profile fetch timed out or failed, continuing with pubkey only'
+    );
 
     return user;
   } catch (error) {
@@ -112,67 +116,54 @@ export async function loginWithExtension(): Promise<NDKUser | null> {
 
 export async function loginWithNsec(nsec: string): Promise<NDKUser | null> {
   let privateKey: string;
-  
+
   try {
     if (nsec.startsWith('nsec')) {
       const decoded = nip19.decode(nsec);
       if (decoded.type !== 'nsec') throw new Error('Invalid nsec');
       // Convert Uint8Array to hex string
       const bytes = decoded.data as Uint8Array;
-      privateKey = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      privateKey = Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
     } else {
       privateKey = nsec;
     }
   } catch {
     throw new Error('Invalid nsec format');
   }
-  
+
   const ndk = getNDK();
   const signer = new NDKPrivateKeySigner(privateKey);
   ndk.signer = signer;
-  
+
   const user = await signer.user();
-  await user.fetchProfile();
-  
+  await fetchUserProfileWithTimeout(
+    user,
+    'Profile fetch timed out or failed, continuing with pubkey only'
+  );
+
   return user;
 }
 
 export async function loginWithBunker(bunkerUrl: string): Promise<NDKUser | null> {
-  // bunker://pubkey?relay=wss://relay.nsecbunker.com
   const ndk = getNDK();
 
-  // Parse bunker URL
-  const url = new URL(bunkerUrl);
-  const remotePubkey = url.hostname;
-  const relayUrl = url.searchParams.get('relay');
-
-  if (!remotePubkey || !relayUrl) {
-    throw new Error('Invalid bunker URL format');
-  }
-
-  // Dynamic import for bunker signer
   const { NDKNip46Signer } = await import('@nostr-dev-kit/ndk');
 
   const localSigner = NDKPrivateKeySigner.generate();
-  const bunkerSigner = new NDKNip46Signer(ndk, remotePubkey, localSigner);
-
-  await bunkerSigner.blockUntilReady();
+  const bunkerSigner = NDKNip46Signer.bunker(ndk, bunkerUrl, localSigner);
   ndk.signer = bunkerSigner;
 
+  await bunkerSigner.blockUntilReady();
+
   const user = await bunkerSigner.user();
-  try {
-    await Promise.race([
-      user.fetchProfile(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-    ]);
-  } catch {
-    console.warn('Profile fetch timed out or failed');
-  }
+  await fetchUserProfileWithTimeout(user, 'Profile fetch timed out or failed');
 
   return user;
 }
 
-// NostrConnect flow — generates a URI for QR scanning
+// NostrConnect flow: generates a URI for QR scanning
 export interface NostrConnectSession {
   uri: string;
   waitForConnection: () => Promise<NDKUser | null>;
@@ -181,7 +172,7 @@ export interface NostrConnectSession {
 
 export async function createNostrConnectSession(relay?: string): Promise<NostrConnectSession> {
   const ndk = getNDK();
-  // Don't await — NDK connects in the background
+  // Don't await: NDK connects in the background
   ndk.connect();
 
   const { NDKNip46Signer } = await import('@nostr-dev-kit/ndk');
@@ -202,14 +193,7 @@ export async function createNostrConnectSession(relay?: string): Promise<NostrCo
       const user = await signer.blockUntilReady();
       if (cancelled) return null;
       ndk.signer = signer;
-      try {
-        await Promise.race([
-          user.fetchProfile(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-        ]);
-      } catch {
-        console.warn('Profile fetch timed out or failed');
-      }
+      await fetchUserProfileWithTimeout(user, 'Profile fetch timed out or failed');
       return user;
     } catch (err) {
       if (cancelled) return null;
@@ -344,15 +328,15 @@ export function formatTimestamp(timestamp: number): string {
   const date = new Date(timestamp * 1000);
   const now = new Date();
   const diff = now.getTime() - date.getTime();
-  
+
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
-  
+
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m`;
   if (hours < 24) return `${hours}h`;
   if (days < 7) return `${days}d`;
-  
+
   return date.toLocaleDateString();
 }

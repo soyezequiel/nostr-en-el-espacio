@@ -1,7 +1,5 @@
 import type { UiLayer } from '@/features/graph/app/store'
-import type { KeywordExtractInput } from '@/features/graph/workers/events/contracts'
 import type {
-  AppKernel,
   LoadRootResult,
   ExpandNodeResult,
   SearchKeywordResult,
@@ -10,11 +8,12 @@ import type {
   SelectNodeResult,
 } from '@/features/graph/kernel/runtime'
 import { KernelCommandError } from '@/features/graph/kernel/runtime'
+import type { KernelFacade } from '@/features/graph/kernel/facade'
 
 export type ScenarioCommand =
   | { type: 'loadRoot'; pubkey: string }
   | { type: 'expandNode'; pubkey: string }
-  | { type: 'searchKeyword'; keyword: string; extracts: KeywordExtractInput[] }
+  | { type: 'searchKeyword'; keyword: string }
   | { type: 'toggleLayer'; layer: UiLayer }
   | { type: 'findPath'; source: string; target: string; algorithm?: 'bfs' | 'dijkstra' }
   | { type: 'selectNode'; pubkey: string | null }
@@ -88,7 +87,7 @@ export interface ScenarioDefinition {
 }
 
 export async function runScenario(
-  kernel: AppKernel,
+  kernel: KernelFacade,
   scenario: ScenarioDefinition,
   clock: () => number,
 ): Promise<ScenarioReport> {
@@ -169,7 +168,7 @@ export async function runScenario(
 }
 
 async function executeCommand(
-  kernel: AppKernel,
+  kernel: KernelFacade,
   command: ScenarioCommand,
 ): Promise<ScenarioCommandResult> {
   switch (command.type) {
@@ -182,7 +181,7 @@ async function executeCommand(
       return { type: 'expandNode', result }
     }
     case 'searchKeyword': {
-      const result = await kernel.searchKeyword(command.keyword, command.extracts)
+      const result = await kernel.searchKeyword(command.keyword)
       return { type: 'searchKeyword', result }
     }
     case 'toggleLayer': {

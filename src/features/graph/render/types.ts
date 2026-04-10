@@ -5,6 +5,7 @@ import type {
   DiscoveredGraphAnalysisStatus,
 } from '@/features/graph/analysis/types'
 import type {
+  ConnectionsSourceLayer,
   GraphLink,
   GraphLinkRelation,
   GraphNode,
@@ -38,6 +39,7 @@ export interface GraphRenderNode {
   pictureUrl: string | null
   position: [number, number]
   radius: number
+  keywordHits: number
   isRoot: boolean
   isExpanded: boolean
   isSelected: boolean
@@ -50,6 +52,9 @@ export interface GraphRenderNode {
   bridgeHaloColor?: [number, number, number, number] | null
   analysisCommunityId?: string | null
   nearestNeighborWorldDist?: number
+  isPathNode?: boolean
+  isPathEndpoint?: boolean
+  pathOrder?: number | null
 }
 
 export interface GraphRenderEdge {
@@ -64,6 +69,7 @@ export interface GraphRenderEdge {
   targetRadius: number
   isPriority: boolean
   targetSharedByExpandedCount: number
+  isPathEdge?: boolean
 }
 
 export interface GraphRenderLabel {
@@ -136,14 +142,21 @@ export interface GraphRenderModel {
 }
 
 export interface BuildGraphRenderModelInput {
+  jobKey?: string
   nodes: Record<string, GraphNode>
   links: readonly GraphLink[]
+  inboundLinks: readonly GraphLink[]
   zapEdges: readonly ZapLayerEdge[]
   activeLayer: UiLayer
+  connectionsSourceLayer: ConnectionsSourceLayer
   rootNodePubkey: string | null
   selectedNodePubkey: string | null
   expandedNodePubkeys: ReadonlySet<string>
   comparedNodePubkeys?: ReadonlySet<string>
+  pathfinding?: {
+    status: 'idle' | 'computing' | 'found' | 'not-found' | 'error'
+    path: string[] | null
+  }
   graphAnalysis?: DiscoveredGraphAnalysisState
   renderConfig: RenderConfig
   previousPositions?: ReadonlyMap<string, [number, number]>

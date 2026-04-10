@@ -8,11 +8,15 @@ import type {
   RelayAdapterOptions,
   RelayClock,
   RelayConnection,
+  RelayEventEnvelope,
   RelayEventObservable,
   RelayHealthSnapshot,
   RelayObserver,
+  RelaySubscribeOptions,
   RelaySubscriptionHandle,
+  RelaySubscriptionPriority,
   RelaySubscriptionStats,
+  RelayVerificationMode,
 } from './types'
 
 const DEFAULT_CONNECT_TIMEOUT_MS = 4_000
@@ -20,6 +24,8 @@ const DEFAULT_PAGE_TIMEOUT_MS = 6_000
 const DEFAULT_RETRY_COUNT = 1
 const DEFAULT_STRAGGLER_GRACE_MS = 250
 const DEFAULT_MAX_AUTHORS_PER_FILTER = 50
+const INTERACTIVE_FLUSH_DELAY_MS = 32
+const BACKGROUND_FLUSH_DELAY_MS = 32
 
 type TerminalKind = 'eose' | 'timeout' | 'closed' | 'cancelled'
 
@@ -37,6 +43,7 @@ interface ConnectionEntry {
   connectionPromise?: Promise<RelayConnection>
   connection?: RelayConnection
   detachNotice?: () => void
+  detachClose?: () => void
 }
 
 export class RelayPoolAdapter {
@@ -89,11 +96,15 @@ export class RelayPoolAdapter {
     }
   }
 
-  subscribe(filters: Filter[]): RelayEventObservable {
+  subscribe(
+    filters: Filter[],
+    options: RelaySubscribeOptions = {},
+  ): RelayEventObservable {
     const normalizedFilters = batchFilters(filters, this.maxAuthorsPerFilter)
 
     return {
-      subscribe: (observer) => this.runSubscription(normalizedFilters, observer),
+      subscribe: (observer) =>
+        this.runSubscription(normalizedFilters, observer, options),
     }
   }
 
@@ -126,7 +137,11 @@ export class RelayPoolAdapter {
     }
   }
 
-  private runSubscription(filters: Filter[], observer: RelayObserver): () => void {
+  private runSubscription(
+    filters: Filter[],
+    observer: RelayObserver,
+    options: RelaySubscribeOptions,
+  ): () => void {
     const stats: RelaySubscriptionStats = {
       acceptedEvents: 0,
       duplicateRelayEvents: 0,
@@ -134,6 +149,16 @@ export class RelayPoolAdapter {
     }
     const startedAtMs = this.clock.now()
     const activeAttempts = new Map<string, ActiveRelayAttempt>()
+    const priority: RelaySubscriptionPriority =
+      options.priority ?? 'interactive'
+    const verificationMode: RelayVerificationMode =
+      options.verificationMode ?? 'trusted-relay'
+    const flushDelayMs =
+      priority === 'background'
+        ? BACKGROUND_FLUSH_DELAY_MS
+        : INTERACTIVE_FLUSH_DELAY_MS
+    const pendingEvents: RelayEventEnvelope[] = []
+    let flushHandle: ReturnType<typeof setTimeout> | null = null
 
     // Bounded LRU dedup set. Using Map instead of Set because Map preserves
     // insertion order in V8, giving us O(1) LRU eviction via .keys().next().
@@ -152,11 +177,43 @@ export class RelayPoolAdapter {
     let completed = false
     let pendingRelays = this.relayUrls.length
 
+    const flushPendingEvents = () => {
+      if (flushHandle !== null) {
+        this.clock.clearTimeout(flushHandle)
+        flushHandle = null
+      }
+
+      if (pendingEvents.length === 0 || cancelled || completed) {
+        return
+      }
+
+      const nextBatch = pendingEvents.splice(0, pendingEvents.length)
+      observer.nextBatch?.(nextBatch)
+
+      if (!observer.nextBatch) {
+        for (const envelope of nextBatch) {
+          observer.next?.(envelope)
+        }
+      }
+    }
+
+    const scheduleFlush = () => {
+      if (flushHandle !== null) {
+        return
+      }
+
+      flushHandle = this.clock.setTimeout(() => {
+        flushHandle = null
+        flushPendingEvents()
+      }, flushDelayMs)
+    }
+
     const finalize = () => {
       if (completed || cancelled || pendingRelays > 0) {
         return
       }
 
+      flushPendingEvents()
       completed = true
       observer.complete?.({
         filters,
@@ -193,8 +250,8 @@ export class RelayPoolAdapter {
         this.clock.clearTimeout(attempt.graceTimeoutHandle)
       }
 
-      attempt.finished = true
-      this.decrementActiveSubscriptions(attempt.url)
+        attempt.finished = true
+        this.decrementActiveSubscriptions(attempt.url)
 
       if (cancelled) {
         finishRelay(attempt.url)
@@ -250,6 +307,12 @@ export class RelayPoolAdapter {
         }))
       }
 
+      if (
+        (this.relayHealth.get(attempt.url)?.activeSubscriptions ?? 0) === 0
+      ) {
+        this.evictConnection(attempt.url)
+      }
+
       finishRelay(attempt.url)
     }
 
@@ -300,11 +363,11 @@ export class RelayPoolAdapter {
           attempt: attemptNumber,
           consecutiveFailures: current.consecutiveFailures + 1,
           lastErrorCode:
-            relayError instanceof Error && 'code' in relayError
-              ? (relayError.code as RelayHealthSnapshot['lastErrorCode'])
-              : 'RELAY_CONNECT_FAILED',
-          lastCloseReason: relayError.message,
-        }))
+              relayError instanceof Error && 'code' in relayError
+                ? (relayError.code as RelayHealthSnapshot['lastErrorCode'])
+                : 'RELAY_CONNECT_FAILED',
+            lastCloseReason: relayError.message,
+          }))
 
         if (attemptNumber <= this.retryCount && !cancelled) {
           this.evictConnection(url)
@@ -336,85 +399,132 @@ export class RelayPoolAdapter {
       }
 
       activeAttempt.connection = connection
-      this.incrementActiveSubscriptions(url, attemptNumber)
 
+      try {
+        activeAttempt.subscription = connection.subscribe(filters, {
+          onEvent: async (event) => {
+            if (cancelled || activeAttempt.finished) {
+              return
+            }
+
+            const relayEventKey = `${url}:${event.id}`
+
+            if (seenRelayEvents.has(relayEventKey)) {
+              stats.duplicateRelayEvents += 1
+              return
+            }
+
+            addSeenRelayEvent(relayEventKey)
+
+            if (verificationMode === 'verify-worker') {
+              const isValid = await isVerifiedEventAsync(event)
+
+              // After await, we must re-check if the subscription was closed
+              if (cancelled || activeAttempt.finished) {
+                return
+              }
+
+              if (!isValid) {
+                stats.rejectedEvents += 1
+                this.updateRelayHealth(url, (current) => ({
+                  ...current,
+                  lastErrorCode: 'RELAY_EVENT_INVALID',
+                }))
+                return
+              }
+            }
+
+            stats.acceptedEvents += 1
+            this.updateRelayHealth(url, (current) => ({
+              ...current,
+              status: 'healthy',
+              consecutiveFailures: 0,
+              lastErrorCode: undefined,
+              lastEventMs: this.clock.now(),
+            }))
+            pendingEvents.push({
+              event,
+              relayUrl: url,
+              receivedAtMs: this.clock.now(),
+              attempt: attemptNumber,
+            })
+            scheduleFlush()
+          },
+          onEose: () => {
+            if (cancelled || activeAttempt.finished) {
+              return
+            }
+
+            this.updateRelayHealth(url, (current) => ({
+              ...current,
+              status: 'healthy',
+              lastEoseMs: this.clock.now(),
+              consecutiveFailures: 0,
+              lastErrorCode: undefined,
+            }))
+
+            activeAttempt.graceTimeoutHandle = this.clock.setTimeout(() => {
+              settleRelay(activeAttempt, 'eose')
+              activeAttempt.subscription?.close('eose')
+            }, this.stragglerGraceMs)
+          },
+          onClose: (reason) => {
+            if (cancelled || activeAttempt.finished) {
+              return
+            }
+
+            settleRelay(activeAttempt, 'closed', reason)
+          },
+        })
+      } catch (error) {
+        const relayError =
+          error instanceof Error
+            ? error
+            : createRelayAdapterError({
+                code: 'RELAY_SUBSCRIPTION_CLOSED',
+                message: 'Relay subscription failed during startup.',
+                relayUrl: url,
+                retryable: true,
+                details: { attempt: attemptNumber },
+              })
+
+        this.updateRelayHealth(url, (current) => ({
+          ...current,
+          status: attemptNumber <= this.retryCount ? 'degraded' : 'offline',
+          attempt: attemptNumber,
+            consecutiveFailures: current.consecutiveFailures + 1,
+            lastErrorCode: 'RELAY_SUBSCRIPTION_CLOSED',
+            lastCloseReason: relayError.message,
+          }))
+
+        if (attemptNumber <= this.retryCount && !cancelled) {
+          this.evictConnection(url)
+          void startRelay(url, attemptNumber + 1)
+          return
+        }
+
+        this.evictConnection(url)
+
+        const shouldEmitError =
+          !completed &&
+          !cancelled &&
+          stats.acceptedEvents === 0 &&
+          pendingRelays === 1
+
+        if (shouldEmitError) {
+          completed = true
+          observer.error?.(relayError)
+        }
+
+        finishRelay(url)
+        return
+      }
+
+      this.incrementActiveSubscriptions(url, attemptNumber)
       activeAttempt.pageTimeoutHandle = this.clock.setTimeout(() => {
         settleRelay(activeAttempt, 'timeout')
         activeAttempt.subscription?.close('timeout')
       }, this.pageTimeoutMs)
-
-      activeAttempt.subscription = connection.subscribe(filters, {
-        onEvent: async (event) => {
-          if (cancelled || activeAttempt.finished) {
-            return
-          }
-
-          const relayEventKey = `${url}:${event.id}`
-
-          if (seenRelayEvents.has(relayEventKey)) {
-            stats.duplicateRelayEvents += 1
-            return
-          }
-
-          addSeenRelayEvent(relayEventKey)
-
-          const isValid = await isVerifiedEventAsync(event)
-
-          // After await, we must re-check if the subscription was closed
-          if (cancelled || activeAttempt.finished) {
-            return
-          }
-
-          if (!isValid) {
-            stats.rejectedEvents += 1
-            this.updateRelayHealth(url, (current) => ({
-              ...current,
-              lastErrorCode: 'RELAY_EVENT_INVALID',
-            }))
-            return
-          }
-
-          stats.acceptedEvents += 1
-          this.updateRelayHealth(url, (current) => ({
-            ...current,
-            status: 'healthy',
-            consecutiveFailures: 0,
-            lastErrorCode: undefined,
-            lastEventMs: this.clock.now(),
-          }))
-          observer.next?.({
-            event,
-            relayUrl: url,
-            receivedAtMs: this.clock.now(),
-            attempt: attemptNumber,
-          })
-        },
-        onEose: () => {
-          if (cancelled || activeAttempt.finished) {
-            return
-          }
-
-          this.updateRelayHealth(url, (current) => ({
-            ...current,
-            status: 'healthy',
-            lastEoseMs: this.clock.now(),
-            consecutiveFailures: 0,
-            lastErrorCode: undefined,
-          }))
-
-          activeAttempt.graceTimeoutHandle = this.clock.setTimeout(() => {
-            settleRelay(activeAttempt, 'eose')
-            activeAttempt.subscription?.close('eose')
-          }, this.stragglerGraceMs)
-        },
-        onClose: (reason) => {
-          if (cancelled || activeAttempt.finished) {
-            return
-          }
-
-          settleRelay(activeAttempt, 'closed', reason)
-        },
-      })
     }
 
     if (this.relayUrls.length === 0) {
@@ -438,6 +548,7 @@ export class RelayPoolAdapter {
       }
 
       cancelled = true
+      flushPendingEvents()
 
       for (const attempt of activeAttempts.values()) {
         if (attempt.pageTimeoutHandle) {
@@ -452,6 +563,10 @@ export class RelayPoolAdapter {
       }
 
       activeAttempts.clear()
+      if (flushHandle !== null) {
+        this.clock.clearTimeout(flushHandle)
+        flushHandle = null
+      }
     }
   }
 
@@ -476,6 +591,9 @@ export class RelayPoolAdapter {
           lastNotice: message,
         }))
       })
+      connectionEntry.detachClose = connection.onClose(() => {
+        this.dropConnection(url, connectionEntry)
+      })
       return connection
     })
 
@@ -492,8 +610,19 @@ export class RelayPoolAdapter {
       return
     }
 
-    existing.detachNotice?.()
+    this.dropConnection(url, existing)
     existing.connection?.close()
+  }
+
+  private dropConnection(url: string, expected?: ConnectionEntry): void {
+    const existing = this.connections.get(url)
+
+    if (!existing || (expected !== undefined && existing !== expected)) {
+      return
+    }
+
+    existing.detachNotice?.()
+    existing.detachClose?.()
     this.connections.delete(url)
   }
 

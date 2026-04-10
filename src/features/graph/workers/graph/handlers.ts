@@ -133,6 +133,11 @@ function validateAnalyzeDiscoveredGraphRequest(
   const relayHealth = expectRecord(request.relayHealth, 'payload.relayHealth')
 
   return {
+    jobKind:
+      request.jobKind === 'ANALYZE_DISCOVERED_GRAPH'
+        ? 'ANALYZE_DISCOVERED_GRAPH'
+        : 'ANALYZE_DISCOVERED_GRAPH',
+    jobKey: expectString(request.jobKey, 'payload.jobKey'),
     analysisKey: expectString(request.analysisKey, 'payload.analysisKey'),
     nodes: expectArray(request.nodes, 'payload.nodes').map((node, index) =>
       validateGraphAnalysisNode(node, index),
@@ -236,7 +241,12 @@ function validateGraphNodeSource(
 function validateUiLayer(value: unknown, path: string): UiLayer {
   if (
     value !== 'graph' &&
+    value !== 'connections' &&
+    value !== 'following' &&
+    value !== 'following-non-followers' &&
     value !== 'mutuals' &&
+    value !== 'followers' &&
+    value !== 'nonreciprocal-followers' &&
     value !== 'keywords' &&
     value !== 'zaps' &&
     value !== 'pathfinding'
@@ -581,6 +591,14 @@ function validateBuildRenderModelRequest(
       : expectRecord(request.previousPositions, 'payload.previousPositions')
 
   return {
+    jobKind:
+      request.jobKind === 'BUILD_RENDER_MODEL'
+        ? 'BUILD_RENDER_MODEL'
+        : undefined,
+    jobKey:
+      typeof request.jobKey === 'undefined'
+        ? undefined
+        : expectString(request.jobKey, 'payload.jobKey'),
     nodes: Object.fromEntries(
       Object.entries(nodesRecord).map(([pubkey, node]) => [
         pubkey,
@@ -590,10 +608,28 @@ function validateBuildRenderModelRequest(
     links: expectArray(request.links, 'payload.links').map((link, index) =>
       validateGraphLinkForRender(link, `payload.links[${index}]`),
     ),
+    inboundLinks: expectArray(
+      request.inboundLinks,
+      'payload.inboundLinks',
+    ).map((link, index) =>
+      validateGraphLinkForRender(link, `payload.inboundLinks[${index}]`),
+    ),
     zapEdges: expectArray(request.zapEdges, 'payload.zapEdges').map(
       (edge, index) => validateZapEdge(edge, `payload.zapEdges[${index}]`),
     ),
     activeLayer: validateUiLayer(request.activeLayer, 'payload.activeLayer'),
+    connectionsSourceLayer:
+      request.connectionsSourceLayer === 'graph' ||
+      request.connectionsSourceLayer === 'following' ||
+      request.connectionsSourceLayer === 'following-non-followers' ||
+      request.connectionsSourceLayer === 'mutuals' ||
+      request.connectionsSourceLayer === 'followers' ||
+      request.connectionsSourceLayer === 'nonreciprocal-followers' ||
+      request.connectionsSourceLayer === 'keywords' ||
+      request.connectionsSourceLayer === 'zaps' ||
+      request.connectionsSourceLayer === 'pathfinding'
+        ? request.connectionsSourceLayer
+        : 'graph',
     rootNodePubkey:
       request.rootNodePubkey === null
         ? null
@@ -677,6 +713,7 @@ export function findShortestPath(request: FindPathRequest): FindPathResult {
   const normalizedAdjacency = buildNormalizedAdjacency(request.adjacency)
   const sourcePubkey = request.sourcePubkey
   const targetPubkey = request.targetPubkey
+  const algorithm = request.algorithm ?? 'bfs'
 
   if (!(sourcePubkey in normalizedAdjacency)) {
     throw new WorkerProtocolError(
@@ -694,6 +731,76 @@ export function findShortestPath(request: FindPathRequest): FindPathResult {
     )
   }
 
+  const buildPath = (previous: Map<string, string | null>, cursor: string) => {
+    const path: string[] = []
+    let current: string | null = cursor
+
+    while (current) {
+      path.unshift(current)
+      current = previous.get(current) ?? null
+    }
+
+    return path
+  }
+
+  if (algorithm === 'dijkstra') {
+    const distances = new Map<string, number>()
+    const previous = new Map<string, string | null>()
+    const pending = new Set(Object.keys(normalizedAdjacency))
+    let visitedCount = 0
+
+    pending.forEach((pubkey) => {
+      distances.set(pubkey, pubkey === sourcePubkey ? 0 : Number.POSITIVE_INFINITY)
+    })
+    previous.set(sourcePubkey, null)
+
+    while (pending.size > 0) {
+      let currentPubkey: string | null = null
+      let currentDistance = Number.POSITIVE_INFINITY
+
+      pending.forEach((pubkey) => {
+        const candidateDistance = distances.get(pubkey) ?? Number.POSITIVE_INFINITY
+        if (candidateDistance < currentDistance) {
+          currentDistance = candidateDistance
+          currentPubkey = pubkey
+        }
+      })
+
+      if (currentPubkey === null || !Number.isFinite(currentDistance)) {
+        break
+      }
+
+      pending.delete(currentPubkey)
+      visitedCount += 1
+
+      if (currentPubkey === targetPubkey) {
+        return {
+          path: buildPath(previous, currentPubkey),
+          visitedCount,
+          algorithm,
+        }
+      }
+
+      normalizedAdjacency[currentPubkey].forEach((neighbor) => {
+        if (!pending.has(neighbor)) {
+          return
+        }
+
+        const nextDistance = currentDistance + 1
+        if (nextDistance < (distances.get(neighbor) ?? Number.POSITIVE_INFINITY)) {
+          distances.set(neighbor, nextDistance)
+          previous.set(neighbor, currentPubkey)
+        }
+      })
+    }
+
+    return {
+      path: null,
+      visitedCount,
+      algorithm,
+    }
+  }
+
   const queue: string[] = [sourcePubkey]
   const previous = new Map<string, string | null>([[sourcePubkey, null]])
   let visitedCount = 0
@@ -707,18 +814,10 @@ export function findShortestPath(request: FindPathRequest): FindPathResult {
     visitedCount += 1
 
     if (currentPubkey === targetPubkey) {
-      const path: string[] = []
-      let cursor: string | null = currentPubkey
-
-      while (cursor) {
-        path.unshift(cursor)
-        cursor = previous.get(cursor) ?? null
-      }
-
       return {
-        path,
+        path: buildPath(previous, currentPubkey),
         visitedCount,
-        algorithm: request.algorithm ?? 'bfs',
+        algorithm,
       }
     }
 
@@ -733,7 +832,7 @@ export function findShortestPath(request: FindPathRequest): FindPathResult {
   return {
     path: null,
     visitedCount,
-    algorithm: request.algorithm ?? 'bfs',
+    algorithm,
   }
 }
 

@@ -1,7 +1,8 @@
 import { createAppStore } from '@/features/graph/app/store/createAppStore'
 import { createNostrGraphDatabase, createRepositories } from '@/features/graph/db'
 import { createInlineEventsWorkerGateway, createInlineGraphWorkerGateway } from '@/features/graph/workers/gateway'
-import { createAppKernel, type AppKernel, type AppKernelDependencies } from '@/features/graph/kernel/runtime'
+import { createKernelFacade, type KernelFacade } from '@/features/graph/kernel/facade'
+import type { AppKernelDependencies } from '@/features/graph/kernel/runtime'
 import {
   createTranscriptRelayAdapterFactory,
   type RelayTranscript,
@@ -14,7 +15,7 @@ export interface HeadlessKernelOptions {
   dbName?: string
 }
 
-export function createHeadlessKernel(options: HeadlessKernelOptions): AppKernel {
+export function createHeadlessKernel(options: HeadlessKernelOptions): KernelFacade {
   const clock = options.clock ?? 1_710_000_000_000
   const dbName = options.dbName ?? `nostr-headless-${crypto.randomUUID()}`
 
@@ -41,5 +42,5 @@ export function createHeadlessKernel(options: HeadlessKernelOptions): AppKernel 
     now: () => clock,
   }
 
-  return createAppKernel(dependencies)
+  return createKernelFacade(dependencies)
 }

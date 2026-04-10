@@ -1,5 +1,9 @@
 import type { Event, Filter } from 'nostr-tools'
 
+export type RelayQueryFilter = Filter & {
+  search?: string
+}
+
 export type RelayHealthStatus =
   | 'idle'
   | 'connecting'
@@ -44,6 +48,9 @@ export interface RelayEventEnvelope {
   attempt: number
 }
 
+export type RelaySubscriptionPriority = 'interactive' | 'background'
+export type RelayVerificationMode = 'trusted-relay' | 'verify-worker'
+
 export interface RelaySubscriptionStats {
   acceptedEvents: number
   duplicateRelayEvents: number
@@ -60,12 +67,18 @@ export interface RelaySubscriptionSummary {
 
 export interface RelayObserver {
   next?: (value: RelayEventEnvelope) => void
+  nextBatch?: (values: RelayEventEnvelope[]) => void
   error?: (error: Error) => void
   complete?: (summary: RelaySubscriptionSummary) => void
 }
 
 export interface RelayEventObservable {
   subscribe: (observer: RelayObserver) => () => void
+}
+
+export interface RelaySubscribeOptions {
+  priority?: RelaySubscriptionPriority
+  verificationMode?: RelayVerificationMode
 }
 
 export interface RelayClock {
@@ -91,6 +104,8 @@ export interface RelayConnection {
     handlers: RelaySubscribeHandlers,
   ) => RelaySubscriptionHandle
   onNotice: (listener: (message: string) => void) => () => void
+  onClose: (listener: () => void) => () => void
+  isOpen: () => boolean
   close: () => void
 }
 

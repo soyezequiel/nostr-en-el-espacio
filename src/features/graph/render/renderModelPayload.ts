@@ -3,6 +3,7 @@ import type {
   DiscoveredGraphAnalysisState,
 } from '@/features/graph/analysis/types'
 import type {
+  ConnectionsSourceLayer,
   GraphLink,
   GraphNodeSource,
   UiLayer,
@@ -21,14 +22,22 @@ export interface BuildRenderModelNodeInput {
 }
 
 export interface BuildRenderModelRequest {
+  jobKind?: 'BUILD_RENDER_MODEL'
+  jobKey?: string
   nodes: Record<string, BuildRenderModelNodeInput>
   links: GraphLink[]
+  inboundLinks: GraphLink[]
   zapEdges: ZapLayerEdge[]
   activeLayer: UiLayer
+  connectionsSourceLayer: ConnectionsSourceLayer
   rootNodePubkey: string | null
   selectedNodePubkey: string | null
   expandedNodePubkeys: string[]
   comparedNodePubkeys?: string[]
+  pathfinding?: {
+    status: 'idle' | 'computing' | 'found' | 'not-found' | 'error'
+    path: string[] | null
+  }
   graphAnalysis?: DiscoveredGraphAnalysisState
   renderConfig: RenderConfig
   previousPositions?: Record<string, [number, number]>
@@ -55,14 +64,24 @@ const isGraphNodeSource = (value: unknown): value is GraphNodeSource =>
   value === 'root' ||
   value === 'follow' ||
   value === 'inbound' ||
+  value === 'keyword' ||
   value === 'zap'
 
 const isUiLayer = (value: unknown): value is UiLayer =>
   value === 'graph' ||
+  value === 'connections' ||
+  value === 'following' ||
+  value === 'following-non-followers' ||
   value === 'mutuals' ||
+  value === 'followers' ||
+  value === 'nonreciprocal-followers' ||
   value === 'keywords' ||
   value === 'zaps' ||
   value === 'pathfinding'
+
+const isConnectionsSourceLayer = (
+  value: unknown,
+): value is ConnectionsSourceLayer => isUiLayer(value) && value !== 'connections'
 
 const isGraphLinkRelation = (
   value: unknown,
@@ -147,6 +166,38 @@ const sanitizeExpandedNodePubkeys = (
         .filter((pubkey): pubkey is string => pubkey !== null),
     ),
   ).sort()
+
+const sanitizeOrderedPubkeyList = (pubkeys: readonly string[]) => {
+  const seen = new Set<string>()
+  const ordered: string[] = []
+
+  pubkeys.forEach((pubkey) => {
+    const sanitizedPubkey = sanitizeString(pubkey)
+    if (!sanitizedPubkey || seen.has(sanitizedPubkey)) {
+      return
+    }
+
+    seen.add(sanitizedPubkey)
+    ordered.push(sanitizedPubkey)
+  })
+
+  return ordered
+}
+
+const sanitizePathfindingState = (
+  pathfinding: BuildGraphRenderModelInput['pathfinding'],
+): NonNullable<BuildRenderModelRequest['pathfinding']> => ({
+  status:
+    pathfinding?.status === 'computing' ||
+    pathfinding?.status === 'found' ||
+    pathfinding?.status === 'not-found' ||
+    pathfinding?.status === 'error'
+      ? pathfinding.status
+      : 'idle',
+  path: pathfinding?.path
+    ? sanitizeOrderedPubkeyList(pathfinding.path)
+    : null,
+})
 
 const sanitizeGraphAnalysisConfidence = (
   value: unknown,
@@ -277,27 +328,42 @@ const sanitizePreviousPositions = (
     : undefined
 
 export const serializeBuildGraphRenderModelInput = ({
+  jobKey,
   nodes,
   links,
+  inboundLinks,
   zapEdges,
   activeLayer,
+  connectionsSourceLayer,
   rootNodePubkey,
   selectedNodePubkey,
   expandedNodePubkeys,
   comparedNodePubkeys,
+  pathfinding,
   graphAnalysis,
   renderConfig,
   previousPositions,
   previousLayoutKey,
-}: BuildGraphRenderModelInput): BuildRenderModelRequest => ({
+}: BuildGraphRenderModelInput & { jobKey?: string }): BuildRenderModelRequest => ({
+  ...(isNonEmptyString(jobKey)
+    ? {
+        jobKind: 'BUILD_RENDER_MODEL',
+        jobKey: jobKey.trim(),
+      }
+    : {}),
   nodes: sanitizeNodes(nodes),
   links: sanitizeLinks(links),
+  inboundLinks: sanitizeLinks(inboundLinks),
   zapEdges: sanitizeZapEdges(zapEdges),
   activeLayer: isUiLayer(activeLayer) ? activeLayer : 'graph',
+  connectionsSourceLayer: isConnectionsSourceLayer(connectionsSourceLayer)
+    ? connectionsSourceLayer
+    : 'graph',
   rootNodePubkey: sanitizeString(rootNodePubkey),
   selectedNodePubkey: sanitizeString(selectedNodePubkey),
   expandedNodePubkeys: sanitizeExpandedNodePubkeys(expandedNodePubkeys),
   comparedNodePubkeys: sanitizeExpandedNodePubkeys(comparedNodePubkeys ?? new Set()),
+  pathfinding: sanitizePathfindingState(pathfinding),
   graphAnalysis: sanitizeGraphAnalysisState(graphAnalysis),
   renderConfig: {
     edgeThickness: sanitizeFiniteNumber(renderConfig.edgeThickness, 1),
@@ -315,14 +381,18 @@ export const serializeBuildGraphRenderModelInput = ({
 })
 
 export const deserializeBuildGraphRenderModelInput = ({
+  jobKey,
   nodes,
   links,
+  inboundLinks,
   zapEdges,
   activeLayer,
+  connectionsSourceLayer,
   rootNodePubkey,
   selectedNodePubkey,
   expandedNodePubkeys,
   comparedNodePubkeys,
+  pathfinding,
   graphAnalysis,
   renderConfig,
   previousPositions,
@@ -342,16 +412,27 @@ export const deserializeBuildGraphRenderModelInput = ({
     ]),
   ),
   links,
+  inboundLinks,
   zapEdges,
   activeLayer,
+  connectionsSourceLayer: isConnectionsSourceLayer(connectionsSourceLayer)
+    ? connectionsSourceLayer
+    : 'graph',
   rootNodePubkey,
   selectedNodePubkey,
   expandedNodePubkeys: new Set(expandedNodePubkeys),
   comparedNodePubkeys: new Set(comparedNodePubkeys ?? []),
+  pathfinding: pathfinding
+    ? {
+        status: pathfinding.status,
+        path: pathfinding.path ? [...pathfinding.path] : null,
+      }
+    : undefined,
   graphAnalysis,
   renderConfig,
   previousPositions: previousPositions
     ? new Map(Object.entries(previousPositions))
     : undefined,
   previousLayoutKey,
+  ...(typeof jobKey === 'string' ? { jobKey } : {}),
 })

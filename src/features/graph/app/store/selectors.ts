@@ -1,8 +1,14 @@
 import type { AppStore } from '@/features/graph/app/store/types'
+import { deriveDirectedEvidence } from '@/features/graph/evidence/directedEvidence'
 
 const DEFAULT_IDLE_NODE_EXPANSION_STATE = {
   status: 'idle' as const,
   message: null,
+  phase: 'idle' as const,
+  step: null,
+  totalSteps: null,
+  startedAt: null,
+  updatedAt: null,
 }
 
 const DEFAULT_IDLE_NODE_STRUCTURE_PREVIEW_STATE = {
@@ -13,6 +19,20 @@ const DEFAULT_IDLE_NODE_STRUCTURE_PREVIEW_STATE = {
 
 const isExportJobActive = (phase: AppStore['exportJob']['phase']) =>
   !['idle', 'completed', 'failed'].includes(phase)
+
+const DEFAULT_IDLE_PATHFINDING_STATE = {
+  sourceQuery: '',
+  targetQuery: '',
+  sourcePubkey: null,
+  targetPubkey: null,
+  selectionMode: 'idle' as const,
+  status: 'idle' as const,
+  path: null,
+  visitedCount: 0,
+  algorithm: 'bfs' as const,
+  message: null,
+  previousLayer: null,
+}
 
 export const selectGraphSummary = (state: AppStore) => ({
   nodeCount: Object.keys(state.nodes).length,
@@ -46,29 +66,25 @@ export const selectZapLayerSummary = (state: AppStore) => ({
   message: state.zapLayer.message,
 })
 
-const countFollowersDiscovered = (state: AppStore, pubkey: string) => {
-  let count = 0
-
-  for (const neighbors of Object.values(state.adjacency)) {
-    if (neighbors.includes(pubkey)) {
-      count += 1
-    }
-  }
-
-  return count
-}
+export const selectKeywordLayerSummary = (state: AppStore) => ({
+  status: state.keywordLayer.status,
+  loadedFrom: state.keywordLayer.loadedFrom,
+  isPartial: state.keywordLayer.isPartial,
+  message: state.keywordLayer.message,
+  corpusNodeCount: state.keywordLayer.corpusNodeCount,
+  extractCount: state.keywordLayer.extractCount,
+  matchCount: state.keywordLayer.matchCount,
+  matchNodeCount: state.keywordLayer.matchNodeCount,
+  matchesByPubkey: state.keywordLayer.matchesByPubkey,
+})
 
 const countMutualsDiscovered = (state: AppStore, pubkey: string) => {
-  const targets = state.adjacency[pubkey] ?? []
-  let count = 0
+  const evidence = deriveDirectedEvidence({
+    links: state.links,
+    inboundLinks: state.inboundLinks,
+  })
 
-  for (const target of targets) {
-    if (state.adjacency[target]?.includes(pubkey)) {
-      count += 1
-    }
-  }
-
-  return count
+  return evidence.mutualAdjacency[pubkey]?.length ?? 0
 }
 
 export const selectNodeDetailContext = (state: AppStore) => {
@@ -122,7 +138,7 @@ export const selectNodeDetailContext = (state: AppStore) => {
           ? state.adjacency[selectedNode.pubkey]?.length ?? 0
           : nodeStructurePreviewState?.discoveredFollowCount ?? 0,
     followersDiscovered: selectedNode
-      ? countFollowersDiscovered(state, selectedNode.pubkey)
+      ? state.inboundAdjacency[selectedNode.pubkey]?.length ?? 0
       : 0,
     mutualsDiscovered: selectedNode
       ? countMutualsDiscovered(state, selectedNode.pubkey)
@@ -199,6 +215,18 @@ export const selectDeepCaptureSelectionContext = (state: AppStore) => {
       selectedDeepUserPubkeys.includes(currentNodePubkey),
   }
 }
+
+export const selectPathfindingContext = (state: AppStore) => ({
+  pathfinding: state.pathfinding ?? DEFAULT_IDLE_PATHFINDING_STATE,
+  openPanel: state.openPanel,
+  activeLayer: state.activeLayer,
+  selectedNodePubkey: state.selectedNodePubkey,
+  comparedNodePubkeys: state.comparedNodePubkeys,
+  rootNodePubkey: state.rootNodePubkey,
+  rootLoadStatus: state.rootLoad.status,
+  rootLoadMessage: state.rootLoad.message,
+  nodeCount: Object.keys(state.nodes).length,
+})
 
 export const selectRelayHealthData = (state: AppStore) => ({
   relayUrls: state.relayUrls,
@@ -329,15 +357,12 @@ export const selectDegreeCounts = (state: AppStore) => {
 }
 
 export const selectMutualConnections = (state: AppStore) => {
-  const mutualPairs = new Set<string>()
+  const evidence = deriveDirectedEvidence({
+    links: state.links,
+    inboundLinks: state.inboundLinks,
+  })
 
-  for (const [source, targets] of Object.entries(state.adjacency)) {
-    for (const target of targets) {
-      if (state.adjacency[target]?.includes(source)) {
-        mutualPairs.add([source, target].sort().join('<->'))
-      }
-    }
-  }
-
-  return Array.from(mutualPairs).sort()
+  return evidence.mutualPairs
+    .map((pair) => `${pair.source}<->${pair.target}`)
+    .sort()
 }

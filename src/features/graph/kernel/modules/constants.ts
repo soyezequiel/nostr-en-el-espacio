@@ -1,0 +1,43 @@
+export const DEFAULT_SESSION_RELAY_URLS = [
+  'wss://relay.damus.io',
+  'wss://relay.nostr.band',
+  'wss://nos.lol',
+  'wss://relay.primal.net',
+  'wss://purplepag.es',
+] as const
+
+export const MAX_SESSION_RELAYS = 8
+
+export const ROOT_LOADING_MESSAGE =
+  'Cargando vecindario descubierto del root...'
+export const COVERAGE_RECOVERY_MESSAGE =
+  'Cambia relays o prueba una pubkey curada para recuperar cobertura.'
+export const ZAP_LAYER_LOADING_MESSAGE =
+  'Buscando recibos de zap para los nodos explorados...'
+export const KEYWORD_LAYER_LOADING_MESSAGE =
+  'Buscando notas recientes para la capa de intereses...'
+export const KEYWORD_LAYER_EMPTY_MESSAGE =
+  'Corpus vacÃ­o, no hay notas descubiertas'
+export const MAX_ZAP_RECEIPTS = 500
+export const KEYWORD_LOOKBACK_WINDOW_SEC = 30 * 24 * 60 * 60
+export const KEYWORD_BATCH_SIZE = 25
+export const KEYWORD_BATCH_CONCURRENCY = 2
+export const KEYWORD_MAX_NOTES_PER_PUBKEY = 5
+export const KEYWORD_FILTER_LIMIT_FACTOR = 4
+export const KEYWORD_EXTRACT_MAX_LENGTH = 500
+export const NODE_DETAIL_PREVIEW_CONNECT_TIMEOUT_MS = 3_000
+export const NODE_DETAIL_PREVIEW_PAGE_TIMEOUT_MS = 4_500
+export const NODE_DETAIL_PREVIEW_RETRY_COUNT = 1
+export const NODE_DETAIL_PREVIEW_STRAGGLER_GRACE_MS = 250
+export const NODE_EXPAND_CONNECT_TIMEOUT_MS = 1_200
+export const NODE_EXPAND_PAGE_TIMEOUT_MS = 1_500
+export const NODE_EXPAND_RETRY_COUNT = 0
+export const NODE_EXPAND_STRAGGLER_GRACE_MS = 150
+export const NODE_EXPAND_INBOUND_QUERY_LIMIT = 250
+export const NODE_EXPAND_INBOUND_PARSE_CONCURRENCY = 8
+export const DISCOVERED_GRAPH_ANALYSIS_LOADING_MESSAGE =
+  'Analizando grupos detectados en el vecindario descubierto...'
+export const NODE_PROFILE_HYDRATION_BATCH_SIZE = 50
+export const NODE_PROFILE_HYDRATION_BATCH_CONCURRENCY = 2
+export const NODE_PROFILE_PERSIST_CONCURRENCY = 8
+export const RELAY_HEALTH_FLUSH_DELAY_MS = 32

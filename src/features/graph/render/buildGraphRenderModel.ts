@@ -7,6 +7,7 @@ import {
 
 import type { DiscoveredGraphAnalysisState } from '@/features/graph/analysis/types'
 import type { GraphLink, GraphNode, ZapLayerEdge } from '@/features/graph/app/store/types'
+import { deriveDirectedEvidence } from '@/features/graph/evidence/directedEvidence'
 
 import {
   FOLLOW_NODE_RADIUS,
@@ -56,6 +57,9 @@ type NodeRadiusContext = {
   maxVisibleDegree: number
   maxKeywordHits: number
 }
+
+type VisibleLayer = Exclude<BuildGraphRenderModelInput['activeLayer'], 'connections'>
+type VisibleLink = Pick<GraphLink, 'source' | 'target'> | Pick<ZapLayerEdge, 'source' | 'target'>
 
 const GRAPH_FORCE_SETTINGS = {
   alphaDecay: 0.04,
@@ -108,6 +112,10 @@ const COMMUNITY_NEUTRAL_COLOR = [100, 116, 139, 214] as const
 const COMMUNITY_MUTED_COLOR = [94, 106, 124, 188] as const
 const COMMUNITY_STROKE_COLOR = [226, 232, 240, 118] as const
 const ROOT_STROKE_COLOR = [255, 224, 178, 220] as const
+const PATH_NODE_COLOR = [56, 189, 248, 240] as const
+const PATH_ENDPOINT_COLOR = [167, 243, 208, 248] as const
+const PATH_MUTED_FILL_COLOR = [51, 65, 85, 108] as const
+const PATH_MUTED_LINE_COLOR = [94, 106, 124, 84] as const
 const EMPTY_GRAPH_ANALYSIS: DiscoveredGraphAnalysisState = {
   status: 'idle',
   isStale: false,
@@ -115,6 +123,8 @@ const EMPTY_GRAPH_ANALYSIS: DiscoveredGraphAnalysisState = {
   message: null,
   result: null,
 }
+const AUTO_SIZE_DISTANCE_CLAMP_RATIO = 1.5
+const AUTO_SIZE_MIN_CELL_SIZE = 32
 
 const blendChannel = (left: number, right: number, ratio: number) =>
   Math.round(left * (1 - ratio) + right * ratio)
@@ -135,6 +145,201 @@ const createLinkId = (
   target: string,
   relation: GraphLink['relation'] | ZapLayerEdge['relation'],
 ) => `${source}->${target}:${relation}`
+
+const createWorldCellKey = (cellX: number, cellY: number) =>
+  `${cellX}:${cellY}`
+
+const applyAutoSizeNearestNeighborDistances = (
+  renderNodes: GraphRenderNode[],
+) => {
+  if (renderNodes.length <= 1) {
+    return
+  }
+
+  const averageRadius =
+    renderNodes.reduce((total, node) => total + node.radius, 0) /
+    renderNodes.length
+  const cellSize = Math.max(AUTO_SIZE_MIN_CELL_SIZE, averageRadius * 4)
+  const cells = new Map<string, number[]>()
+  let minCellX = Number.POSITIVE_INFINITY
+  let maxCellX = Number.NEGATIVE_INFINITY
+  let minCellY = Number.POSITIVE_INFINITY
+  let maxCellY = Number.NEGATIVE_INFINITY
+
+  for (let index = 0; index < renderNodes.length; index++) {
+    const [x, y] = renderNodes[index].position
+    const cellX = Math.floor(x / cellSize)
+    const cellY = Math.floor(y / cellSize)
+    const cellKey = createWorldCellKey(cellX, cellY)
+    const bucket = cells.get(cellKey)
+
+    if (bucket) {
+      bucket.push(index)
+    } else {
+      cells.set(cellKey, [index])
+    }
+
+    minCellX = Math.min(minCellX, cellX)
+    maxCellX = Math.max(maxCellX, cellX)
+    minCellY = Math.min(minCellY, cellY)
+    maxCellY = Math.max(maxCellY, cellY)
+  }
+
+  let globalMinWorldDist = Number.POSITIVE_INFINITY
+  const maxRing = Math.max(maxCellX - minCellX, maxCellY - minCellY)
+
+  for (let index = 0; index < renderNodes.length; index++) {
+    const [x, y] = renderNodes[index].position
+    const originCellX = Math.floor(x / cellSize)
+    const originCellY = Math.floor(y / cellSize)
+    let minDist = Number.POSITIVE_INFINITY
+
+    for (let ring = 0; ring <= maxRing; ring++) {
+      for (let dx = -ring; dx <= ring; dx++) {
+        for (let dy = -ring; dy <= ring; dy++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) {
+            continue
+          }
+
+          const bucket = cells.get(
+            createWorldCellKey(originCellX + dx, originCellY + dy),
+          )
+
+          if (!bucket) {
+            continue
+          }
+
+          for (const candidateIndex of bucket) {
+            if (candidateIndex === index) {
+              continue
+            }
+
+            const [candidateX, candidateY] =
+              renderNodes[candidateIndex].position
+            const distance = Math.hypot(x - candidateX, y - candidateY)
+
+            if (distance < minDist) {
+              minDist = distance
+            }
+          }
+        }
+      }
+
+      if (Number.isFinite(minDist) && Math.max(0, ring - 1) * cellSize > minDist) {
+        break
+      }
+    }
+
+    renderNodes[index].nearestNeighborWorldDist = minDist
+    globalMinWorldDist = Math.min(globalMinWorldDist, minDist)
+  }
+
+  const maxAllowedDist = Number.isFinite(globalMinWorldDist)
+    ? globalMinWorldDist * AUTO_SIZE_DISTANCE_CLAMP_RATIO
+    : Number.POSITIVE_INFINITY
+
+  for (const node of renderNodes) {
+    if (node.nearestNeighborWorldDist !== undefined) {
+      node.nearestNeighborWorldDist = Math.min(
+        node.nearestNeighborWorldDist,
+        maxAllowedDist,
+      )
+    }
+  }
+}
+
+const createPathPairKey = (source: string, target: string) =>
+  [source, target].sort().join('<->')
+
+const INTERNAL_CONNECTION_SORT_OPTIONS = {
+  numeric: false,
+  sensitivity: 'base',
+} as const
+
+const compareGraphLinks = (left: GraphLink, right: GraphLink) => {
+  if (left.source !== right.source) {
+    return left.source.localeCompare(
+      right.source,
+      undefined,
+      INTERNAL_CONNECTION_SORT_OPTIONS,
+    )
+  }
+
+  if (left.target !== right.target) {
+    return left.target.localeCompare(
+      right.target,
+      undefined,
+      INTERNAL_CONNECTION_SORT_OPTIONS,
+    )
+  }
+
+  return left.relation.localeCompare(right.relation, undefined, INTERNAL_CONNECTION_SORT_OPTIONS)
+}
+
+const sortAndDedupeGraphLinks = (links: readonly GraphLink[]) => {
+  const linksById = new Map<string, GraphLink>()
+
+  for (const link of links) {
+    linksById.set(createLinkId(link.source, link.target, link.relation), link)
+  }
+
+  return Array.from(linksById.values()).sort(compareGraphLinks)
+}
+
+const isRelationshipLayer = (layer: BuildGraphRenderModelInput['activeLayer']) =>
+  layer === 'following' ||
+  layer === 'following-non-followers' ||
+  layer === 'mutuals' ||
+  layer === 'followers' ||
+  layer === 'nonreciprocal-followers'
+
+const buildVisiblePubkeysForLayer = ({
+  layer,
+  layerLinks,
+  nodes,
+  rootNodePubkey,
+  selectedNodePubkey,
+  expandedNodePubkeys,
+}: {
+  layer: VisibleLayer
+  layerLinks: readonly VisibleLink[]
+  nodes: BuildGraphRenderModelInput['nodes']
+  rootNodePubkey: string | null
+  selectedNodePubkey: string | null
+  expandedNodePubkeys: ReadonlySet<string>
+}) => {
+  const visiblePubkeys = new Set<string>()
+  const layerIsRelationship = isRelationshipLayer(layer)
+
+  if (rootNodePubkey) {
+    visiblePubkeys.add(rootNodePubkey)
+  }
+
+  if (selectedNodePubkey && !layerIsRelationship) {
+    visiblePubkeys.add(selectedNodePubkey)
+  }
+
+  if (!layerIsRelationship) {
+    for (const pubkey of expandedNodePubkeys) {
+      visiblePubkeys.add(pubkey)
+    }
+  }
+
+  for (const link of layerLinks) {
+    visiblePubkeys.add(link.source)
+    visiblePubkeys.add(link.target)
+  }
+
+  if (layer === 'keywords') {
+    for (const node of Object.values(nodes)) {
+      if (node.keywordHits > 0) {
+        visiblePubkeys.add(node.pubkey)
+      }
+    }
+  }
+
+  return visiblePubkeys
+}
 
 const compareNodes = (
   left: GraphNode,
@@ -159,6 +364,63 @@ const compareNodes = (
 
 const compareEdges = (left: GraphRenderEdge, right: GraphRenderEdge) =>
   left.id.localeCompare(right.id)
+
+const resolvePathfindingNodeVisuals = ({
+  baseFillColor,
+  baseLineColor,
+  baseBridgeHaloColor,
+  activeLayer,
+  pathOrder,
+  pathLength,
+}: {
+  baseFillColor: [number, number, number, number]
+  baseLineColor: [number, number, number, number]
+  baseBridgeHaloColor: [number, number, number, number] | null
+  activeLayer: BuildGraphRenderModelInput['activeLayer']
+  pathOrder: number | null
+  pathLength: number
+}): {
+  fillColor: [number, number, number, number]
+  lineColor: [number, number, number, number]
+  bridgeHaloColor: [number, number, number, number] | null
+} => {
+  if (activeLayer !== 'pathfinding' || pathLength === 0) {
+    return {
+      fillColor: baseFillColor,
+      lineColor: baseLineColor,
+      bridgeHaloColor: baseBridgeHaloColor,
+    }
+  }
+
+  if (pathOrder === null) {
+    return {
+      fillColor: blendColor(baseFillColor, PATH_MUTED_FILL_COLOR, 0.76),
+      lineColor: blendColor(baseLineColor, PATH_MUTED_LINE_COLOR, 0.72),
+      bridgeHaloColor: null,
+    }
+  }
+
+  const isEndpoint = pathOrder === 0 || pathOrder === pathLength - 1
+  const emphasisColor = isEndpoint ? PATH_ENDPOINT_COLOR : PATH_NODE_COLOR
+
+  return {
+    fillColor: blendColor(baseFillColor, emphasisColor, isEndpoint ? 0.78 : 0.62),
+    lineColor: blendColor(
+      baseLineColor,
+      [255, 255, 255, 232] as const,
+      isEndpoint ? 0.7 : 0.48,
+    ),
+    bridgeHaloColor:
+      isEndpoint
+        ? ([emphasisColor[0], emphasisColor[1], emphasisColor[2], 52] as [
+            number,
+            number,
+            number,
+            number,
+          ])
+        : baseBridgeHaloColor,
+  }
+}
 
 const createSeededRandom = (seed: number) => {
   let state = seed >>> 0
@@ -909,37 +1171,191 @@ const resolveNodeVisuals = ({
 export const buildGraphRenderModel = ({
   nodes,
   links,
+  inboundLinks,
   zapEdges,
   activeLayer,
+  connectionsSourceLayer,
   rootNodePubkey,
   selectedNodePubkey,
   expandedNodePubkeys,
   comparedNodePubkeys = new Set<string>(),
+  pathfinding,
   graphAnalysis = EMPTY_GRAPH_ANALYSIS,
   renderConfig,
   previousPositions,
   previousLayoutKey,
 }: BuildGraphRenderModelInput): GraphRenderModel => {
+  const evidence = deriveDirectedEvidence({
+    links,
+    inboundLinks,
+  })
+  const isRelationshipFocusLayer = isRelationshipLayer(activeLayer)
+  const relationshipAnchorPubkeys = new Set<string>()
+
+  if (rootNodePubkey !== null) {
+    relationshipAnchorPubkeys.add(rootNodePubkey)
+  }
+
+  const followingLayerLinks = sortAndDedupeGraphLinks(
+    links
+      .filter(
+        (link) =>
+          link.relation === 'follow' &&
+          relationshipAnchorPubkeys.has(link.source),
+      )
+      .map((link) => ({
+        source: link.source,
+        target: link.target,
+        relation: 'follow' as const,
+      })),
+  )
+  const followerLayerLinks = sortAndDedupeGraphLinks([
+    ...evidence.inboundEdges
+      .filter((edge) => relationshipAnchorPubkeys.has(edge.target))
+      .map((edge) => ({
+        source: edge.source,
+        target: edge.target,
+        relation: 'inbound' as const,
+      })),
+    ...links
+      .filter(
+        (link) =>
+          link.relation === 'follow' &&
+          relationshipAnchorPubkeys.has(link.target) &&
+          !relationshipAnchorPubkeys.has(link.source),
+      )
+      .map((link) => ({
+        source: link.source,
+        target: link.target,
+        relation: 'inbound' as const,
+      })),
+  ])
+  const followTargetsBySource = new Map<string, Set<string>>()
+
+  for (const link of followingLayerLinks) {
+    const targets = followTargetsBySource.get(link.source) ?? new Set<string>()
+    targets.add(link.target)
+    followTargetsBySource.set(link.source, targets)
+  }
+
+  const followerSourcesByTarget = new Map<string, Set<string>>()
+
+  for (const edge of followerLayerLinks) {
+    const followers = followerSourcesByTarget.get(edge.target) ?? new Set<string>()
+    followers.add(edge.source)
+    followerSourcesByTarget.set(edge.target, followers)
+  }
+
+  const mutualLayerLinks = sortAndDedupeGraphLinks(
+    Array.from(relationshipAnchorPubkeys).flatMap((anchorPubkey) => {
+      const followedPubkeys = followTargetsBySource.get(anchorPubkey)
+      const followerPubkeys = followerSourcesByTarget.get(anchorPubkey)
+
+      if (!followedPubkeys || !followerPubkeys) {
+        return []
+      }
+
+      return Array.from(followedPubkeys)
+        .filter((targetPubkey) => followerPubkeys.has(targetPubkey))
+        .map((targetPubkey) => ({
+          source: anchorPubkey,
+          target: targetPubkey,
+          relation: 'follow' as const,
+        }))
+    }),
+  )
+  const nonReciprocalFollowingLayerLinks = sortAndDedupeGraphLinks(
+    followingLayerLinks.filter(
+      (link) => !evidence.combinedAdjacency[link.target]?.includes(link.source),
+    ),
+  )
+  const nonReciprocalFollowerLayerLinks = sortAndDedupeGraphLinks(
+    followerLayerLinks.filter(
+      (edge) => !evidence.combinedAdjacency[edge.target]?.includes(edge.source),
+    ),
+  )
+  const graphLayerLinks = [...links]
+  const zapLayerLinks = [...links, ...zapEdges]
+  const baseConnectionVisiblePubkeys = buildVisiblePubkeysForLayer({
+    layer: connectionsSourceLayer,
+    layerLinks:
+      connectionsSourceLayer === 'following'
+        ? followingLayerLinks
+        : connectionsSourceLayer === 'following-non-followers'
+          ? nonReciprocalFollowingLayerLinks
+        : connectionsSourceLayer === 'mutuals'
+          ? mutualLayerLinks
+        : connectionsSourceLayer === 'followers'
+          ? followerLayerLinks
+        : connectionsSourceLayer === 'nonreciprocal-followers'
+          ? nonReciprocalFollowerLayerLinks
+        : connectionsSourceLayer === 'zaps'
+          ? zapLayerLinks
+        : graphLayerLinks,
+    nodes,
+    rootNodePubkey,
+    selectedNodePubkey,
+    expandedNodePubkeys,
+  })
+  const currentGraphNodePubkeys = new Set(Object.keys(nodes))
+  const internalConnectionLinksByKey = new Map<string, GraphLink>()
+
+  for (const link of [...links, ...inboundLinks]) {
+    if (
+      link.relation === 'zap' ||
+      link.source === rootNodePubkey ||
+      link.target === rootNodePubkey ||
+      !baseConnectionVisiblePubkeys.has(link.source) ||
+      !baseConnectionVisiblePubkeys.has(link.target) ||
+      !currentGraphNodePubkeys.has(link.source) ||
+      !currentGraphNodePubkeys.has(link.target)
+    ) {
+      continue
+    }
+
+    const key = `${link.source}->${link.target}`
+    const normalizedLink: GraphLink = {
+      source: link.source,
+      target: link.target,
+      relation: link.relation === 'follow' ? 'follow' : 'inbound',
+    }
+    const existingLink = internalConnectionLinksByKey.get(key)
+
+    if (!existingLink || normalizedLink.relation === 'follow') {
+      internalConnectionLinksByKey.set(key, normalizedLink)
+    }
+  }
+
+  const internalConnectionLayerLinks = Array.from(
+    internalConnectionLinksByKey.values(),
+  ).sort(compareGraphLinks)
   const renderedLinks =
-    activeLayer === 'zaps' ? [...links, ...zapEdges] : [...links]
-  const visiblePubkeys = new Set<string>()
-
-  if (rootNodePubkey) {
-    visiblePubkeys.add(rootNodePubkey)
-  }
-
-  if (selectedNodePubkey) {
-    visiblePubkeys.add(selectedNodePubkey)
-  }
-
-  for (const pubkey of expandedNodePubkeys) {
-    visiblePubkeys.add(pubkey)
-  }
-
-  for (const link of renderedLinks) {
-    visiblePubkeys.add(link.source)
-    visiblePubkeys.add(link.target)
-  }
+    activeLayer === 'zaps'
+      ? zapLayerLinks
+      : activeLayer === 'connections'
+        ? internalConnectionLayerLinks
+      : activeLayer === 'following'
+        ? followingLayerLinks
+        : activeLayer === 'following-non-followers'
+          ? nonReciprocalFollowingLayerLinks
+      : activeLayer === 'mutuals'
+        ? mutualLayerLinks
+        : activeLayer === 'followers'
+          ? followerLayerLinks
+          : activeLayer === 'nonreciprocal-followers'
+          ? nonReciprocalFollowerLayerLinks
+          : graphLayerLinks
+  const visiblePubkeys =
+    activeLayer === 'connections'
+      ? new Set(baseConnectionVisiblePubkeys)
+      : buildVisiblePubkeysForLayer({
+          layer: activeLayer,
+          layerLinks: renderedLinks,
+          nodes,
+          rootNodePubkey,
+          selectedNodePubkey,
+          expandedNodePubkeys,
+        })
 
   const orderedNodes = Object.values(nodes)
     .filter((node) => visiblePubkeys.has(node.pubkey))
@@ -958,6 +1374,21 @@ export const buildGraphRenderModel = ({
     links,
     expandedNodePubkeys,
   })
+  const pathPubkeys = pathfinding?.status === 'found' && pathfinding.path ? pathfinding.path : []
+  const pathOrderByPubkey = new Map(
+    pathPubkeys.map((pubkey, index) => [pubkey, index]),
+  )
+  const pathPairs = new Set<string>()
+
+  pathPubkeys.forEach((pubkey, index) => {
+    const nextPubkey = pathPubkeys[index + 1]
+    if (!nextPubkey) {
+      return
+    }
+
+    pathPairs.add(createPathPairKey(pubkey, nextPubkey))
+  })
+
   const averageVisibleDegree =
     degreeValues.length > 0
       ? degreeValues.reduce((sum, degree) => sum + degree, 0) /
@@ -1086,7 +1517,11 @@ export const buildGraphRenderModel = ({
   const comparedArray = Array.from(comparedNodePubkeys)
   const commonFollowPubkeys = new Set<string>()
 
-  if (comparedArray.length >= 2) {
+  if (
+    comparedArray.length >= 2 &&
+    !isRelationshipFocusLayer &&
+    activeLayer !== 'connections'
+  ) {
     const followsBySource = new Map<string, Set<string>>()
     
     // Group follows by their expanded source
@@ -1130,6 +1565,15 @@ export const buildGraphRenderModel = ({
       graphAnalysis,
       communityColorMap,
     })
+    const pathOrder = pathOrderByPubkey.get(node.pubkey) ?? null
+    const pathfindingNodeVisuals = resolvePathfindingNodeVisuals({
+      baseFillColor: nodeVisuals.fillColor,
+      baseLineColor: nodeVisuals.lineColor,
+      baseBridgeHaloColor: nodeVisuals.bridgeHaloColor,
+      activeLayer,
+      pathOrder,
+      pathLength: pathPubkeys.length,
+    })
 
     return {
       id: node.pubkey,
@@ -1146,6 +1590,7 @@ export const buildGraphRenderModel = ({
           sharedByExpandedCount.get(node.pubkey) ?? 0,
           nodeRadiusContext,
         ),
+      keywordHits: node.keywordHits,
       isRoot: node.pubkey === rootNodePubkey,
       isExpanded: expandedNodePubkeys.has(node.pubkey),
       isSelected: node.pubkey === selectedNodePubkey,
@@ -1153,44 +1598,20 @@ export const buildGraphRenderModel = ({
       source: node.source,
       discoveredAt: node.discoveredAt,
       sharedByExpandedCount: sharedByExpandedCount.get(node.pubkey) ?? 0,
-      fillColor: nodeVisuals.fillColor,
-      lineColor: nodeVisuals.lineColor,
-      bridgeHaloColor: nodeVisuals.bridgeHaloColor,
+      fillColor: pathfindingNodeVisuals.fillColor,
+      lineColor: pathfindingNodeVisuals.lineColor,
+      bridgeHaloColor: pathfindingNodeVisuals.bridgeHaloColor,
       analysisCommunityId: nodeVisuals.analysisCommunityId,
+      isPathNode: pathOrder !== null,
+      isPathEndpoint:
+        pathOrder !== null &&
+        (pathOrder === 0 || pathOrder === pathPubkeys.length - 1),
+      pathOrder,
     }
   })
 
   if (renderConfig.autoSizeNodes) {
-    let globalMinWorldDist = Number.POSITIVE_INFINITY
-    
-    for (let i = 0; i < renderNodes.length; i++) {
-      let minDist = Number.POSITIVE_INFINITY
-      const posA = renderNodes[i].position
-      
-      for (let j = 0; j < renderNodes.length; j++) {
-        if (i === j) continue
-        const posB = renderNodes[j].position
-        const dist = Math.hypot(posA[0] - posB[0], posA[1] - posB[1])
-        if (dist < minDist) {
-          minDist = dist
-        }
-      }
-      
-      renderNodes[i].nearestNeighborWorldDist = minDist
-      if (minDist < globalMinWorldDist) {
-        globalMinWorldDist = minDist
-      }
-    }
-
-    // "diferencia entre uno y otro no sea mayor al 50%"
-    // Clamp the allowed distance up to 50% larger than the absolute tightest gap globally
-    const maxAllowedDist = Number.isFinite(globalMinWorldDist) ? globalMinWorldDist * 1.5 : Number.POSITIVE_INFINITY
-    
-    for (const node of renderNodes) {
-      if (node.nearestNeighborWorldDist !== undefined) {
-        node.nearestNeighborWorldDist = Math.min(node.nearestNeighborWorldDist, maxAllowedDist)
-      }
-    }
+    applyAutoSizeNearestNeighborDistances(renderNodes)
   }
 
   const nodeByPubkey = new Map(renderNodes.map((node) => [node.pubkey, node]))
@@ -1201,11 +1622,15 @@ export const buildGraphRenderModel = ({
     .map((link) => {
       const sourceNode = nodeByPubkey.get(link.source)!
       const targetNode = nodeByPubkey.get(link.target)!
+      const isPathEdge =
+        link.relation === 'follow' &&
+        pathPairs.has(createPathPairKey(link.source, link.target))
       const isPriority =
         sourceNode.pubkey === rootNodePubkey ||
         targetNode.pubkey === rootNodePubkey ||
         sourceNode.pubkey === selectedNodePubkey ||
-        targetNode.pubkey === selectedNodePubkey
+        targetNode.pubkey === selectedNodePubkey ||
+        isPathEdge
 
       return {
         id: createLinkId(link.source, link.target, link.relation),
@@ -1219,6 +1644,7 @@ export const buildGraphRenderModel = ({
         targetRadius: targetNode.radius,
         isPriority,
         targetSharedByExpandedCount: targetNode.sharedByExpandedCount,
+        isPathEdge,
       } satisfies GraphRenderEdge
     })
 

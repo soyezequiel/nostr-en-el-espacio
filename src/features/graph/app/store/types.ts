@@ -5,9 +5,14 @@ import type {
   DiscoveredGraphAnalysisStatus,
 } from '@/features/graph/analysis/types'
 
-export type GraphNodeSource = 'root' | 'follow' | 'inbound' | 'zap'
+export type GraphNodeSource = 'root' | 'follow' | 'inbound' | 'zap' | 'keyword'
 export type GraphLinkRelation = 'follow' | 'inbound' | 'zap'
 export type ZapLayerStatus =
+  | 'disabled'
+  | 'loading'
+  | 'enabled'
+  | 'unavailable'
+export type KeywordLayerStatus =
   | 'disabled'
   | 'loading'
   | 'enabled'
@@ -26,7 +31,18 @@ export type RelayOverrideStatus =
   | 'applied'
   | 'revertible'
   | 'invalid'
-export type UiLayer = 'graph' | 'mutuals' | 'keywords' | 'zaps' | 'pathfinding'
+export type UiLayer =
+  | 'graph'
+  | 'connections'
+  | 'following'
+  | 'following-non-followers'
+  | 'mutuals'
+  | 'followers'
+  | 'nonreciprocal-followers'
+  | 'keywords'
+  | 'zaps'
+  | 'pathfinding'
+export type ConnectionsSourceLayer = Exclude<UiLayer, 'connections'>
 export type UiPanel =
   | 'none'
   | 'overview'
@@ -51,6 +67,13 @@ export type ExportJobStatus =
   | 'partial'
   | 'completed'
   | 'failed'
+export type PathfindingStatus =
+  | 'idle'
+  | 'computing'
+  | 'found'
+  | 'not-found'
+  | 'error'
+export type PathfindingSelectionMode = 'idle' | 'source' | 'target'
 
 export interface GraphNode {
   pubkey: string
@@ -95,10 +118,31 @@ export interface ZapLayerEdge {
 export interface ZapLayerState {
   status: ZapLayerStatus
   edges: ZapLayerEdge[]
+  revision: number
   skippedReceipts: number
   loadedFrom: 'none' | 'cache' | 'live'
   targetPubkeys: string[]
   message: string | null
+  lastUpdatedAt: number | null
+}
+
+export interface KeywordMatch {
+  noteId: string
+  excerpt: string
+  matchedTokens: string[]
+  score: number
+}
+
+export interface KeywordLayerState {
+  status: KeywordLayerStatus
+  loadedFrom: 'none' | 'cache' | 'live'
+  isPartial: boolean
+  message: string | null
+  corpusNodeCount: number
+  extractCount: number
+  matchCount: number
+  matchNodeCount: number
+  matchesByPubkey: Record<string, KeywordMatch[]>
   lastUpdatedAt: number | null
 }
 
@@ -115,9 +159,21 @@ export type NodeExpansionStatus =
   | 'empty'
   | 'error'
 
+export type NodeExpansionPhase =
+  | 'idle'
+  | 'preparing'
+  | 'fetching-structure'
+  | 'correlating-followers'
+  | 'merging'
+
 export interface NodeExpansionState {
   status: NodeExpansionStatus
   message: string | null
+  phase: NodeExpansionPhase
+  step: number | null
+  totalSteps: number | null
+  startedAt: number | null
+  updatedAt: number | null
 }
 
 export interface NodeStructurePreviewState {
@@ -160,6 +216,10 @@ export interface GraphSlice {
   nodes: Record<string, GraphNode>
   links: GraphLink[]
   adjacency: Record<string, string[]>
+  inboundLinks: GraphLink[]
+  inboundAdjacency: Record<string, string[]>
+  graphRevision: number
+  inboundGraphRevision: number
   rootNodePubkey: string | null
   graphCaps: GraphCaps
   expandedNodePubkeys: Set<string>
@@ -167,7 +227,9 @@ export interface GraphSlice {
   nodeStructurePreviewStates: Record<string, NodeStructurePreviewState>
   setRootNodePubkey: (pubkey: string | null) => void
   upsertNodes: (nodes: GraphNode[]) => UpsertGraphNodesResult
+  removeNodes: (pubkeys: readonly string[]) => void
   upsertLinks: (links: GraphLink[]) => void
+  upsertInboundLinks: (links: GraphLink[]) => void
   markNodeExpanded: (pubkey: string) => void
   setNodeExpansionState: (pubkey: string, state: NodeExpansionState) => void
   setNodeStructurePreviewState: (
@@ -184,6 +246,13 @@ export interface ZapSlice {
   resetZapLayer: () => void
 }
 
+export interface KeywordSlice {
+  keywordLayer: KeywordLayerState
+  setKeywordLayerState: (state: Partial<KeywordLayerState>) => void
+  setKeywordMatches: (matchesByPubkey: Record<string, KeywordMatch[]>) => void
+  resetKeywordLayer: () => void
+}
+
 export interface RelaySlice {
   relayUrls: string[]
   relayHealth: Record<string, RelayHealth>
@@ -193,6 +262,9 @@ export interface RelaySlice {
   resetRelayHealth: (relayUrls?: string[]) => void
   setRelayOverrideStatus: (status: RelayOverrideStatus) => void
   updateRelayHealth: (relayUrl: string, health: Partial<RelayHealth>) => void
+  updateRelayHealthBatch: (
+    relayHealth: Record<string, Partial<RelayHealth>>,
+  ) => void
   markGraphStale: (isStale: boolean) => void
 }
 
@@ -218,6 +290,20 @@ export interface RenderConfig {
   showImageResidencyDebug?: boolean
 }
 
+export interface PathfindingState {
+  sourceQuery: string
+  targetQuery: string
+  sourcePubkey: string | null
+  targetPubkey: string | null
+  selectionMode: PathfindingSelectionMode
+  status: PathfindingStatus
+  path: string[] | null
+  visitedCount: number
+  algorithm: 'bfs' | 'dijkstra'
+  message: string | null
+  previousLayer: UiLayer | null
+}
+
 export interface SavedRootProfileSnapshot {
   displayName: string | null
   name: string | null
@@ -232,33 +318,46 @@ export interface SavedRootEntry {
   npub: string
   addedAt: number
   lastOpenedAt: number
+  relayHints?: string[]
   profile: SavedRootProfileSnapshot | null
   profileFetchedAt: number | null
+}
+
+export interface ViewportInteractionState {
+  isViewportActive: boolean
+  lastViewportInteractionAt: number | null
+  lastViewportSettledAt: number | null
 }
 
 export interface UiSlice {
   selectedNodePubkey: string | null
   comparedNodePubkeys: ReadonlySet<string>
   activeLayer: UiLayer
+  connectionsSourceLayer: ConnectionsSourceLayer
   openPanel: UiPanel
   currentKeyword: string
   rootLoad: RootLoadState
   renderConfig: RenderConfig
   savedRoots: SavedRootEntry[]
   savedRootsHydrated: boolean
+  interactionState: ViewportInteractionState
   setSelectedNodePubkey: (pubkey: string | null) => void
   setComparedNodePubkeys: (pubkeys: ReadonlySet<string>) => void
   clearComparedNodes: () => void
   setActiveLayer: (layer: UiLayer) => void
+  setConnectionsSourceLayer: (layer: ConnectionsSourceLayer) => void
   setOpenPanel: (panel: UiPanel) => void
   setCurrentKeyword: (keyword: string) => void
   setRootLoadState: (state: Partial<RootLoadState>) => void
   resetRootLoadState: () => void
   setRenderConfig: (config: Partial<RenderConfig>) => void
+  markViewportInteraction: (at?: number) => void
+  markViewportSettled: (at?: number) => void
   upsertSavedRoot: (entry: {
     pubkey: string
     npub: string
     openedAt?: number
+    relayHints?: string[]
     profile?: SavedRootProfileSnapshot | null
     profileFetchedAt?: number | null
   }) => void
@@ -299,11 +398,46 @@ export interface AnalysisSlice {
   resetGraphAnalysis: () => void
 }
 
+export interface PathfindingSlice {
+  pathfinding: PathfindingState
+  setPathfindingInput: (
+    role: 'source' | 'target',
+    query: string,
+  ) => void
+  setPathfindingEndpoint: (
+    role: 'source' | 'target',
+    endpoint: {
+      pubkey: string | null
+      query?: string | null
+    },
+  ) => void
+  setPathfindingSelectionMode: (mode: PathfindingSelectionMode) => void
+  setPathfindingPending: (algorithm?: 'bfs' | 'dijkstra') => void
+  setPathfindingResult: (result: {
+    path: string[] | null
+    visitedCount: number
+    algorithm: 'bfs' | 'dijkstra'
+    message: string | null
+    previousLayer?: UiLayer | null
+  }) => void
+  setPathfindingError: (
+    message: string,
+    options?: {
+      algorithm?: 'bfs' | 'dijkstra'
+      previousLayer?: UiLayer | null
+    },
+  ) => void
+  clearPathfindingResult: () => void
+  resetPathfinding: () => void
+}
+
 export type AppStore = GraphSlice &
   ZapSlice &
+  KeywordSlice &
   RelaySlice &
   UiSlice &
   ExportSlice &
-  AnalysisSlice
+  AnalysisSlice &
+  PathfindingSlice
 export type AppStoreApi = StoreApi<AppStore>
 export type AppStateCreator<T> = StateCreator<AppStore, [], [], T>

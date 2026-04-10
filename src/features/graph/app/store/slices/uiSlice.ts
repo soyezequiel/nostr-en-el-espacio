@@ -11,6 +11,8 @@ import {
 } from '@/features/graph/render/avatarQualityGuide'
 
 const MAX_SAVED_ROOTS = 12
+const sortRelayHints = (relayHints: readonly string[] | undefined) =>
+  relayHints ? Array.from(new Set(relayHints.filter(Boolean))).sort() : []
 
 const sortSavedRoots = (savedRoots: SavedRootEntry[]) =>
   savedRoots
@@ -56,16 +58,19 @@ export const createInitialUiSliceState = (): Pick<
   | 'selectedNodePubkey'
   | 'comparedNodePubkeys'
   | 'activeLayer'
+  | 'connectionsSourceLayer'
   | 'openPanel'
   | 'currentKeyword'
   | 'rootLoad'
   | 'renderConfig'
   | 'savedRoots'
   | 'savedRootsHydrated'
+  | 'interactionState'
 > => ({
   selectedNodePubkey: null,
   comparedNodePubkeys: new Set<string>(),
   activeLayer: 'graph',
+  connectionsSourceLayer: 'graph',
   openPanel: 'overview',
   currentKeyword: '',
   rootLoad: {
@@ -78,8 +83,8 @@ export const createInitialUiSliceState = (): Pick<
     arrowType: 'none',
     nodeSpacingFactor: 1,
     nodeSizeFactor: 1,
-    autoSizeNodes: true,
-    imageQualityMode: 'full-hd',
+    autoSizeNodes: false,
+    imageQualityMode: 'adaptive',
     avatarHdZoomThreshold: DEFAULT_AVATAR_HD_ZOOM_THRESHOLD,
     avatarFullHdZoomThreshold: DEFAULT_AVATAR_FULL_HD_ZOOM_THRESHOLD,
     showDiscoveryState: true,
@@ -89,6 +94,11 @@ export const createInitialUiSliceState = (): Pick<
   },
   savedRoots: [],
   savedRootsHydrated: typeof window === 'undefined',
+  interactionState: {
+    isViewportActive: false,
+    lastViewportInteractionAt: null,
+    lastViewportSettledAt: null,
+  },
 })
 
 export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
@@ -104,6 +114,9 @@ export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
   },
   setActiveLayer: (layer) => {
     set({ activeLayer: layer })
+  },
+  setConnectionsSourceLayer: (layer) => {
+    set({ connectionsSourceLayer: layer })
   },
   setOpenPanel: (panel) => {
     set({ openPanel: panel })
@@ -141,6 +154,32 @@ export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
       })(),
     }))
   },
+  markViewportInteraction: (at = Date.now()) => {
+    set((state) => ({
+      interactionState:
+        state.interactionState.isViewportActive &&
+        state.interactionState.lastViewportInteractionAt === at
+          ? state.interactionState
+          : {
+              ...state.interactionState,
+              isViewportActive: true,
+              lastViewportInteractionAt: at,
+            },
+    }))
+  },
+  markViewportSettled: (at = Date.now()) => {
+    set((state) => ({
+      interactionState:
+        !state.interactionState.isViewportActive &&
+        state.interactionState.lastViewportSettledAt === at
+          ? state.interactionState
+          : {
+              ...state.interactionState,
+              isViewportActive: false,
+              lastViewportSettledAt: at,
+            },
+    }))
+  },
   upsertSavedRoot: (entry) => {
     set((state) => {
       const existingEntry = state.savedRoots.find(
@@ -152,6 +191,10 @@ export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
         npub: entry.npub,
         addedAt: existingEntry?.addedAt ?? openedAt,
         lastOpenedAt: openedAt,
+        relayHints:
+          entry.relayHints !== undefined
+            ? sortRelayHints(entry.relayHints)
+            : sortRelayHints(existingEntry?.relayHints),
         profile: mergeSavedRootProfile(existingEntry?.profile ?? null, entry.profile),
         profileFetchedAt:
           entry.profileFetchedAt ?? existingEntry?.profileFetchedAt ?? null,

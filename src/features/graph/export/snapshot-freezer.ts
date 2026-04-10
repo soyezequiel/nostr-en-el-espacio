@@ -1,5 +1,6 @@
 import type { AppStoreApi } from '@/features/graph/app/store/types'
 import type { NostrGraphRepositories } from '@/features/graph/db/repositories'
+import { canonicalJson, encodeUtf8, sha256Hex } from '@/features/graph/export/canonical'
 import type { FrozenSnapshot, FrozenUserData } from '@/features/graph/export/types'
 
 export interface SnapshotFreezerDependencies {
@@ -18,23 +19,58 @@ export async function freezeSnapshot(
   const nodes = Object.values(state.nodes)
   const links = [...state.links]
   const adjacency: Record<string, string[]> = {}
+  const inboundLinks = [...state.inboundLinks]
+  const inboundAdjacency: Record<string, string[]> = {}
 
   for (const [pubkey, neighbors] of Object.entries(state.adjacency)) {
     adjacency[pubkey] = [...neighbors].sort()
   }
 
+  for (const [pubkey, followers] of Object.entries(state.inboundAdjacency)) {
+    inboundAdjacency[pubkey] = [...followers].sort()
+  }
+
   const relays = [...state.relayUrls].sort()
   const graphCaps = { ...state.graphCaps }
   const pubkeys = Object.keys(state.nodes).sort()
+  const activeKeyword = state.currentKeyword.trim()
+  const sortedNodes = nodes.sort((a, b) => a.pubkey.localeCompare(b.pubkey))
+  const sortedLinks = links.sort((a, b) => {
+    const srcCmp = a.source.localeCompare(b.source)
+    if (srcCmp !== 0) return srcCmp
+    return a.target.localeCompare(b.target)
+  })
+  const sortedInboundLinks = inboundLinks.sort((a, b) => {
+    const srcCmp = a.source.localeCompare(b.source)
+    if (srcCmp !== 0) return srcCmp
+    return a.target.localeCompare(b.target)
+  })
+  const keywordSearch = {
+    keyword: activeKeyword || null,
+    totalHits: sortedNodes.reduce((total, node) => total + node.keywordHits, 0),
+    matchedNodeCount: sortedNodes.filter((node) => node.keywordHits > 0).length,
+  }
 
   const users = new Map<string, FrozenUserData>()
+  const userEntries: Array<{ pubkey: string; userData: FrozenUserData }> = []
 
   for (const pubkey of pubkeys) {
     const userData = await freezeUserData(pubkey, deps.repositories)
     users.set(pubkey, userData)
+    userEntries.push({ pubkey, userData })
   }
 
-  const captureId = buildCaptureId(nowMs)
+  const captureId = await buildCaptureId({
+    relays,
+    graphCaps,
+    nodes: sortedNodes,
+    links: sortedLinks,
+    adjacency,
+    inboundLinks: sortedInboundLinks,
+    inboundAdjacency,
+    keywordSearch,
+    users: userEntries,
+  })
 
   return {
     captureId,
@@ -43,13 +79,12 @@ export async function freezeSnapshot(
     executionMode: 'snapshot',
     relays,
     graphCaps,
-    nodes: nodes.sort((a, b) => a.pubkey.localeCompare(b.pubkey)),
-    links: links.sort((a, b) => {
-      const srcCmp = a.source.localeCompare(b.source)
-      if (srcCmp !== 0) return srcCmp
-      return a.target.localeCompare(b.target)
-    }),
+    nodes: sortedNodes,
+    links: sortedLinks,
     adjacency,
+    inboundLinks: sortedInboundLinks,
+    inboundAdjacency,
+    keywordSearch,
     users,
   }
 }
@@ -84,9 +119,9 @@ async function freezeUserData(
       return (a.dTag ?? '').localeCompare(b.dTag ?? '')
     }),
     rawEvents,
-    zapsSent,
-    zapsReceived,
-    inboundRefs,
+    zapsSent: sortZapRecords(zapsSent),
+    zapsReceived: sortZapRecords(zapsReceived),
+    inboundRefs: sortInboundRefRecords(inboundRefs),
   }
 }
 
@@ -125,18 +160,50 @@ async function queryRawEventsByPubkey(
   })
 }
 
-function buildCaptureId(nowMs: number): string {
-  const date = new Date(nowMs)
-  const pad = (n: number, len = 2) => String(n).padStart(len, '0')
-  const ts = [
-    date.getUTCFullYear(),
-    pad(date.getUTCMonth() + 1),
-    pad(date.getUTCDate()),
-    'T',
-    pad(date.getUTCHours()),
-    pad(date.getUTCMinutes()),
-    pad(date.getUTCSeconds()),
-  ].join('')
-  const rand = Math.random().toString(36).slice(2, 8)
-  return `${ts}-${rand}`
+function sortZapRecords(records: FrozenUserData['zapsSent']): FrozenUserData['zapsSent'] {
+  return [...records].sort((a, b) => {
+    if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
+    if (a.sats !== b.sats) return a.sats - b.sats
+    return a.id.localeCompare(b.id)
+  })
+}
+
+function sortInboundRefRecords(
+  records: FrozenUserData['inboundRefs'],
+): FrozenUserData['inboundRefs'] {
+  return [...records].sort((a, b) => {
+    if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
+    if (a.kind !== b.kind) return a.kind - b.kind
+    return a.eventId.localeCompare(b.eventId)
+  })
+}
+
+async function buildCaptureId(input: {
+  relays: FrozenSnapshot['relays']
+  graphCaps: FrozenSnapshot['graphCaps']
+  nodes: FrozenSnapshot['nodes']
+  links: FrozenSnapshot['links']
+  adjacency: FrozenSnapshot['adjacency']
+  inboundLinks: FrozenSnapshot['inboundLinks']
+  inboundAdjacency: FrozenSnapshot['inboundAdjacency']
+  keywordSearch: FrozenSnapshot['keywordSearch']
+  users: Array<{ pubkey: string; userData: FrozenUserData }>
+}): Promise<string> {
+  const hash = await sha256Hex(
+    encodeUtf8(
+      canonicalJson({
+        relays: input.relays,
+        graphCaps: input.graphCaps,
+        nodes: input.nodes,
+        links: input.links,
+        adjacency: input.adjacency,
+        inboundLinks: input.inboundLinks,
+        inboundAdjacency: input.inboundAdjacency,
+        keywordSearch: input.keywordSearch,
+        users: input.users,
+      }),
+    ),
+  )
+
+  return `cap-${hash.slice(0, 16)}`
 }

@@ -64,6 +64,42 @@ export const createRelaySlice: AppStateCreator<RelaySlice> = (set, get) => ({
       },
     }))
   },
+  updateRelayHealthBatch: (relayHealthPatch) => {
+    const patchEntries = Object.entries(relayHealthPatch)
+    if (patchEntries.length === 0) {
+      return
+    }
+
+    set((state) => {
+      let changed = false
+      const nextRelayHealth = { ...state.relayHealth }
+
+      for (const [relayUrl, healthPatch] of patchEntries) {
+        const currentHealth = nextRelayHealth[relayUrl] ?? createRelayHealth()
+        const nextHealth = {
+          ...currentHealth,
+          ...healthPatch,
+        }
+
+        if (
+          nextHealth.status === currentHealth.status &&
+          nextHealth.lastCheckedAt === currentHealth.lastCheckedAt &&
+          nextHealth.lastNotice === currentHealth.lastNotice
+        ) {
+          continue
+        }
+
+        nextRelayHealth[relayUrl] = nextHealth
+        changed = true
+      }
+
+      return changed
+        ? {
+            relayHealth: nextRelayHealth,
+          }
+        : state
+    })
+  },
   markGraphStale: (isStale) => {
     set({ isGraphStale: isStale })
   },

@@ -16,7 +16,7 @@ import {
 } from '@/features/graph/workers/shared/runtime'
 
 const INLINE_WORKERS_FLAG = '1'
-const WORKER_PROBE_TIMEOUT_MS = 1_500
+const WORKER_PROBE_TIMEOUT_MS = 5_000
 const EVENTS_WORKER_SCRIPT_URL = '/workers/events.worker.js'
 const GRAPH_WORKER_SCRIPT_URL = '/workers/graph.worker.js'
 

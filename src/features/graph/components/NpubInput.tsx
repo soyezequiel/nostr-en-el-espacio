@@ -3,7 +3,11 @@ import { useEffect, useRef, useState } from 'react'
 import { decodeRootPointer, type RootPointerDecodeResult } from '@/features/graph/kernel/nip19'
 
 interface NpubInputProps {
-  onValidRoot: (payload: { pubkey: string; kind: 'npub' | 'nprofile' }) => void
+  onValidRoot: (payload: {
+    pubkey: string
+    kind: 'npub' | 'nprofile'
+    relays: string[]
+  }) => void
   onInvalidRoot?: (
     payload: Extract<RootPointerDecodeResult, { status: 'invalid' }>,
   ) => void
@@ -26,11 +30,18 @@ export function NpubInput({ onValidRoot, onInvalidRoot }: NpubInputProps) {
 
   useEffect(() => {
     if (validationState.status === 'valid') {
-      if (lastPublishedRoot.current !== validationState.pubkey) {
-        lastPublishedRoot.current = validationState.pubkey
+      const publishSignature = [
+        validationState.kind,
+        validationState.pubkey,
+        validationState.relays.join('|'),
+      ].join('::')
+
+      if (lastPublishedRoot.current !== publishSignature) {
+        lastPublishedRoot.current = publishSignature
         onValidRoot({
           pubkey: validationState.pubkey,
           kind: validationState.kind,
+          relays: validationState.relays,
         })
       }
 

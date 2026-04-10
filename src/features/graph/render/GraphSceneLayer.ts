@@ -27,6 +27,7 @@ import {
   createEmptyImageRenderPayload,
   type ImageRenderPayload,
   type ImageRendererDeliverySnapshot,
+  type ImageSourceHandle,
 } from '@/features/graph/render/imageRuntime'
 import { AvatarAtlasManager } from '@/features/graph/render/avatarAtlasManager'
 import type {
@@ -70,12 +71,18 @@ const defaultProps: DefaultProps<GraphSceneLayerProps> = {
 const getEdgeColor = (
   edge: Pick<
     GraphRenderEdge,
-    'relation' | 'weight' | 'isPriority' | 'targetSharedByExpandedCount'
+    | 'relation'
+    | 'weight'
+    | 'isPriority'
+    | 'targetSharedByExpandedCount'
+    | 'isPathEdge'
   > & { source: string; target: string },
   maxZapWeight: number,
   hoveredNodePubkey: string | null,
   hoveredEdgeId: string | null,
   selectedNodePubkey: string | null,
+  activeLayer: GraphRenderModel['activeLayer'],
+  hasPathHighlight: boolean,
 ) => {
   const isHighlighted =
     ('id' in edge && hoveredEdgeId !== null && edge.id === hoveredEdgeId) ||
@@ -83,6 +90,14 @@ const getEdgeColor = (
       (edge.source === hoveredNodePubkey || edge.target === hoveredNodePubkey)) ||
     (selectedNodePubkey !== null &&
       (edge.source === selectedNodePubkey || edge.target === selectedNodePubkey))
+
+  if (activeLayer === 'pathfinding' && hasPathHighlight) {
+    if (edge.isPathEdge) {
+      return isHighlighted ? [236, 253, 245, 255] as const : [52, 211, 153, 248] as const
+    }
+
+    return isHighlighted ? [94, 234, 212, 110] as const : [71, 85, 105, 28] as const
+  }
 
   if (isHighlighted) {
     return HIGHLIGHT_LINK_COLOR
@@ -125,7 +140,7 @@ const getEdgeColor = (
 }
 
 const getEdgeWidth = (
-  edge: Pick<GraphRenderEdge, 'relation' | 'weight'> & {
+  edge: Pick<GraphRenderEdge, 'relation' | 'weight' | 'isPathEdge'> & {
     id: string
     source: string
     target: string
@@ -134,6 +149,8 @@ const getEdgeWidth = (
   hoveredNodePubkey: string | null,
   hoveredEdgeId: string | null,
   selectedNodePubkey: string | null,
+  activeLayer: GraphRenderModel['activeLayer'],
+  hasPathHighlight: boolean,
 ) => {
   const isHighlighted =
     (hoveredEdgeId !== null && edge.id === hoveredEdgeId) ||
@@ -142,9 +159,17 @@ const getEdgeWidth = (
     (selectedNodePubkey !== null &&
       (edge.source === selectedNodePubkey || edge.target === selectedNodePubkey))
 
+  if (activeLayer === 'pathfinding' && hasPathHighlight) {
+    if (edge.isPathEdge) {
+      return isHighlighted ? 4.4 : 3.2
+    }
+
+    return isHighlighted ? 1.4 : 0.85
+  }
+
   let baseWidth = 1
   if (edge.relation !== 'zap') {
-    baseWidth = edge.relation === 'follow' ? 1.4 : 1
+    baseWidth = 1.4
   } else {
     const normalizedWeight =
       maxZapWeight > 0 ? Math.max(0.15, edge.weight / maxZapWeight) : 0.15
@@ -154,8 +179,28 @@ const getEdgeWidth = (
   return isHighlighted ? baseWidth * 2 : baseWidth
 }
 
-const getNodeFillColor = (node: GraphRenderNode) => {
-  if (node.isCommonFollow) {
+const getNodeFillColor = (
+  node: GraphRenderNode,
+  activeLayer: GraphRenderModel['activeLayer'],
+  hasPathHighlight: boolean,
+) => {
+  if (activeLayer === 'pathfinding' && hasPathHighlight) {
+    return node.fillColor ?? [100, 116, 139, 214]
+  }
+
+  if (node.isPathNode) {
+    return node.fillColor ?? [100, 116, 139, 214]
+  }
+
+  if (
+    node.isCommonFollow &&
+    activeLayer !== 'connections' &&
+    activeLayer !== 'following' &&
+    activeLayer !== 'following-non-followers' &&
+    activeLayer !== 'mutuals' &&
+    activeLayer !== 'followers' &&
+    activeLayer !== 'nonreciprocal-followers'
+  ) {
     return COMMON_FOLLOW_NODE_COLOR
   }
 
@@ -187,19 +232,36 @@ const mixColor = (
 const GLASS_FROST_COLOR = [236, 245, 255, 255] as const
 const GLASS_EDGE_COLOR = [255, 255, 255, 255] as const
 const GLASS_SHADOW_COLOR = [125, 211, 252, 255] as const
+const KEYWORD_MUTED_COLOR = [156, 163, 175, 255] as const
+
+const shouldMuteKeywordMiss = (
+  model: GraphRenderModel,
+  node: GraphRenderNode,
+) => model.activeLayer === 'keywords' && node.keywordHits <= 0
+
+const muteKeywordMissColor = (
+  color: readonly [number, number, number, number],
+): [number, number, number, number] =>
+  mixColor(color, KEYWORD_MUTED_COLOR, 0.78)
 
 const getNodeGlassFillColor = (
   node: GraphRenderNode,
   paintedAvatarPubkeySet: ReadonlySet<string>,
+  model: GraphRenderModel,
+  activeLayer: GraphRenderModel['activeLayer'],
+  hasPathHighlight: boolean,
 ) => {
-  const tint = getNodeFillColor(node)
+  const tint = getNodeFillColor(node, activeLayer, hasPathHighlight)
   const frosted = mixColor(tint, GLASS_FROST_COLOR, 0.72)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
+  const color = shouldMuteKeywordMiss(model, node)
+    ? muteKeywordMissColor(frosted)
+    : frosted
 
   return [
-    frosted[0],
-    frosted[1],
-    frosted[2],
+    color[0],
+    color[1],
+    color[2],
     hasAvatarPainted ? 88 : 122,
   ] as const
 }
@@ -207,15 +269,19 @@ const getNodeGlassFillColor = (
 const getNodeGlassLineColor = (
   node: GraphRenderNode,
   paintedAvatarPubkeySet: ReadonlySet<string>,
+  model: GraphRenderModel,
 ) => {
   const tint = getNodeLineColor(node)
   const edged = mixColor(tint, GLASS_EDGE_COLOR, 0.68)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
+  const color = shouldMuteKeywordMiss(model, node)
+    ? muteKeywordMissColor(edged)
+    : edged
 
   return [
-    edged[0],
-    edged[1],
-    edged[2],
+    color[0],
+    color[1],
+    color[2],
     hasAvatarPainted ? 150 : 196,
   ] as const
 }
@@ -223,15 +289,21 @@ const getNodeGlassLineColor = (
 const getNodeGlassHaloColor = (
   node: GraphRenderNode,
   paintedAvatarPubkeySet: ReadonlySet<string>,
+  model: GraphRenderModel,
+  activeLayer: GraphRenderModel['activeLayer'],
+  hasPathHighlight: boolean,
 ) => {
-  const tint = getNodeFillColor(node)
+  const tint = getNodeFillColor(node, activeLayer, hasPathHighlight)
   const halo = mixColor(tint, GLASS_SHADOW_COLOR, 0.5)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
+  const color = shouldMuteKeywordMiss(model, node)
+    ? muteKeywordMissColor(halo)
+    : halo
 
   return [
-    halo[0],
-    halo[1],
-    halo[2],
+    color[0],
+    color[1],
+    color[2],
     hasAvatarPainted ? 24 : 40,
   ] as const
 }
@@ -239,15 +311,21 @@ const getNodeGlassHaloColor = (
 const getNodeGlassHighlightColor = (
   node: GraphRenderNode,
   paintedAvatarPubkeySet: ReadonlySet<string>,
+  model: GraphRenderModel,
+  activeLayer: GraphRenderModel['activeLayer'],
+  hasPathHighlight: boolean,
 ) => {
-  const tint = getNodeFillColor(node)
+  const tint = getNodeFillColor(node, activeLayer, hasPathHighlight)
   const highlight = mixColor(tint, GLASS_EDGE_COLOR, 0.88)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
+  const color = shouldMuteKeywordMiss(model, node)
+    ? muteKeywordMissColor(highlight)
+    : highlight
 
   return [
-    highlight[0],
-    highlight[1],
-    highlight[2],
+    color[0],
+    color[1],
+    color[2],
     hasAvatarPainted ? 34 : 64,
   ] as const
 }
@@ -261,6 +339,7 @@ const getEmphasisNodes = (
     (node) =>
       node.isSelected ||
       node.isExpanded ||
+      node.isPathEndpoint === true ||
       node.pubkey === hoveredNodePubkey ||
       hoveredEdgePubkeys.includes(node.pubkey),
   )
@@ -284,6 +363,7 @@ type DebugAvatarIconLayerProps = {
   deliveryLane: 'base' | 'hd'
   onDeliveryDebug?: (snapshot: ImageRendererDeliverySnapshot) => void
   explicitFailedPubkeys?: string[]
+  emitDeliveryDebugOnDraw?: boolean
 }
 
 type GraphSceneTopologyCacheEntry = {
@@ -299,8 +379,34 @@ type GraphSceneTopologyCacheEntry = {
   commonFollowNodes: readonly GraphRenderNode[]
 }
 
+type GraphSceneEmphasisCacheEntry = {
+  signature: string
+  hasPathHighlight: boolean
+  emphasisNodes: readonly GraphRenderNode[]
+}
+
+type GraphSceneImageDataCacheEntry = {
+  signature: string
+  paintedAvatarPubkeySet: ReadonlySet<string>
+  fallbackAvatarNodes: readonly GraphRenderNode[]
+  hasKeywordMatches: boolean
+  keywordMutedNodes: readonly GraphRenderNode[]
+  baseReadyImageSignature: string
+  hdReadyImageSignature: string
+  baseAvatarNodes: readonly GraphRenderNode[]
+  hdAvatarNodes: readonly GraphRenderNode[]
+  avatarNodesByIconId: ReadonlyMap<string, readonly GraphRenderNode[]>
+  hdAvatarNodesByIconId: ReadonlyMap<string, readonly GraphRenderNode[]>
+}
+
 const rendererAvatarAtlases = new Map<string, AvatarAtlasManager>()
 const graphSceneTopologyCache = new Map<string, GraphSceneTopologyCacheEntry>()
+const graphSceneEmphasisCache = new Map<string, GraphSceneEmphasisCacheEntry>()
+const graphSceneImageDataCache = new Map<string, GraphSceneImageDataCacheEntry>()
+const imageHandleRecordSignatureCache = new WeakMap<
+  Record<string, ImageSourceHandle>,
+  string
+>()
 const HD_ATLAS_MAX_TEXTURE_SIZE = 4096
 const HD_ATLAS_BUCKETS = [256, 512, 1024] as const
 
@@ -339,10 +445,165 @@ const getGraphSceneTopologyData = (
       0,
     ),
     sharedEmphasisNodes: getSharedEmphasisNodes(model.nodes),
-    commonFollowNodes: getCommonFollowNodes(model.nodes),
+    commonFollowNodes:
+      model.activeLayer === 'connections' ||
+      model.activeLayer === 'following' ||
+      model.activeLayer === 'following-non-followers' ||
+      model.activeLayer === 'mutuals' ||
+      model.activeLayer === 'followers' ||
+      model.activeLayer === 'nonreciprocal-followers'
+        ? []
+        : getCommonFollowNodes(model.nodes),
   }
 
   graphSceneTopologyCache.set(layerId, nextEntry)
+
+  return nextEntry
+}
+
+const createImageHandleRecordSignature = (
+  imagesByPubkey: Record<string, ImageSourceHandle>,
+) => {
+  const cachedSignature = imageHandleRecordSignatureCache.get(imagesByPubkey)
+  if (cachedSignature !== undefined) {
+    return cachedSignature
+  }
+
+  const signature = Object.entries(imagesByPubkey)
+    .sort(([leftPubkey], [rightPubkey]) =>
+      leftPubkey.localeCompare(rightPubkey),
+    )
+    .map(
+      ([pubkey, handle]) =>
+        `${pubkey}:${handle.key}:${handle.url}:${handle.bucket}`,
+    )
+    .join('|')
+
+  imageHandleRecordSignatureCache.set(imagesByPubkey, signature)
+
+  return signature
+}
+
+const buildAvatarNodesByIconId = (
+  avatarNodes: readonly GraphRenderNode[],
+  imagesByPubkey: Record<string, ImageSourceHandle>,
+) => {
+  const avatarNodesByIconId = new Map<string, GraphRenderNode[]>()
+
+  for (const node of avatarNodes) {
+    const iconId = imagesByPubkey[node.pubkey].key
+    const iconNodes = avatarNodesByIconId.get(iconId) ?? []
+    iconNodes.push(node)
+    avatarNodesByIconId.set(iconId, iconNodes)
+  }
+
+  return avatarNodesByIconId
+}
+
+const getGraphSceneEmphasisData = ({
+  layerId,
+  model,
+  hoveredNodePubkey,
+  hoveredEdgePubkeys,
+}: {
+  layerId: string
+  model: GraphRenderModel
+  hoveredNodePubkey: string | null
+  hoveredEdgePubkeys: readonly string[]
+}): GraphSceneEmphasisCacheEntry => {
+  const signature = [
+    resolveGraphSceneTopologySignature(model),
+    hoveredNodePubkey ?? '',
+    hoveredEdgePubkeys.join(','),
+  ].join('|')
+  const cachedEntry = graphSceneEmphasisCache.get(layerId)
+
+  if (cachedEntry && cachedEntry.signature === signature) {
+    return cachedEntry
+  }
+
+  const nextEntry: GraphSceneEmphasisCacheEntry = {
+    signature,
+    hasPathHighlight: model.nodes.some((node) => node.isPathNode),
+    emphasisNodes: getEmphasisNodes(
+      model.nodes,
+      hoveredNodePubkey,
+      hoveredEdgePubkeys,
+    ),
+  }
+
+  graphSceneEmphasisCache.set(layerId, nextEntry)
+
+  return nextEntry
+}
+
+const getGraphSceneImageData = ({
+  layerId,
+  model,
+  imageFrame,
+}: {
+  layerId: string
+  model: GraphRenderModel
+  imageFrame: ImageRenderPayload
+}): GraphSceneImageDataCacheEntry => {
+  const baseReadyImagesByPubkey =
+    imageFrame.baseReadyImagesByPubkey ?? imageFrame.readyImagesByPubkey
+  const hdReadyImagesByPubkey = imageFrame.hdReadyImagesByPubkey ?? {}
+  const baseReadyImageSignature =
+    createImageHandleRecordSignature(baseReadyImagesByPubkey)
+  const hdReadyImageSignature =
+    createImageHandleRecordSignature(hdReadyImagesByPubkey)
+  const paintedAvatarPubkeysSignature = imageFrame.paintedPubkeys.join(',')
+  const signature = [
+    resolveGraphSceneTopologySignature(model),
+    model.activeLayer,
+    paintedAvatarPubkeysSignature,
+    baseReadyImageSignature,
+    hdReadyImageSignature,
+  ].join('|')
+  const cachedEntry = graphSceneImageDataCache.get(layerId)
+
+  if (cachedEntry && cachedEntry.signature === signature) {
+    return cachedEntry
+  }
+
+  const paintedAvatarPubkeySet = new Set(imageFrame.paintedPubkeys)
+  const fallbackAvatarNodes = model.nodes.filter(
+    (node) => !paintedAvatarPubkeySet.has(node.pubkey),
+  )
+  const hasKeywordMatches =
+    model.activeLayer === 'keywords' &&
+    model.nodes.some((node) => node.keywordHits > 0)
+  const keywordMutedNodes = hasKeywordMatches
+    ? model.nodes.filter((node) => node.keywordHits <= 0)
+    : []
+  const baseAvatarNodes = model.nodes.filter(
+    (node) => baseReadyImagesByPubkey[node.pubkey] !== undefined,
+  )
+  const hdAvatarNodes = model.nodes.filter(
+    (node) => hdReadyImagesByPubkey[node.pubkey] !== undefined,
+  )
+  const nextEntry: GraphSceneImageDataCacheEntry = {
+    signature,
+    paintedAvatarPubkeySet,
+    fallbackAvatarNodes,
+    hasKeywordMatches,
+    keywordMutedNodes,
+    baseReadyImageSignature,
+    hdReadyImageSignature,
+    baseAvatarNodes,
+    hdAvatarNodes,
+    avatarNodesByIconId: buildAvatarNodesByIconId(
+      baseAvatarNodes,
+      baseReadyImagesByPubkey,
+    ),
+    hdAvatarNodesByIconId: buildAvatarNodesByIconId(
+      hdAvatarNodes,
+      hdReadyImagesByPubkey,
+    ),
+  }
+
+  graphSceneImageDataCache.set(layerId, nextEntry)
 
   return nextEntry
 }
@@ -486,7 +747,9 @@ class DebugAvatarIconLayer extends IconLayer<
 
   public override draw({ uniforms }: { uniforms: unknown }) {
     super.draw({ uniforms })
-    this.emitDeliveryDebug()
+    if (this.props.emitDeliveryDebugOnDraw === true) {
+      this.emitDeliveryDebug()
+    }
   }
 
   // Una capa cuenta como pintada recien cuando deck.gl termino de cargar
@@ -548,11 +811,12 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       onAvatarRendererDelivery,
     } = this.props
     const topologyData = getGraphSceneTopologyData(this.props.id, model)
-    const emphasisNodes = getEmphasisNodes(
-      model.nodes,
+    const { hasPathHighlight, emphasisNodes } = getGraphSceneEmphasisData({
+      layerId: this.props.id,
+      model,
       hoveredNodePubkey,
       hoveredEdgePubkeys,
-    )
+    })
     const {
       maxZapWeight,
       sharedEmphasisNodes,
@@ -570,41 +834,30 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
     const baseReadyImagesByPubkey =
       imageFrame.baseReadyImagesByPubkey ?? imageFrame.readyImagesByPubkey
     const hdReadyImagesByPubkey = imageFrame.hdReadyImagesByPubkey ?? {}
-    const paintedAvatarPubkeySet = new Set(imageFrame.paintedPubkeys)
-    const fallbackAvatarNodes = model.nodes.filter(
-      (node) => !paintedAvatarPubkeySet.has(node.pubkey),
-    )
-    const baseReadyImageSignature = Object.entries(baseReadyImagesByPubkey)
-      .sort(([leftPubkey], [rightPubkey]) =>
-        leftPubkey.localeCompare(rightPubkey),
-      )
-      .map(
-        ([pubkey, handle]) =>
-          `${pubkey}:${handle.key}:${handle.url}:${handle.bucket}`,
-      )
-      .join('|')
-    const hdReadyImageSignature = Object.entries(hdReadyImagesByPubkey)
-      .sort(([leftPubkey], [rightPubkey]) =>
-        leftPubkey.localeCompare(rightPubkey),
-      )
-      .map(
-        ([pubkey, handle]) =>
-          `${pubkey}:${handle.key}:${handle.url}:${handle.bucket}`,
-      )
-      .join('|')
+    const {
+      paintedAvatarPubkeySet,
+      fallbackAvatarNodes,
+      keywordMutedNodes,
+      baseReadyImageSignature,
+      hdReadyImageSignature,
+      baseAvatarNodes,
+      hdAvatarNodes,
+      avatarNodesByIconId,
+      hdAvatarNodesByIconId,
+    } = getGraphSceneImageData({
+      layerId: this.props.id,
+      model,
+      imageFrame,
+    })
 
-    const visibleArrowData = arrowType !== 'none' ? arrowData : []
+    const visibleArrowData =
+      arrowType !== 'none' && model.activeLayer !== 'mutuals' ? arrowData : []
 
-    const baseAvatarNodes = model.nodes.filter(
-      (node) => baseReadyImagesByPubkey[node.pubkey] !== undefined,
-    )
-    const hdAvatarNodes = model.nodes.filter(
-      (node) => hdReadyImagesByPubkey[node.pubkey] !== undefined,
-    )
     const baseAvatarLayerId = `${this.props.id}-avatars-base`
     const avatarAtlas = getRendererAvatarAtlas(baseAvatarLayerId)
     avatarAtlas.setSnapshotChangeListener(() => {
       this.setNeedsUpdate()
+      this.setNeedsRedraw()
     })
     const avatarAtlasSnapshot = avatarAtlas.updateVisibleEntries({
       entries: baseAvatarNodes.map((node) => {
@@ -629,13 +882,6 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
     avatarDeliveryAggregator.setExplicitFailedPubkeys(
       avatarAtlasSnapshot.delivery.failedPubkeys,
     )
-    const avatarNodesByIconId = new Map<string, GraphRenderNode[]>()
-    for (const node of baseAvatarNodes) {
-      const iconId = baseReadyImagesByPubkey[node.pubkey].key
-      const iconNodes = avatarNodesByIconId.get(iconId) ?? []
-      iconNodes.push(node)
-      avatarNodesByIconId.set(iconId, iconNodes)
-    }
     const visibleAvatarPageIds = new Set<string>()
     const avatarLayers =
       avatarAtlasSnapshot.pages.length > 0
@@ -684,6 +930,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
     })
     hdAvatarAtlas.setSnapshotChangeListener(() => {
       this.setNeedsUpdate()
+      this.setNeedsRedraw()
     })
     const hdAvatarAtlasSnapshot = hdAvatarAtlas.updateVisibleEntries({
       // Full HD already usa variantes listas del runtime; aca solo evitamos el
@@ -704,13 +951,6 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         }
       }),
     })
-    const hdAvatarNodesByIconId = new Map<string, GraphRenderNode[]>()
-    for (const node of hdAvatarNodes) {
-      const iconId = hdReadyImagesByPubkey[node.pubkey].key
-      const iconNodes = hdAvatarNodesByIconId.get(iconId) ?? []
-      iconNodes.push(node)
-      hdAvatarNodesByIconId.set(iconId, iconNodes)
-    }
     const hdAvatarLayers =
       hdAvatarAtlasSnapshot.pages.length > 0
         ? hdAvatarAtlasSnapshot.pages.map((page) => {
@@ -755,13 +995,15 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         getSourcePosition: (segment) => segment.sourcePosition,
         getTargetPosition: (segment) => segment.targetPosition,
         getColor: (segment) => {
-          const baseColor = getEdgeColor(
-            segment,
-            maxZapWeight,
-            hoveredNodePubkey,
-            hoveredEdgeId,
-            selectedNodePubkey,
-          )
+                const baseColor = getEdgeColor(
+                  segment,
+                  maxZapWeight,
+                  hoveredNodePubkey,
+                  hoveredEdgeId,
+                  selectedNodePubkey,
+                  model.activeLayer,
+                  hasPathHighlight,
+                )
           const progress =
             ((segment.progressStart ?? 1) + (segment.progressEnd ?? 1)) / 2
           const fadedAlpha = Math.max(
@@ -771,17 +1013,31 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
 
           return [baseColor[0], baseColor[1], baseColor[2], fadedAlpha]
         },
-        getWidth: (segment) =>
-          getEdgeWidth(
-            segment,
-            maxZapWeight,
+          getWidth: (segment) =>
+            getEdgeWidth(
+              segment,
+              maxZapWeight,
+              hoveredNodePubkey,
+              hoveredEdgeId,
+              selectedNodePubkey,
+              model.activeLayer,
+              hasPathHighlight,
+            ) * edgeThickness,
+        updateTriggers: {
+          getColor: [
             hoveredNodePubkey,
             hoveredEdgeId,
             selectedNodePubkey,
-          ) * edgeThickness,
-        updateTriggers: {
-          getColor: [hoveredNodePubkey, hoveredEdgeId, selectedNodePubkey],
-          getWidth: [hoveredNodePubkey, hoveredEdgeId, selectedNodePubkey],
+            model.activeLayer,
+            hasPathHighlight,
+          ],
+          getWidth: [
+            hoveredNodePubkey,
+            hoveredEdgeId,
+            selectedNodePubkey,
+            model.activeLayer,
+            hasPathHighlight,
+          ],
         },
       }),
       ...(visibleArrowData.length > 0
@@ -801,6 +1057,8 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
                   hoveredNodePubkey,
                   hoveredEdgeId,
                   selectedNodePubkey,
+                  model.activeLayer,
+                  hasPathHighlight,
                 )
                 return [color[0], color[1], color[2], 200]
               },
@@ -811,6 +1069,8 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
                   hoveredNodePubkey,
                   hoveredEdgeId,
                   selectedNodePubkey,
+                  model.activeLayer,
+                  hasPathHighlight,
                 ) *
                   edgeThickness *
                   6 +
@@ -820,8 +1080,45 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               fontFamily: 'system-ui, sans-serif',
               characterSet: 'auto',
               updateTriggers: {
-                getColor: [hoveredNodePubkey, hoveredEdgeId, selectedNodePubkey],
-                getSize: [hoveredNodePubkey, hoveredEdgeId, selectedNodePubkey],
+                getColor: [
+                  hoveredNodePubkey,
+                  hoveredEdgeId,
+                  selectedNodePubkey,
+                  model.activeLayer,
+                  hasPathHighlight,
+                ],
+                getSize: [
+                  hoveredNodePubkey,
+                  hoveredEdgeId,
+                  selectedNodePubkey,
+                  model.activeLayer,
+                  hasPathHighlight,
+                ],
+              },
+            }),
+          ]
+        : []),
+      ...(hasPathHighlight
+        ? [
+            new ScatterplotLayer<GraphRenderNode>({
+              id: `${this.props.id}-path-emphasis`,
+              data: model.nodes.filter((node) => node.isPathNode),
+              pickable: false,
+              stroked: true,
+              filled: true,
+              radiusUnits: 'pixels',
+              lineWidthUnits: 'pixels',
+              getPosition: (node) => node.position,
+              getRadius: (node) =>
+                getScreenRadius(node.pubkey, node.radius) *
+                (node.isPathEndpoint ? 1.78 : 1.38),
+              getFillColor: (node) =>
+                node.isPathEndpoint ? [167, 243, 208, 74] : [56, 189, 248, 34],
+              getLineColor: (node) =>
+                node.isPathEndpoint ? [167, 243, 208, 220] : [125, 211, 252, 172],
+              getLineWidth: (node) => (node.isPathEndpoint ? 3.2 : 2),
+              updateTriggers: {
+                getRadius: [nodeScreenRadii, nodeSizeFactor, model.nodes],
               },
             }),
           ]
@@ -911,10 +1208,20 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         getPosition: (node) => node.position,
         getRadius: (node) => getScreenRadius(node.pubkey, node.radius) * 1.14,
         getFillColor: (node) =>
-          getNodeGlassHaloColor(node, paintedAvatarPubkeySet),
+          getNodeGlassHaloColor(
+            node,
+            paintedAvatarPubkeySet,
+            model,
+            model.activeLayer,
+            hasPathHighlight,
+          ),
         updateTriggers: {
           getRadius: [nodeScreenRadii, nodeSizeFactor],
-          getFillColor: [imageFrame.paintedPubkeys.join(',')],
+          getFillColor: [
+            imageFrame.paintedPubkeys.join(','),
+            model.activeLayer,
+            hasPathHighlight,
+          ],
         },
       }),
       new ScatterplotLayer<GraphRenderNode>({
@@ -928,9 +1235,15 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         getPosition: (node) => node.position,
         getRadius: (node) => getScreenRadius(node.pubkey, node.radius),
         getFillColor: (node) =>
-          getNodeGlassFillColor(node, paintedAvatarPubkeySet),
+          getNodeGlassFillColor(
+            node,
+            paintedAvatarPubkeySet,
+            model,
+            model.activeLayer,
+            hasPathHighlight,
+          ),
         getLineColor: (node) =>
-          getNodeGlassLineColor(node, paintedAvatarPubkeySet),
+          getNodeGlassLineColor(node, paintedAvatarPubkeySet, model),
         getLineWidth: (node) =>
           node.isRoot
             ? 2.2
@@ -939,8 +1252,12 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               : 1.15,
         updateTriggers: {
           getRadius: [nodeScreenRadii, nodeSizeFactor],
-          getFillColor: [imageFrame.paintedPubkeys.join(',')],
-          getLineColor: [imageFrame.paintedPubkeys.join(',')],
+          getFillColor: [
+            imageFrame.paintedPubkeys.join(','),
+            model.activeLayer,
+            hasPathHighlight,
+          ],
+          getLineColor: [imageFrame.paintedPubkeys.join(','), model.activeLayer],
           getLineWidth: [imageFrame.paintedPubkeys.join(',')],
         },
       }),
@@ -954,10 +1271,20 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         getPosition: (node) => node.position,
         getRadius: (node) => getScreenRadius(node.pubkey, node.radius) * 0.72,
         getFillColor: (node) =>
-          getNodeGlassHighlightColor(node, paintedAvatarPubkeySet),
+          getNodeGlassHighlightColor(
+            node,
+            paintedAvatarPubkeySet,
+            model,
+            model.activeLayer,
+            hasPathHighlight,
+          ),
         updateTriggers: {
           getRadius: [nodeScreenRadii, nodeSizeFactor],
-          getFillColor: [imageFrame.paintedPubkeys.join(',')],
+          getFillColor: [
+            imageFrame.paintedPubkeys.join(','),
+            model.activeLayer,
+            hasPathHighlight,
+          ],
         },
       }),
       new IconLayer<GraphRenderNode>({
@@ -980,6 +1307,25 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       }),
       ...avatarLayers,
       ...hdAvatarLayers,
+      ...(keywordMutedNodes.length > 0
+        ? [
+            new ScatterplotLayer<GraphRenderNode>({
+              id: `${this.props.id}-keyword-muted-overlay`,
+              data: keywordMutedNodes,
+              pickable: false,
+              stroked: false,
+              filled: true,
+              radiusUnits: 'pixels',
+              getPosition: (node) => node.position,
+              getRadius: (node) =>
+                getScreenRadius(node.pubkey, node.radius) * 0.98,
+              getFillColor: () => [148, 163, 184, 132],
+              updateTriggers: {
+                getRadius: [nodeScreenRadii, nodeSizeFactor],
+              },
+            }),
+          ]
+        : []),
       new TextLayer<GraphRenderLabel>({
         id: `${this.props.id}-labels`,
         data: visibleLabels,

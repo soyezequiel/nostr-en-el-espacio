@@ -7,6 +7,7 @@ import { useShallow } from 'zustand/react/shallow'
 import AvatarFallback from '@/components/AvatarFallback'
 import { selectNodeDetailContext, useAppStore } from '@/features/graph/app/store'
 import type { GraphNode, GraphNodeProfile } from '@/features/graph/app/store/types'
+import { NodeExpansionProgressCard } from '@/features/graph/components/NodeExpansionProgressCard'
 import type { ExpandNodeResult, RootLoader } from '@/features/graph/kernel'
 import {
   getAvatarMonogram,
@@ -27,6 +28,8 @@ interface ExpandFeedback {
   tone: ExpandFeedbackTone
   message: string
 }
+
+const EMPTY_KEYWORD_MATCHES = [] as const
 
 const buildNodeProfileSnapshot = (
   node: GraphNode | null,
@@ -114,6 +117,17 @@ export function NodeDetailPanel({
   const toggleDeepUserSelection = useAppStore(
     (state) => state.toggleDeepUserSelection,
   )
+  const keywordMatches = useAppStore((state) =>
+    selectedNodePubkey
+      ? state.keywordLayer.matchesByPubkey[selectedNodePubkey] ??
+        EMPTY_KEYWORD_MATCHES
+      : EMPTY_KEYWORD_MATCHES,
+  )
+  const setOpenPanel = useAppStore((state) => state.setOpenPanel)
+  const setPathfindingEndpoint = useAppStore((state) => state.setPathfindingEndpoint)
+  const setPathfindingSelectionMode = useAppStore(
+    (state) => state.setPathfindingSelectionMode,
+  )
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
   const selectedProfileSnapshot = buildNodeProfileSnapshot(selectedNode)
   const selectedProfileSignature = buildProfileSignature(selectedProfileSnapshot)
@@ -155,6 +169,7 @@ export function NodeDetailPanel({
   )
   const isRootDeepCaptureEntry =
     selectedNodePubkey !== null && selectedNodePubkey === rootNodePubkey
+  const showExpandAction = Boolean(selectedNode && !isExpanded && !graphCapReached)
   const isStructurePreviewEligible =
     Boolean(selectedNodePubkey) &&
     selectedNodePubkey !== rootNodePubkey &&
@@ -182,6 +197,19 @@ export function NodeDetailPanel({
     !isRootDeepCaptureEntry &&
     !isDeepSelectionLocked &&
     (isSelectedForDeepCapture || slotsRemaining > 0)
+
+  const handleSendToPathfinding = (role: 'source' | 'target') => {
+    if (!selectedNodePubkey) {
+      return
+    }
+
+    setPathfindingSelectionMode('idle')
+    setPathfindingEndpoint(role, {
+      pubkey: selectedNodePubkey,
+      query: selectedNodePubkey,
+    })
+    setOpenPanel('pathfinding')
+  }
 
   useEffect(() => {
     if (!isOpen) {
@@ -405,6 +433,7 @@ export function NodeDetailPanel({
 
   return (
     <aside
+      aria-busy={isStructurallyExpanding}
       aria-labelledby="node-detail-title"
       aria-live="polite"
       className="node-detail-panel"
@@ -588,15 +617,54 @@ export function NodeDetailPanel({
             </div>
           </div>
 
+          {keywordMatches.length > 0 ? (
+            <section className="node-detail-panel__matches">
+              <div className="node-detail-panel__matches-header">
+                <div>
+                  <p className="node-detail-panel__metric-label">Coincidencias</p>
+                  <p className="node-detail-panel__matches-copy">
+                    {keywordMatches.length} extractos relevantes para la keyword activa.
+                  </p>
+                </div>
+              </div>
+
+              <div className="node-detail-panel__matches-list">
+                {keywordMatches.slice(0, 3).map((match) => (
+                  <article className="node-detail-panel__match-card" key={match.noteId}>
+                    <p className="node-detail-panel__match-excerpt">{match.excerpt}</p>
+                    <div className="node-detail-panel__match-meta">
+                      <span>score {match.score}</span>
+                      <span>{match.matchedTokens.join(', ')}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <div className="node-detail-panel__actions">
-            {canExpand ? (
+            {showExpandAction ? (
               <button
-                className="node-detail-panel__primary-action"
+                className={`node-detail-panel__primary-action${
+                  isStructurallyExpanding
+                    ? ' node-detail-panel__primary-action--loading'
+                    : ''
+                }`}
                 disabled={isStructurallyExpanding}
                 onClick={() => void handleExpand()}
                 type="button"
               >
-                {isStructurallyExpanding ? 'Expandiendo...' : 'Expandir'}
+                {isStructurallyExpanding ? (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className="node-detail-panel__action-spinner"
+                    />
+                    Expandiendo
+                  </>
+                ) : (
+                  'Expandir'
+                )}
               </button>
             ) : (
               <button
@@ -619,6 +687,22 @@ export function NodeDetailPanel({
               type="button"
             >
               {deepCaptureButtonLabel}
+            </button>
+
+            <button
+              className="node-detail-panel__secondary-action"
+              onClick={() => handleSendToPathfinding('source')}
+              type="button"
+            >
+              Usar como origen
+            </button>
+
+            <button
+              className="node-detail-panel__secondary-action"
+              onClick={() => handleSendToPathfinding('target')}
+              type="button"
+            >
+              Usar como destino
             </button>
           </div>
 
@@ -689,21 +773,19 @@ export function NodeDetailPanel({
             </div>
           ) : null}
 
-          {expandFeedback ? (
+          {nodeExpansionState?.status === 'loading' ? (
+            <NodeExpansionProgressCard
+              state={nodeExpansionState}
+              title="Expansion estructural"
+              variant="panel"
+            />
+          ) : expandFeedback ? (
             <div
               aria-live="polite"
               className={`node-detail-panel__feedback node-detail-panel__feedback--${expandFeedback.tone}`}
               role={expandFeedback.tone === 'error' ? 'alert' : 'status'}
             >
               <p>{expandFeedback.message}</p>
-            </div>
-          ) : nodeExpansionState?.status === 'loading' && nodeExpansionState.message ? (
-            <div
-              aria-live="polite"
-              className="node-detail-panel__feedback node-detail-panel__feedback--neutral"
-              role="status"
-            >
-              <p>{nodeExpansionState.message}</p>
             </div>
           ) : nodeExpansionState?.status === 'partial' && nodeExpansionState.message ? (
             <div

@@ -7,6 +7,7 @@ import type {
   ContactListRecord,
   ImageVariantRecord,
   InboundRefRecord,
+  NoteExtractRecord,
   ProfileRecord,
   RawEventInput,
   RawEventRecord,
@@ -177,6 +178,81 @@ export class ContactListsRepository {
 
   public async get(pubkey: string): Promise<ContactListRecord | undefined> {
     return this.db.contactLists.get(pubkey)
+  }
+}
+
+export class NoteExtractsRepository {
+  private readonly db: NostrGraphDexie
+
+  public constructor(db: NostrGraphDexie) {
+    this.db = db
+  }
+
+  public async upsert(record: NoteExtractRecord): Promise<NoteExtractRecord> {
+    const existing = await this.db.noteExtracts.get(record.noteId)
+
+    if (
+      !existing ||
+      record.createdAt > existing.createdAt ||
+      (record.createdAt === existing.createdAt &&
+        record.fetchedAt >= existing.fetchedAt)
+    ) {
+      await this.db.noteExtracts.put(record)
+      return record
+    }
+
+    return existing
+  }
+
+  public async replaceForPubkey(
+    pubkey: string,
+    records: NoteExtractRecord[],
+  ): Promise<NoteExtractRecord[]> {
+    await this.db.transaction(
+      'rw',
+      this.db.noteExtracts,
+      async () => {
+        const existingIds = await this.db.noteExtracts
+          .where('pubkey')
+          .equals(pubkey)
+          .primaryKeys()
+
+        if (existingIds.length > 0) {
+          await this.db.noteExtracts.bulkDelete(existingIds)
+        }
+
+        if (records.length > 0) {
+          await this.db.noteExtracts.bulkPut(records)
+        }
+      },
+    )
+
+    return records
+  }
+
+  public async findByPubkeys(pubkeys: readonly string[]): Promise<NoteExtractRecord[]> {
+    const normalizedPubkeys = Array.from(new Set(pubkeys.filter(Boolean))).sort()
+
+    if (normalizedPubkeys.length === 0) {
+      return []
+    }
+
+    const records = await this.db.noteExtracts
+      .where('pubkey')
+      .anyOf(normalizedPubkeys)
+      .toArray()
+
+    return records.sort((left, right) => {
+      if (left.pubkey !== right.pubkey) {
+        return left.pubkey.localeCompare(right.pubkey)
+      }
+
+      if (left.createdAt !== right.createdAt) {
+        return right.createdAt - left.createdAt
+      }
+
+      return left.noteId.localeCompare(right.noteId)
+    })
   }
 }
 
@@ -413,6 +489,14 @@ export class ImageVariantRepository {
     await this.db.imageVariants.delete(key)
   }
 
+  public async bulkDelete(keys: Array<[string, number]>): Promise<void> {
+    if (keys.length === 0) {
+      return
+    }
+
+    await this.db.imageVariants.bulkDelete(keys)
+  }
+
   public async enforceByteBudget(maxBytes: number): Promise<void> {
     type VariantMeta = { cacheKey: [string, number]; byteSize: number }
     const metaRecords: VariantMeta[] = []
@@ -465,6 +549,7 @@ export interface NostrGraphRepositories {
   addressableHeads: AddressableHeadsRepository
   profiles: ProfilesRepository
   contactLists: ContactListsRepository
+  noteExtracts: NoteExtractsRepository
   inboundRefs: InboundRefsRepository
   zaps: ZapsRepository
   imageVariants: ImageVariantRepository
@@ -477,6 +562,7 @@ export function createRepositories(db: NostrGraphDexie): NostrGraphRepositories 
     addressableHeads: new AddressableHeadsRepository(db),
     profiles: new ProfilesRepository(db),
     contactLists: new ContactListsRepository(db),
+    noteExtracts: new NoteExtractsRepository(db),
     inboundRefs: new InboundRefsRepository(db),
     zaps: new ZapsRepository(db),
     imageVariants: new ImageVariantRepository(db),

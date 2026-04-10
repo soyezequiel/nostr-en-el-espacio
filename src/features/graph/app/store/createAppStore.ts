@@ -5,6 +5,8 @@ import { createStore } from 'zustand/vanilla'
 import { createAnalysisSlice } from '@/features/graph/app/store/slices/analysisSlice'
 import { createExportSlice } from '@/features/graph/app/store/slices/exportSlice'
 import { createGraphSlice } from '@/features/graph/app/store/slices/graphSlice'
+import { createKeywordSlice } from '@/features/graph/app/store/slices/keywordSlice'
+import { createPathfindingSlice } from '@/features/graph/app/store/slices/pathfindingSlice'
 import { createRelaySlice } from '@/features/graph/app/store/slices/relaySlice'
 import { createUiSlice } from '@/features/graph/app/store/slices/uiSlice'
 import { createZapSlice } from '@/features/graph/app/store/slices/zapSlice'
@@ -21,9 +23,11 @@ export const createAppStore = (): AppStoreApi =>
         ...createGraphSlice(...args),
         ...createAnalysisSlice(...args),
         ...createZapSlice(...args),
+        ...createKeywordSlice(...args),
         ...createRelaySlice(...args),
         ...createUiSlice(...args),
         ...createExportSlice(...args),
+        ...createPathfindingSlice(...args),
       }),
       {
         name: 'nostr-graph-saved-roots',

@@ -1,11 +1,13 @@
 /* eslint-disable @next/next/no-assign-module-variable, react-hooks/refs */
 
 import {
+  memo,
   Profiler,
   Suspense,
   lazy,
   startTransition,
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -16,10 +18,13 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   appStore,
   deriveCoverageRecovery,
+  selectRelayHealthData,
   useAppStore,
 } from '@/features/graph/app/store'
 import type { AppStore } from '@/features/graph/app/store/types'
 import { CoverageRecoveryCard } from '@/features/graph/components/CoverageRecoveryCard'
+import { GraphControlRail } from '@/features/graph/components/GraphControlRail'
+import { NodeExpansionProgressCard } from '@/features/graph/components/NodeExpansionProgressCard'
 import { createPerfCounters } from '@/features/graph/components/perfCounters'
 import type { RootLoader } from '@/features/graph/kernel'
 import {
@@ -32,6 +37,7 @@ import {
   ImageRuntime,
   resolveGraphNodeScreenRadii,
   selectVisibleGraphLabels,
+  truncatePubkey,
   type GraphRenderLabel,
   type GraphRenderModel,
   type GraphRenderModelPhase,
@@ -40,6 +46,8 @@ import {
   type ImageResidencySnapshot,
 } from '@/features/graph/render'
 import type {
+  ImageFrameComputationMode,
+  ImageFrameSkipReason,
   ImageRendererDeliverySnapshot,
   ImageSourceHandle,
 } from '@/features/graph/render/imageRuntime'
@@ -50,31 +58,59 @@ import {
 } from '@/features/graph/render/renderModelWorker'
 import { GraphViewportLazy } from '@/features/graph/render/GraphViewportLazy'
 
-const selectGraphCanvasState = (state: AppStore) => ({
+const selectGraphCanvasRenderState = (state: AppStore) => ({
   nodes: state.nodes,
   links: state.links,
+  inboundLinks: state.inboundLinks,
+  graphRevision: state.graphRevision,
+  inboundGraphRevision: state.inboundGraphRevision,
   zapEdges: state.zapLayer.edges,
   zapLayerStatus: state.zapLayer.status,
-  relayUrls: state.relayUrls,
-  relayHealth: state.relayHealth,
+  zapLayerRevision: state.zapLayer.revision,
+  keywordLayerStatus: state.keywordLayer.status,
+  keywordLayerMessage: state.keywordLayer.message,
+  keywordExtractCount: state.keywordLayer.extractCount,
+  keywordCorpusNodeCount: state.keywordLayer.corpusNodeCount,
+  keywordLoadedFrom: state.keywordLayer.loadedFrom,
+  keywordIsPartial: state.keywordLayer.isPartial,
+  keywordMatchCount: state.keywordLayer.matchCount,
+  keywordMatchNodeCount: state.keywordLayer.matchNodeCount,
   rootNodePubkey: state.rootNodePubkey,
   selectedNodePubkey: state.selectedNodePubkey,
   comparedNodePubkeys: state.comparedNodePubkeys,
   expandedNodePubkeys: state.expandedNodePubkeys,
   graphAnalysis: state.graphAnalysis,
+  pathfinding: state.pathfinding,
   rootLoadStatus: state.rootLoad.status,
   rootLoadMessage: state.rootLoad.message,
   activeLayer: state.activeLayer,
+  connectionsSourceLayer: state.connectionsSourceLayer,
   capReached: state.graphCaps.capReached,
   maxNodes: state.graphCaps.maxNodes,
+  nodeExpansionStates: state.nodeExpansionStates,
   renderConfig: state.renderConfig,
-  isNodeDetailOpen:
-    state.openPanel === 'node-detail' && state.selectedNodePubkey !== null,
+})
+
+const selectGraphCanvasPanelState = (state: AppStore) => ({
+  openPanel: state.openPanel,
+})
+
+const selectGraphCanvasKeywordSearchState = (state: AppStore) => ({
+  activeLayer: state.activeLayer,
+  currentKeyword: state.currentKeyword,
+  keywordLayerStatus: state.keywordLayer.status,
+  keywordExtractCount: state.keywordLayer.extractCount,
+  keywordMatchCount: state.keywordLayer.matchCount,
 })
 
 const NodeDetailPanel = lazy(async () => {
   const module = await import('@/features/graph/components/NodeDetailPanel')
   return { default: module.NodeDetailPanel }
+})
+
+const PathfindingPanel = lazy(async () => {
+  const module = await import('@/features/graph/components/PathfindingPanel')
+  return { default: module.PathfindingPanel }
 })
 
 export interface GraphCanvasDiagnostics {
@@ -99,6 +135,7 @@ export interface GraphCanvasDiagnostics {
     meta: string
     activeLayer: string
     zapLayerStatus: string
+    keywordLayerStatus: string
   }
 }
 
@@ -112,12 +149,157 @@ const EMPTY_IMAGE_FRAME = createEmptyImageRenderPayload()
 const EMPTY_IMAGE_DIAGNOSTICS = createEmptyImageResidencySnapshot()
 const EMPTY_NODE_SCREEN_RADII = new Map<string, number>()
 const QUIET_VIEWPORT_READY_MS = 10_000
-const AVATAR_HD_VIEWPORT_QUIET_MS = 120
-const AVATAR_FULL_HD_VIEWPORT_QUIET_MS = 250
+const AVATAR_HD_VIEWPORT_QUIET_MS = 400
+const AVATAR_FULL_HD_VIEWPORT_QUIET_MS = 400
+const COALESCED_FRAME_DELAY_MS = 16
+const DIAGNOSTICS_COMMIT_DELAY_MS = 250
+const RESIZE_SETTLE_DELAY_MS = 80
+const VIEWPORT_SETTLE_DELAY_MS = 400
+const BOOTSTRAP_IMAGE_QUALITY_MODE = 'performance'
+
+interface HoverGraphState {
+  nodePubkey: string | null
+  edgeId: string | null
+  edgePubkeys: readonly string[]
+}
+
+interface ActiveNodeExpansion {
+  pubkey: string
+  nodeLabel: string
+  state: AppStore['nodeExpansionStates'][string]
+}
+
+const EMPTY_HOVER_STATE: HoverGraphState = {
+  nodePubkey: null,
+  edgeId: null,
+  edgePubkeys: [],
+}
+
+const isRelationshipLayer = (layer: AppStore['activeLayer']) =>
+  layer === 'following' ||
+  layer === 'following-non-followers' ||
+  layer === 'followers' ||
+  layer === 'nonreciprocal-followers' ||
+  layer === 'mutuals'
+
+const getRelationshipToggleState = (activeLayer: AppStore['activeLayer']) => ({
+  following:
+    activeLayer === 'following' ||
+    activeLayer === 'following-non-followers' ||
+    activeLayer === 'mutuals',
+  followers:
+    activeLayer === 'followers' ||
+    activeLayer === 'nonreciprocal-followers' ||
+    activeLayer === 'mutuals',
+  onlyNonReciprocal:
+    activeLayer === 'following-non-followers' ||
+    activeLayer === 'nonreciprocal-followers',
+})
 
 const equalStringLists = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&
   left.every((value, index) => value === right[index])
+
+const hasRenderableFrameSize = (size: { width: number; height: number }) =>
+  size.width > 0 && size.height > 0
+
+const applyImageFrameDiagnostics = ({
+  snapshot,
+  frameComputationMode,
+  frameSkipReason,
+  primarySummary,
+  secondarySummary,
+}: {
+  snapshot: ImageResidencySnapshot
+  frameComputationMode: ImageFrameComputationMode
+  frameSkipReason: ImageFrameSkipReason
+  primarySummary?: string
+  secondarySummary?: string | null
+}): ImageResidencySnapshot => ({
+  ...snapshot,
+  diagnostics: {
+    ...snapshot.diagnostics,
+    frameComputationMode,
+    frameSkipReason,
+    primarySummary: primarySummary ?? snapshot.diagnostics.primarySummary,
+    secondarySummary:
+      secondarySummary !== undefined
+        ? secondarySummary
+        : snapshot.diagnostics.secondarySummary,
+  },
+})
+
+const createSortedCollectionSignature = (values?: ReadonlySet<string>) =>
+  values ? Array.from(values).sort().join(',') : ''
+
+const createPathfindingSignature = (
+  pathfinding?: Pick<AppStore['pathfinding'], 'status' | 'path'>,
+) => `${pathfinding?.status ?? 'idle'}:${pathfinding?.path?.join('>') ?? ''}`
+
+const createRenderConfigSignature = (renderConfig: AppStore['renderConfig']) =>
+  [
+    renderConfig.edgeThickness,
+    renderConfig.arrowType,
+    renderConfig.nodeSpacingFactor,
+    renderConfig.nodeSizeFactor,
+    renderConfig.autoSizeNodes ? 'auto-size' : 'fixed-size',
+    renderConfig.showSharedEmphasis ? 'shared-emphasis' : 'no-shared-emphasis',
+    renderConfig.imageQualityMode,
+  ].join(':')
+
+const createGraphAnalysisSignature = (
+  graphAnalysis?: AppStore['graphAnalysis'],
+) =>
+  [
+    graphAnalysis?.analysisKey ?? '',
+    graphAnalysis?.status ?? 'idle',
+    graphAnalysis?.isStale ? 'stale' : 'fresh',
+  ].join(':')
+
+const createBuildRenderModelJobKey = ({
+  graphRevision,
+  inboundGraphRevision,
+  zapLayerRevision,
+  zapLayerStatus,
+  activeLayer,
+  connectionsSourceLayer,
+  rootNodePubkey,
+  selectedNodePubkey,
+  expandedNodePubkeys,
+  comparedNodePubkeys,
+  pathfinding,
+  graphAnalysis,
+  renderConfig,
+}: {
+  graphRevision: number
+  inboundGraphRevision: number
+  zapLayerRevision: number
+  zapLayerStatus: AppStore['zapLayer']['status']
+  activeLayer: AppStore['activeLayer']
+  connectionsSourceLayer: AppStore['connectionsSourceLayer']
+  rootNodePubkey: string | null
+  selectedNodePubkey: string | null
+  expandedNodePubkeys: ReadonlySet<string>
+  comparedNodePubkeys?: ReadonlySet<string>
+  pathfinding?: Pick<AppStore['pathfinding'], 'status' | 'path'>
+  graphAnalysis?: AppStore['graphAnalysis']
+  renderConfig: AppStore['renderConfig']
+}) =>
+  JSON.stringify({
+    graphRevision,
+    inboundGraphRevision,
+    zapLayerRevision,
+    zapLayerStatus,
+    activeLayer,
+    connectionsSourceLayer,
+    rootNodePubkey,
+    selectedNodePubkey,
+    expandedNodePubkeys: createSortedCollectionSignature(expandedNodePubkeys),
+    comparedNodePubkeys: createSortedCollectionSignature(comparedNodePubkeys),
+    pathfinding: createPathfindingSignature(pathfinding),
+    graphAnalysis: createGraphAnalysisSignature(graphAnalysis),
+    renderConfig: createRenderConfigSignature(renderConfig),
+  })
 
 const equalImageSourceHandleRecords = (
   left: Record<string, ImageSourceHandle>,
@@ -242,7 +424,10 @@ const getRenderModelErrorMessage = (error: unknown) => {
   return 'No se pudo preparar el render 2D.'
 }
 
-const emptyStateCopy = (status: ReturnType<typeof deriveGraphRenderState>) => {
+const emptyStateCopy = (
+  status: ReturnType<typeof deriveGraphRenderState>,
+  activeLayer: AppStore['activeLayer'],
+) => {
   if (status.reasons.includes('worker-error')) {
     return {
       title: 'No se pudo preparar el render 2D.',
@@ -257,11 +442,234 @@ const emptyStateCopy = (status: ReturnType<typeof deriveGraphRenderState>) => {
     }
   }
 
+  if (activeLayer === 'connections') {
+    return {
+      title: 'Todavia no hay conexiones internas visibles.',
+      body: 'Esta vista muestra solo enlaces internos entre los nodos visibles de la vista desde la que entraste.',
+    }
+  }
+
+  if (activeLayer === 'following') {
+    return {
+      title: 'Todavia no hay follows visibles.',
+      body: 'No hay follows salientes visibles todavia desde el root; prueba otros relays o recarga el vecindario.',
+    }
+  }
+
+  if (activeLayer === 'following-non-followers') {
+    return {
+      title: 'Todavia no hay follows sin reciprocidad visibles.',
+      body: 'Esta vista muestra solo las cuentas que sigue el root y que no lo siguen de vuelta segun la evidencia descubierta.',
+    }
+  }
+
+  if (activeLayer === 'followers') {
+    return {
+      title: 'Todavia no hay followers visibles.',
+      body: 'No hay follows entrantes visibles todavia hacia el root; prueba otros relays o recarga el vecindario.',
+    }
+  }
+
+  if (activeLayer === 'nonreciprocal-followers') {
+    return {
+      title: 'Todavia no hay seguidores sin reciprocidad visibles.',
+      body: 'Esta vista muestra solo las cuentas que siguen al root y no reciben reciprocidad segun la evidencia descubierta.',
+    }
+  }
+
+  if (activeLayer === 'mutuals') {
+    return {
+      title: 'Todavia no hay vinculos reciprocos visibles.',
+      body: 'Hace falta descubrir follows salientes y entrantes del root y de los nodos expandidos para confirmar relaciones reciprocas.',
+    }
+  }
+
   return {
     title: 'Aun no hay un vecindario descubierto para renderizar.',
     body: 'Carga un root valido para ver el grafo incremental con pan, zoom y seleccion.',
   }
 }
+
+interface GraphCanvasRecoveryChromeProps {
+  activeNodeExpansions: readonly ActiveNodeExpansion[]
+  browserOnline: boolean
+  links: AppStore['links']
+  rootLoadMessage: string | null
+  rootLoadStatus: AppStore['rootLoad']['status']
+  rootNodePubkey: string | null
+  shouldMountRenderer: boolean
+  onTrySampleRoot: () => void
+}
+
+const GraphCanvasRecoveryChrome = memo(function GraphCanvasRecoveryChrome({
+  activeNodeExpansions,
+  browserOnline,
+  links,
+  rootLoadMessage,
+  rootLoadStatus,
+  rootNodePubkey,
+  shouldMountRenderer,
+  onTrySampleRoot,
+}: GraphCanvasRecoveryChromeProps) {
+  const { relayUrls, relayHealth } = useAppStore(
+    useShallow(selectRelayHealthData),
+  )
+  const coverageRecovery = useMemo(
+    () =>
+      deriveCoverageRecovery({
+        browserOnline,
+        relayUrls,
+        relayHealth,
+        rootNodePubkey,
+        rootLoadStatus,
+        links,
+      }),
+    [browserOnline, links, relayHealth, relayUrls, rootLoadStatus, rootNodePubkey],
+  )
+  const shouldShowRecoveryOverlay =
+    shouldMountRenderer && coverageRecovery.shouldOfferRecovery
+  const shouldShowOverlayStack =
+    shouldShowRecoveryOverlay || activeNodeExpansions.length > 0
+
+  return (
+    <>
+      {shouldShowOverlayStack ? (
+        <div className="graph-panel__overlay-stack">
+          {activeNodeExpansions.map((expansion) => (
+            <NodeExpansionProgressCard
+              key={expansion.pubkey}
+              nodeLabel={expansion.nodeLabel}
+              state={expansion.state}
+              title="Expandiendo nodo"
+              variant="overlay"
+            />
+          ))}
+
+          {shouldShowRecoveryOverlay && coverageRecovery.reason ? (
+            <CoverageRecoveryCard
+              onChangeRelays={() => {
+                appStore.getState().setOpenPanel('relay-config')
+              }}
+              onTrySampleRoot={onTrySampleRoot}
+              reason={coverageRecovery.reason}
+              relaySummary={coverageRecovery.relaySummary}
+              rootLoadMessage={rootLoadMessage}
+              variant="overlay"
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </>
+  )
+})
+
+interface GraphCanvasPanelsProps {
+  hasSelectedNode: boolean
+  imageRuntime: ImageRuntime | null
+  runtime: RootLoader
+}
+
+const GraphCanvasPanels = memo(function GraphCanvasPanels({
+  hasSelectedNode,
+  imageRuntime,
+  runtime,
+}: GraphCanvasPanelsProps) {
+  const { openPanel } = useAppStore(useShallow(selectGraphCanvasPanelState))
+  const isNodeDetailOpen = openPanel === 'node-detail' && hasSelectedNode
+  const isPathfindingOpen = openPanel === 'pathfinding'
+
+  return (
+    <>
+      {isNodeDetailOpen ? (
+        <Suspense fallback={null}>
+          <NodeDetailPanel imageRuntime={imageRuntime} runtime={runtime} />
+        </Suspense>
+      ) : null}
+
+      {isPathfindingOpen ? (
+        <Suspense fallback={null}>
+          <PathfindingPanel runtime={runtime} />
+        </Suspense>
+      ) : null}
+    </>
+  )
+})
+
+interface GraphCanvasKeywordSearchProps {
+  runtime: RootLoader
+}
+
+const GraphCanvasKeywordSearch = memo(function GraphCanvasKeywordSearch({
+  runtime,
+}: GraphCanvasKeywordSearchProps) {
+  const {
+    activeLayer,
+    currentKeyword,
+    keywordLayerStatus,
+    keywordExtractCount,
+    keywordMatchCount,
+  } = useAppStore(useShallow(selectGraphCanvasKeywordSearchState))
+  const [draft, setDraft] = useState(currentKeyword)
+  const [isSearching, setIsSearching] = useState(false)
+  const deferredDraft = useDeferredValue(draft)
+  const requestSequenceRef = useRef(0)
+
+  useEffect(() => {
+    if (activeLayer !== 'keywords' || keywordLayerStatus !== 'enabled') {
+      return
+    }
+
+    const requestId = requestSequenceRef.current + 1
+    requestSequenceRef.current = requestId
+    const timer = window.setTimeout(() => {
+      setIsSearching(true)
+      void runtime
+        .searchKeyword(deferredDraft)
+        .catch((error) => {
+          console.warn('[graph] Keyword search failed.', error)
+        })
+        .finally(() => {
+          if (requestSequenceRef.current === requestId) {
+            setIsSearching(false)
+          }
+        })
+    }, 180)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [activeLayer, deferredDraft, keywordLayerStatus, runtime])
+
+  const isKeywordSearchUsable = keywordLayerStatus === 'enabled'
+  const keywordInputPlaceholder =
+    keywordLayerStatus === 'enabled'
+      ? 'Buscar keyword o interes'
+      : 'Esperando corpus de notas'
+  const keywordMeta = isKeywordSearchUsable && isSearching
+    ? 'Buscando...'
+    : keywordMatchCount > 0
+      ? `${keywordMatchCount} hits`
+      : keywordExtractCount > 0
+        ? `${keywordExtractCount} extractos`
+        : 'Sin corpus'
+
+  return (
+    <div className="graph-panel__keyword-search">
+      <input
+        aria-label="Buscar keyword o interes"
+        className="graph-panel__keyword-input"
+        disabled={!isKeywordSearchUsable}
+        onChange={(event) => {
+          setDraft(event.target.value)
+        }}
+        placeholder={keywordInputPlaceholder}
+        type="search"
+        value={draft}
+      />
+      <span className="graph-panel__keyword-meta">{keywordMeta}</span>
+    </div>
+  )
+})
 
 export function GraphCanvas({
   runtime,
@@ -271,37 +679,47 @@ export function GraphCanvas({
   const {
     nodes,
     links,
+    inboundLinks,
+    graphRevision,
+    inboundGraphRevision,
     zapEdges,
     zapLayerStatus,
-    relayUrls,
-    relayHealth,
+    zapLayerRevision,
+    keywordLayerStatus,
+    keywordLayerMessage,
+    keywordExtractCount,
+    keywordCorpusNodeCount,
+    keywordLoadedFrom,
+    keywordIsPartial,
+    keywordMatchCount,
+    keywordMatchNodeCount,
     rootNodePubkey,
     selectedNodePubkey,
     comparedNodePubkeys,
     expandedNodePubkeys,
     graphAnalysis,
+    pathfinding,
     rootLoadStatus,
     rootLoadMessage,
     activeLayer,
+    connectionsSourceLayer,
     capReached,
     maxNodes,
+    nodeExpansionStates,
     renderConfig,
-    isNodeDetailOpen,
-  } = useAppStore(useShallow(selectGraphCanvasState))
+  } = useAppStore(useShallow(selectGraphCanvasRenderState))
   const containerRef = useRef<HTMLDivElement | null>(null)
   const perfCountersRef = useRef(createPerfCounters())
-  const [hoveredNodePubkey, setHoveredNodePubkey] = useState<string | null>(
-    null,
-  )
-  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
-  const [hoveredEdgePubkeys, setHoveredEdgePubkeys] = useState<readonly string[]>(
-    [],
-  )
+  const [hoverState, setHoverState] = useState<HoverGraphState>(EMPTY_HOVER_STATE)
   const [interactionViewState, setInteractionViewState] = useState<{
     signature: string
     viewState: GraphViewState
   } | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
+  const sizeRef = useRef({ width: 0, height: 0 })
+  const [heavyWorkSize, setHeavyWorkSize] = useState({ width: 0, height: 0 })
+  const [heavyWorkViewState, setHeavyWorkViewState] =
+    useState<GraphViewState | null>(null)
   const [isShiftPressed, setIsShiftPressed] = useState(false)
   const previousRenderSnapshotRef = useRef({
     nodes,
@@ -311,10 +729,11 @@ export function GraphCanvas({
     activeLayer,
     rootLoadStatus,
     size,
-    hoveredNodePubkey,
+    hoveredNodePubkey: hoverState.nodePubkey,
     viewState: null as GraphViewState | null,
     renderConfig,
     comparedNodePubkeys,
+    pathfinding,
   })
   const lastProfiledModelRef = useRef<GraphRenderModel | null>(null)
   const modelRef = useRef<GraphRenderModel>(
@@ -335,9 +754,15 @@ export function GraphCanvas({
 
   const imageRuntimeRef = useRef<ImageRuntime | null>(null)
   const refreshImageFrameRef = useRef<() => void>(() => undefined)
+  const imageRefreshTimerRef = useRef<number | null>(null)
+  const diagnosticsCommitTimerRef = useRef<number | null>(null)
+  const resizeSettleTimerRef = useRef<number | null>(null)
+  const viewportSettleTimerRef = useRef<number | null>(null)
   const [imageRuntime, setImageRuntime] = useState<ImageRuntime | null>(null)
   const [imageFrame, setImageFrame] =
     useState<ImageRenderPayload>(EMPTY_IMAGE_FRAME)
+  const imageDiagnosticsSnapshotRef =
+    useRef<ImageResidencySnapshot>(EMPTY_IMAGE_DIAGNOSTICS)
   const [imageDiagnosticsSnapshot, setImageDiagnosticsSnapshot] =
     useState<ImageResidencySnapshot>(EMPTY_IMAGE_DIAGNOSTICS)
   const stableViewStateRef = useRef<GraphViewState | null>(null)
@@ -351,32 +776,20 @@ export function GraphCanvas({
     zoom: number
   } | null>(null)
   const lastViewportInteractionAtRef = useRef<number | null>(null)
-  const [viewportVelocity, setViewportVelocity] = useState(0)
-  const [viewportQuietForMs, setViewportQuietForMs] = useState(
-    QUIET_VIEWPORT_READY_MS,
-  )
+  const viewportActiveRef = useRef(false)
+  const pendingSettledViewStateRef = useRef<GraphViewState | null>(null)
+  const imageBootstrapPendingRef = useRef(false)
+  const lastImageBootstrapSignatureRef = useRef<string | null>(null)
+  const lastBuildJobKeyRef = useRef<string | null>(null)
+  const lastQueuedBuildJobKeyRef = useRef<string | null>(null)
+  const viewportVelocityRef = useRef(0)
+  const viewportQuietForMsRef = useRef(QUIET_VIEWPORT_READY_MS)
   const [isBrowserOnline, setIsBrowserOnline] = useState(() =>
     typeof navigator === 'undefined' ? true : navigator.onLine,
   )
-  const coverageRecovery = useMemo(
-    () =>
-      deriveCoverageRecovery({
-        browserOnline: isBrowserOnline,
-        relayUrls,
-        relayHealth,
-        rootNodePubkey,
-        rootLoadStatus,
-        links,
-      }),
-    [
-      isBrowserOnline,
-      links,
-      relayHealth,
-      relayUrls,
-      rootLoadStatus,
-      rootNodePubkey,
-    ],
-  )
+  const hoveredNodePubkey = hoverState.nodePubkey
+  const hoveredEdgeId = hoverState.edgeId
+  const hoveredEdgePubkeys = hoverState.edgePubkeys
 
   useEffect(() => {
     const handleOnline = () => {
@@ -400,7 +813,17 @@ export function GraphCanvas({
     const nextImageRuntime = new ImageRuntime()
     imageRuntimeRef.current = nextImageRuntime
     const unsubscribe = nextImageRuntime.subscribe(() => {
-      refreshImageFrameRef.current()
+      if (imageRefreshTimerRef.current !== null) {
+        return
+      }
+
+      const nextDelayMs = imageBootstrapPendingRef.current
+        ? 0
+        : COALESCED_FRAME_DELAY_MS
+      imageRefreshTimerRef.current = window.setTimeout(() => {
+        imageRefreshTimerRef.current = null
+        refreshImageFrameRef.current()
+      }, nextDelayMs)
     })
 
     setImageRuntime(nextImageRuntime)
@@ -409,7 +832,16 @@ export function GraphCanvas({
       unsubscribe()
       nextImageRuntime.dispose()
       imageRuntimeRef.current = null
+      if (imageRefreshTimerRef.current !== null) {
+        window.clearTimeout(imageRefreshTimerRef.current)
+        imageRefreshTimerRef.current = null
+      }
+      if (diagnosticsCommitTimerRef.current !== null) {
+        window.clearTimeout(diagnosticsCommitTimerRef.current)
+        diagnosticsCommitTimerRef.current = null
+      }
       setImageFrame(EMPTY_IMAGE_FRAME)
+      imageDiagnosticsSnapshotRef.current = EMPTY_IMAGE_DIAGNOSTICS
       setImageDiagnosticsSnapshot(EMPTY_IMAGE_DIAGNOSTICS)
       setImageRuntime(null)
     }
@@ -426,6 +858,57 @@ export function GraphCanvas({
   }, [])
 
   useEffect(() => {
+    modelRef.current = model
+  }, [model])
+
+  const refreshViewportQuietState = useCallback(() => {
+    const lastInteractionAt = lastViewportInteractionAtRef.current
+    const nextQuietForMs =
+      lastInteractionAt === null
+        ? QUIET_VIEWPORT_READY_MS
+        : Math.max(0, readNowMs() - lastInteractionAt)
+
+    if (Math.abs(viewportQuietForMsRef.current - nextQuietForMs) < 8) {
+      return
+    }
+
+    viewportQuietForMsRef.current = nextQuietForMs
+  }, [])
+
+  const scheduleImageFrameRefresh = useCallback(
+    (delayMs = COALESCED_FRAME_DELAY_MS) => {
+      if (imageRefreshTimerRef.current !== null) {
+        window.clearTimeout(imageRefreshTimerRef.current)
+      }
+
+      imageRefreshTimerRef.current = window.setTimeout(() => {
+        imageRefreshTimerRef.current = null
+        refreshImageFrameRef.current()
+      }, delayMs)
+    },
+    [],
+  )
+
+  const markViewportSettled = useCallback(
+    (settledAt: number, nextViewState?: GraphViewState | null) => {
+      viewportActiveRef.current = false
+      viewportVelocityRef.current = 0
+      viewportQuietForMsRef.current = Math.max(
+        0,
+        readNowMs() - (lastViewportInteractionAtRef.current ?? settledAt),
+      )
+      appStore.getState().markViewportSettled(settledAt)
+      if (nextViewState) {
+        pendingSettledViewStateRef.current = nextViewState
+        setHeavyWorkViewState(nextViewState)
+        imageBootstrapPendingRef.current = false
+      }
+      scheduleImageFrameRefresh()
+    },
+    [scheduleImageFrameRefresh],
+  )
+
+  useEffect(() => {
     const element = containerRef.current
     if (!element) {
       return
@@ -439,17 +922,30 @@ export function GraphCanvas({
 
       const nextWidth = Math.max(0, Math.floor(entry.contentRect.width))
       const nextHeight = Math.max(0, Math.floor(entry.contentRect.height))
+      const previousSize = sizeRef.current
+      if (previousSize.width === nextWidth && previousSize.height === nextHeight) {
+        return
+      }
 
-      setSize((previous) => {
-        if (previous.width === nextWidth && previous.height === nextHeight) {
-          return previous
-        }
+      if (resizeSettleTimerRef.current !== null) {
+        window.clearTimeout(resizeSettleTimerRef.current)
+      }
+      resizeSettleTimerRef.current = window.setTimeout(() => {
+        resizeSettleTimerRef.current = null
+        setHeavyWorkSize({ width: nextWidth, height: nextHeight })
+        markViewportSettled(readNowMs(), pendingSettledViewStateRef.current)
+      }, RESIZE_SETTLE_DELAY_MS)
 
-        return {
-          width: nextWidth,
-          height: nextHeight,
-        }
-      })
+      if (previousSize.width === 0 && previousSize.height === 0) {
+        setHeavyWorkSize({ width: nextWidth, height: nextHeight })
+      }
+
+      const nextSize = {
+        width: nextWidth,
+        height: nextHeight,
+      }
+      sizeRef.current = nextSize
+      setSize(nextSize)
     })
 
     resizeObserver.observe(element)
@@ -470,30 +966,50 @@ export function GraphCanvas({
 
     return () => {
       resizeObserver.disconnect()
+      if (resizeSettleTimerRef.current !== null) {
+        window.clearTimeout(resizeSettleTimerRef.current)
+        resizeSettleTimerRef.current = null
+      }
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [])
+  }, [markViewportSettled])
 
-  useEffect(() => {
-    modelRef.current = model
-  }, [model])
+  const scheduleViewportSettled = useCallback(
+    (delayMs: number, nextViewState?: GraphViewState | null) => {
+      if (viewportSettleTimerRef.current !== null) {
+        window.clearTimeout(viewportSettleTimerRef.current)
+      }
 
-  const refreshViewportQuietState = useCallback(() => {
-    const lastInteractionAt = lastViewportInteractionAtRef.current
-    const nextQuietForMs =
-      lastInteractionAt === null
-        ? QUIET_VIEWPORT_READY_MS
-        : Math.max(0, readNowMs() - lastInteractionAt)
+      viewportSettleTimerRef.current = window.setTimeout(() => {
+        viewportSettleTimerRef.current = null
+        markViewportSettled(readNowMs(), nextViewState ?? pendingSettledViewStateRef.current)
+      }, delayMs)
+    },
+    [markViewportSettled],
+  )
 
-    setViewportQuietForMs((current) =>
-      Math.abs(current - nextQuietForMs) < 8 ? current : nextQuietForMs,
-    )
-  }, [])
+  const markViewportInteraction = useCallback((nextViewState?: GraphViewState | null) => {
+    const nextInteractionAt = readNowMs()
+    viewportActiveRef.current = true
+    pendingSettledViewStateRef.current = nextViewState ?? pendingSettledViewStateRef.current
+    appStore.getState().markViewportInteraction(nextInteractionAt)
+    lastViewportInteractionAtRef.current = nextInteractionAt
+    viewportQuietForMsRef.current = 0
+    scheduleViewportSettled(VIEWPORT_SETTLE_DELAY_MS, nextViewState)
+  }, [scheduleViewportSettled])
 
-  const markViewportInteraction = useCallback(() => {
-    lastViewportInteractionAtRef.current = readNowMs()
-    setViewportQuietForMs((current) => (current === 0 ? current : 0))
+  const scheduleImageDiagnosticsCommit = useCallback(() => {
+    if (diagnosticsCommitTimerRef.current !== null) {
+      return
+    }
+
+    diagnosticsCommitTimerRef.current = window.setTimeout(() => {
+      diagnosticsCommitTimerRef.current = null
+      startTransition(() => {
+        setImageDiagnosticsSnapshot(imageDiagnosticsSnapshotRef.current)
+      })
+    }, DIAGNOSTICS_COMMIT_DELAY_MS)
   }, [])
 
   const workerQueueRefs = useRef({
@@ -504,12 +1020,32 @@ export function GraphCanvas({
     > | null,
   })
   const triggerFlushRef = useRef<() => void>(undefined)
-  const isMountedRef = useRef(true)
+  const workerFlushTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
-    isMountedRef.current = true
     return () => {
-      isMountedRef.current = false
+      if (workerFlushTimerRef.current !== null) {
+        window.clearTimeout(workerFlushTimerRef.current)
+        workerFlushTimerRef.current = null
+      }
+      if (imageRefreshTimerRef.current !== null) {
+        window.clearTimeout(imageRefreshTimerRef.current)
+        imageRefreshTimerRef.current = null
+      }
+      if (diagnosticsCommitTimerRef.current !== null) {
+        window.clearTimeout(diagnosticsCommitTimerRef.current)
+        diagnosticsCommitTimerRef.current = null
+      }
+      if (resizeSettleTimerRef.current !== null) {
+        window.clearTimeout(resizeSettleTimerRef.current)
+        resizeSettleTimerRef.current = null
+      }
+      if (viewportSettleTimerRef.current !== null) {
+        window.clearTimeout(viewportSettleTimerRef.current)
+        viewportSettleTimerRef.current = null
+      }
+      imageBootstrapPendingRef.current = false
+      lastImageBootstrapSignatureRef.current = null
     }
   }, [])
 
@@ -518,15 +1054,34 @@ export function GraphCanvas({
       return
     }
 
+    let effectDisposed = false
+
+    const scheduleWorkerFlush = () => {
+      if (workerFlushTimerRef.current !== null) {
+        return
+      }
+
+      workerFlushTimerRef.current = window.setTimeout(() => {
+        workerFlushTimerRef.current = null
+        triggerFlushRef.current?.()
+      }, COALESCED_FRAME_DELAY_MS)
+    }
+
     workerQueueRefs.current.pendingInput = {
       nodes,
       links,
+      inboundLinks,
       zapEdges,
       activeLayer,
+      connectionsSourceLayer,
       rootNodePubkey,
       selectedNodePubkey,
       expandedNodePubkeys,
       comparedNodePubkeys,
+      pathfinding: {
+        status: pathfinding.status,
+        path: pathfinding.path,
+      },
       graphAnalysis,
       renderConfig,
     }
@@ -554,11 +1109,11 @@ export function GraphCanvas({
       }
 
       const isCurrentRequest = () =>
-        isMountedRef.current && renderRequestSequenceRef.current === requestId
+        !effectDisposed && renderRequestSequenceRef.current === requestId
 
       const onWorkerSettled = () => {
         workerQueueRefs.current.isBusy = false
-        triggerFlushRef.current?.()
+        scheduleWorkerFlush()
       }
 
       const commitModel = (nextModel: GraphRenderModel) => {
@@ -567,13 +1122,20 @@ export function GraphCanvas({
           return
         }
 
+        if (request.jobKey) {
+          lastBuildJobKeyRef.current = request.jobKey
+        }
+
         previousPositionsRef.current = new Map(
           nextModel.nodes.map((node) => [node.pubkey, node.position]),
         )
         previousLayoutKeyRef.current = nextModel.layoutKey
 
+        // setModel fuera de startTransition: React 19 difiere las transiciones
+        // hasta que el usuario interactúa, lo que dejaba model.nodes vacío y
+        // bloqueaba prepareFrame (mismos motivos que setImageFrame — ver abajo).
+        setModel(nextModel)
         startTransition(() => {
-          setModel(nextModel)
           setModelPhase('ready')
           setModelErrorMessage(null)
         })
@@ -599,40 +1161,85 @@ export function GraphCanvas({
       setModelErrorMessage(null)
 
       if (!hasRenderableModel) {
-        startTransition(() => {
-          setModel((current) =>
-            current.nodes.length === 0 &&
-            (current.activeLayer !== input.activeLayer ||
-              current.renderConfig !== input.renderConfig)
-              ? createEmptyGraphRenderModel(input.activeLayer, input.renderConfig)
-              : current,
-          )
-        })
+        setModel((current) =>
+          current.nodes.length === 0 &&
+          (current.activeLayer !== input.activeLayer ||
+            current.renderConfig !== input.renderConfig)
+            ? createEmptyGraphRenderModel(input.activeLayer, input.renderConfig)
+            : current,
+        )
       }
 
+      const jobKey = createBuildRenderModelJobKey({
+        graphRevision,
+        inboundGraphRevision,
+        zapLayerRevision,
+        zapLayerStatus,
+        activeLayer: input.activeLayer,
+        connectionsSourceLayer: input.connectionsSourceLayer,
+        rootNodePubkey: input.rootNodePubkey,
+        selectedNodePubkey: input.selectedNodePubkey,
+        expandedNodePubkeys: input.expandedNodePubkeys,
+        comparedNodePubkeys: input.comparedNodePubkeys,
+        pathfinding: input.pathfinding,
+        graphAnalysis: input.graphAnalysis,
+        renderConfig: input.renderConfig,
+      })
       const request = serializeBuildGraphRenderModelInput(buildInput)
+
+      if (
+        jobKey === lastBuildJobKeyRef.current ||
+        jobKey === lastQueuedBuildJobKeyRef.current
+      ) {
+        onWorkerSettled()
+        return
+      }
+
+      request.jobKind = 'BUILD_RENDER_MODEL'
+      request.jobKey = jobKey
+      lastQueuedBuildJobKeyRef.current = jobKey
 
       void graphRenderWorker
         .invoke('BUILD_RENDER_MODEL', request)
-        .then(commitModel)
+        .then((nextModel) => {
+          if (lastQueuedBuildJobKeyRef.current === request.jobKey) {
+            lastQueuedBuildJobKeyRef.current = null
+          }
+          commitModel(nextModel)
+        })
         .catch((workerError) => {
+          if (lastQueuedBuildJobKeyRef.current === request.jobKey) {
+            lastQueuedBuildJobKeyRef.current = null
+          }
           failModelBuild(workerError)
         })
     }
 
     triggerFlushRef.current = flushWorkerQueue
-    flushWorkerQueue()
+    scheduleWorkerFlush()
+
+    return () => {
+      effectDisposed = true
+    }
   }, [
     activeLayer,
+    connectionsSourceLayer,
     comparedNodePubkeys,
     expandedNodePubkeys,
+    graphRevision,
     graphAnalysis,
     graphRenderWorker,
+    inboundGraphRevision,
     links,
+    inboundLinks,
     nodes,
+    pathfinding.path,
+    pathfinding.status,
     rootNodePubkey,
     selectedNodePubkey,
     zapEdges,
+    zapLayerRevision,
+    zapLayerStatus,
     renderConfig,
   ])
 
@@ -696,6 +1303,33 @@ export function GraphCanvas({
     return fittedViewState
   }, [fitSignature, fittedViewState, interactionViewState])
 
+  const imageBootstrapSignature = useMemo(() => {
+    if (
+      !resolvedViewState ||
+      size.width <= 0 ||
+      size.height <= 0 ||
+      model.nodes.length === 0
+    ) {
+      return null
+    }
+
+    return [
+      fitSignature,
+      rootNodePubkey ?? 'none',
+      model.topologySignature,
+      size.width,
+      size.height,
+    ].join('|')
+  }, [
+    fitSignature,
+    model.nodes.length,
+    model.topologySignature,
+    resolvedViewState,
+    rootNodePubkey,
+    size.height,
+    size.width,
+  ])
+
   const viewState = useMemo(() => {
     if (equalGraphViewState(stableViewStateRef.current, resolvedViewState)) {
       return stableViewStateRef.current
@@ -703,6 +1337,61 @@ export function GraphCanvas({
 
     stableViewStateRef.current = resolvedViewState
     return resolvedViewState
+  }, [resolvedViewState])
+
+  useEffect(() => {
+    if (!imageBootstrapSignature) {
+      lastImageBootstrapSignatureRef.current = null
+      imageBootstrapPendingRef.current = false
+      return
+    }
+
+    if (lastImageBootstrapSignatureRef.current === imageBootstrapSignature) {
+      return
+    }
+
+    lastImageBootstrapSignatureRef.current = imageBootstrapSignature
+    imageBootstrapPendingRef.current = true
+
+    if (resolvedViewState) {
+      pendingSettledViewStateRef.current = resolvedViewState
+    }
+
+    if (size.width > 0 && size.height > 0) {
+      scheduleImageFrameRefresh(0)
+    }
+  }, [
+    imageBootstrapSignature,
+    resolvedViewState,
+    scheduleImageFrameRefresh,
+    size.height,
+    size.width,
+  ])
+
+  useEffect(() => {
+    if (!resolvedViewState) {
+      pendingSettledViewStateRef.current = null
+      imageBootstrapPendingRef.current = false
+      setHeavyWorkViewState(null)
+      return
+    }
+
+    pendingSettledViewStateRef.current = resolvedViewState
+
+    setHeavyWorkViewState((current) => {
+      if (equalGraphViewState(current, resolvedViewState)) {
+        return current
+      }
+      // Durante interacción activa del viewport, preservamos el último estado
+      // settled para no degradar la calidad de imagen mientras el usuario mueve.
+      // Excepción: si todavía no hay ningún estado (carga inicial), lo aplicamos
+      // de inmediato para que el primer prepareFrame arranque las descargas sin
+      // esperar el settle de 400ms.
+      if (viewportActiveRef.current && current !== null) {
+        return current
+      }
+      return resolvedViewState
+    })
   }, [resolvedViewState])
 
   useEffect(() => {
@@ -731,6 +1420,8 @@ export function GraphCanvas({
       counters.lastRenderTrigger = 'view'
     } else if (renderConfig !== previous.renderConfig) {
       counters.lastRenderTrigger = 'renderConfig'
+    } else if (pathfinding !== previous.pathfinding) {
+      counters.lastRenderTrigger = 'pathfinding'
     } else {
       counters.lastRenderTrigger = 'other'
     }
@@ -747,6 +1438,7 @@ export function GraphCanvas({
       viewState,
       renderConfig,
       comparedNodePubkeys,
+      pathfinding,
     }
   }, [
     activeLayer,
@@ -759,6 +1451,7 @@ export function GraphCanvas({
     selectedNodePubkey,
     size,
     viewState,
+    pathfinding,
     zapEdges,
   ])
 
@@ -801,6 +1494,7 @@ export function GraphCanvas({
 
     return resolveGraphNodeScreenRadii({
       nodes: model.nodes,
+      activeLayer: model.activeLayer,
       viewState,
       width: size.width,
       height: size.height,
@@ -808,6 +1502,7 @@ export function GraphCanvas({
       autoSizeNodes: model.renderConfig?.autoSizeNodes,
     })
   }, [
+    model.activeLayer,
     model.lod.visibleNodeCount,
     model.nodes,
     model.renderConfig?.autoSizeNodes,
@@ -829,48 +1524,111 @@ export function GraphCanvas({
 
   refreshImageFrameRef.current = () => {
     const runtimeInstance = imageRuntimeRef.current
-    if (!runtimeInstance || !viewState || size.width === 0 || size.height === 0) {
-      startTransition(() => {
-        setImageFrame((current) =>
-          equalImageRenderPayload(current, EMPTY_IMAGE_FRAME)
-            ? current
-            : EMPTY_IMAGE_FRAME,
-        )
-        setImageDiagnosticsSnapshot(EMPTY_IMAGE_DIAGNOSTICS)
+    const hasSettledFrame =
+      heavyWorkViewState !== null && hasRenderableFrameSize(heavyWorkSize)
+    const hasBootstrapFrame =
+      resolvedViewState !== null &&
+      hasRenderableFrameSize(size) &&
+      model.nodes.length > 0
+    const shouldUseBootstrapFrame =
+      imageBootstrapPendingRef.current &&
+      hasBootstrapFrame &&
+      (
+        !hasSettledFrame ||
+        heavyWorkSize.width !== size.width ||
+        heavyWorkSize.height !== size.height ||
+        !equalGraphViewState(heavyWorkViewState, resolvedViewState)
+      )
+
+    if (!runtimeInstance || (!hasSettledFrame && !shouldUseBootstrapFrame)) {
+      const frameSkipReason: ImageFrameSkipReason =
+        !runtimeInstance
+          ? 'no-runtime'
+          : !hasRenderableFrameSize(size)
+            ? 'no-size'
+            : resolvedViewState === null || model.nodes.length === 0
+              ? 'no-viewstate'
+              : 'waiting-settle'
+
+      const nextImageDiagnostics = applyImageFrameDiagnostics({
+        snapshot: createEmptyImageResidencySnapshot(),
+        frameComputationMode: 'idle',
+        frameSkipReason,
+        primarySummary:
+          frameSkipReason === 'waiting-settle'
+            ? 'Esperando viewport settled para refrescar avatars.'
+            : frameSkipReason === 'no-size'
+              ? 'El viewport todavia no tiene tamaño util.'
+              : frameSkipReason === 'no-viewstate'
+                ? 'Todavia no hay un viewState listo para calcular avatars.'
+                : 'El runtime de imagenes todavia no esta listo.',
       })
+
+      setImageFrame((current) =>
+        equalImageRenderPayload(current, EMPTY_IMAGE_FRAME)
+          ? current
+          : EMPTY_IMAGE_FRAME,
+      )
+      imageDiagnosticsSnapshotRef.current = nextImageDiagnostics
+      scheduleImageDiagnosticsCommit()
       return
     }
 
+    const frameComputationMode: ImageFrameComputationMode =
+      shouldUseBootstrapFrame ? 'bootstrap' : 'settled'
     const nextImageFrame = runtimeInstance.prepareFrame({
-      width: size.width,
-      height: size.height,
-      viewState,
-      velocityScore: viewportVelocity,
-      viewportQuietForMs,
+      width: shouldUseBootstrapFrame ? size.width : heavyWorkSize.width,
+      height: shouldUseBootstrapFrame ? size.height : heavyWorkSize.height,
+      viewState: shouldUseBootstrapFrame ? resolvedViewState! : heavyWorkViewState!,
+      velocityScore: shouldUseBootstrapFrame ? 0 : viewportVelocityRef.current,
+      viewportQuietForMs: shouldUseBootstrapFrame
+        ? QUIET_VIEWPORT_READY_MS
+        : viewportQuietForMsRef.current,
+      isViewportActive: shouldUseBootstrapFrame ? false : viewportActiveRef.current,
       nodes: model.nodes,
       nodeScreenRadii: stableNodeScreenRadii,
       selectedNodePubkey,
       hoveredNodePubkey,
-      mode: renderConfig.imageQualityMode,
+      mode: shouldUseBootstrapFrame
+        ? BOOTSTRAP_IMAGE_QUALITY_MODE
+        : renderConfig.imageQualityMode,
       avatarHdZoomThreshold: renderConfig.avatarHdZoomThreshold,
       avatarFullHdZoomThreshold: renderConfig.avatarFullHdZoomThreshold,
     })
-    const nextImageDiagnostics = runtimeInstance.debugSnapshot()
-
-    startTransition(() => {
-      setImageFrame((current) =>
-        equalImageRenderPayload(current, nextImageFrame)
-          ? current
-          : nextImageFrame,
-      )
-      setImageDiagnosticsSnapshot(nextImageDiagnostics)
+    const nextImageDiagnostics = applyImageFrameDiagnostics({
+      snapshot: runtimeInstance.debugSnapshot(),
+      frameComputationMode,
+      frameSkipReason: shouldUseBootstrapFrame ? 'bootstrap-fallback' : 'none',
+      secondarySummary:
+        shouldUseBootstrapFrame
+          ? 'Bootstrap inicial usando viewport vivo para poblar avatars base visibles.'
+          : undefined,
     })
+    imageDiagnosticsSnapshotRef.current = nextImageDiagnostics
+
+    if (!shouldUseBootstrapFrame) {
+      imageBootstrapPendingRef.current = false
+    }
+
+    // imageFrame es datos críticos de renderizado: sacar del startTransition para
+    // que React lo aplique de forma síncrona en el próximo commit. Dentro de
+    // startTransition React 19 lo marca como interruptible y puede diferirlo
+    // indefinidamente hasta que el usuario haga una interacción (el zoom), que
+    // era exactamente el síntoma "las imágenes no cargan hasta hacer zoom".
+    setImageFrame((current) =>
+      equalImageRenderPayload(current, nextImageFrame)
+        ? current
+        : nextImageFrame,
+    )
+    scheduleImageDiagnosticsCommit()
   }
 
   useEffect(() => {
-    refreshImageFrameRef.current()
+    scheduleImageFrameRefresh()
   }, [
-    hoveredNodePubkey,
+    heavyWorkSize.height,
+    heavyWorkSize.width,
+    heavyWorkViewState,
     imageRuntime,
     model.nodes,
     stableNodeScreenRadii,
@@ -878,11 +1636,18 @@ export function GraphCanvas({
     renderConfig.avatarHdZoomThreshold,
     renderConfig.imageQualityMode,
     selectedNodePubkey,
-    size.height,
-    size.width,
-    viewState,
-    viewportVelocity,
-    viewportQuietForMs,
+    scheduleImageFrameRefresh,
+  ])
+
+  useEffect(() => {
+    if (viewportActiveRef.current) {
+      return
+    }
+
+    scheduleImageFrameRefresh(48)
+  }, [
+    hoveredNodePubkey,
+    scheduleImageFrameRefresh,
   ])
 
   useEffect(() => {
@@ -904,7 +1669,7 @@ export function GraphCanvas({
       .map((delayMs) =>
         window.setTimeout(() => {
           refreshViewportQuietState()
-          refreshImageFrameRef.current()
+          scheduleImageFrameRefresh()
         }, delayMs + 1),
       )
 
@@ -913,7 +1678,7 @@ export function GraphCanvas({
         window.clearTimeout(timeoutId)
       }
     }
-  }, [refreshViewportQuietState, viewState])
+  }, [refreshViewportQuietState, scheduleImageFrameRefresh, viewState])
 
   const handleAvatarRendererDelivery = useCallback(
     (snapshot: ImageRendererDeliverySnapshot) => {
@@ -925,6 +1690,20 @@ export function GraphCanvas({
   const handleSelectNode = useCallback(
     (pubkey: string | null, options?: { shiftKey?: boolean }) => {
       const state = appStore.getState()
+
+      if (
+        pubkey &&
+        state.openPanel === 'pathfinding' &&
+        state.pathfinding.selectionMode !== 'idle'
+      ) {
+        state.setSelectedNodePubkey(pubkey)
+        state.setPathfindingEndpoint(state.pathfinding.selectionMode, {
+          pubkey,
+          query: pubkey,
+        })
+        return
+      }
+
       const effectiveShift = options?.shiftKey || isShiftPressed
 
       if (effectiveShift && pubkey) {
@@ -973,36 +1752,37 @@ export function GraphCanvas({
         | { type: 'edge'; edgeId: string; pubkeys: [string, string] }
         | null,
     ) => {
-      if (hover === null) {
-        setHoveredNodePubkey((current) => (current === null ? current : null))
-        setHoveredEdgeId((current) => (current === null ? current : null))
-        setHoveredEdgePubkeys((current) =>
-          current.length === 0 ? current : [],
-        )
-        return
-      }
+      const nextHoverState: HoverGraphState =
+        hover === null
+          ? EMPTY_HOVER_STATE
+          : hover.type === 'node'
+            ? {
+                nodePubkey: hover.pubkey,
+                edgeId: null,
+                edgePubkeys: EMPTY_HOVER_STATE.edgePubkeys,
+              }
+            : {
+                nodePubkey: null,
+                edgeId: hover.edgeId,
+                edgePubkeys: hover.pubkeys,
+              }
 
-      if (hover.type === 'node') {
-        setHoveredNodePubkey((current) =>
-          current === hover.pubkey ? current : hover.pubkey,
-        )
-        setHoveredEdgeId((current) => (current === null ? current : null))
-        setHoveredEdgePubkeys((current) =>
-          current.length === 0 ? current : [],
-        )
-        return
-      }
+      startTransition(() => {
+        setHoverState((current) => {
+          if (
+            current.nodePubkey === nextHoverState.nodePubkey &&
+            current.edgeId === nextHoverState.edgeId &&
+            current.edgePubkeys.length === nextHoverState.edgePubkeys.length &&
+            current.edgePubkeys.every(
+              (value, index) => value === nextHoverState.edgePubkeys[index],
+            )
+          ) {
+            return current
+          }
 
-      setHoveredNodePubkey((current) => (current === null ? current : null))
-      setHoveredEdgeId((current) =>
-        current === hover.edgeId ? current : hover.edgeId,
-      )
-      setHoveredEdgePubkeys((current) =>
-        current.length === hover.pubkeys.length &&
-        current.every((value, index) => value === hover.pubkeys[index])
-          ? current
-          : [...hover.pubkeys],
-      )
+          return nextHoverState
+        })
+      })
     },
     [],
   )
@@ -1020,9 +1800,9 @@ export function GraphCanvas({
         const nextVelocity =
           (Math.hypot(deltaX, deltaY) / elapsedMs) * 1000 + deltaZoom * 800
 
-        setViewportVelocity((current) =>
-          Math.abs(current - nextVelocity) < 1 ? current : nextVelocity,
-        )
+        if (Math.abs(viewportVelocityRef.current - nextVelocity) >= 1) {
+          viewportVelocityRef.current = nextVelocity
+        }
       }
 
       lastViewSampleRef.current = {
@@ -1030,7 +1810,7 @@ export function GraphCanvas({
         target: [nextViewState.target[0], nextViewState.target[1]],
         zoom: nextViewState.zoom,
       }
-      markViewportInteraction()
+      markViewportInteraction(nextViewState)
 
       setInteractionViewState((current) => {
         if (
@@ -1051,14 +1831,112 @@ export function GraphCanvas({
     [fitSignature, markViewportInteraction],
   )
 
+  const handleToggleLayer = useCallback(
+    (layer: AppStore['activeLayer']) => {
+      runtime.toggleLayer(layer)
+    },
+    [runtime],
+  )
+
+  const relationshipToggleState = getRelationshipToggleState(activeLayer)
+  const onlyOneRelationshipSideActive =
+    relationshipToggleState.following !== relationshipToggleState.followers
+  const canToggleOnlyNonReciprocal =
+    isRelationshipLayer(activeLayer) &&
+    (relationshipToggleState.following || relationshipToggleState.followers)
+
+  const handleToggleRelationship = useCallback(
+    (role: 'following' | 'followers') => {
+      const current = getRelationshipToggleState(activeLayer)
+      const nextFollowing =
+        role === 'following' ? !current.following : current.following
+      const nextFollowers =
+        role === 'followers' ? !current.followers : current.followers
+
+      if (!nextFollowing && !nextFollowers) {
+        runtime.toggleLayer('graph')
+        return
+      }
+
+      if (nextFollowing && nextFollowers) {
+        runtime.toggleLayer('mutuals')
+        return
+      }
+
+      if (nextFollowing) {
+        runtime.toggleLayer(
+          current.onlyNonReciprocal ? 'following-non-followers' : 'following',
+        )
+        return
+      }
+
+      runtime.toggleLayer(
+        current.onlyNonReciprocal
+          ? 'nonreciprocal-followers'
+          : 'followers',
+      )
+    },
+    [activeLayer, runtime],
+  )
+
+  const handleToggleOnlyNonReciprocal = useCallback(() => {
+    const current = getRelationshipToggleState(activeLayer)
+
+    if (!canToggleOnlyNonReciprocal || !onlyOneRelationshipSideActive) {
+      return
+    }
+
+    if (current.following) {
+      runtime.toggleLayer(
+        current.onlyNonReciprocal ? 'following' : 'following-non-followers',
+      )
+      return
+    }
+
+    if (current.followers) {
+      runtime.toggleLayer(
+        current.onlyNonReciprocal
+          ? 'followers'
+          : 'nonreciprocal-followers',
+      )
+    }
+  }, [
+    activeLayer,
+    canToggleOnlyNonReciprocal,
+    onlyOneRelationshipSideActive,
+    runtime,
+  ])
+
   useEffect(() => {
     lastViewSampleRef.current = null
     lastViewportInteractionAtRef.current = null
-    setViewportVelocity(0)
-    setViewportQuietForMs(QUIET_VIEWPORT_READY_MS)
-  }, [fitSignature])
+    viewportActiveRef.current = false
+    pendingSettledViewStateRef.current = null
+    viewportVelocityRef.current = 0
+    viewportQuietForMsRef.current = QUIET_VIEWPORT_READY_MS
+    appStore.getState().markViewportSettled(readNowMs())
+    setHeavyWorkViewState(resolvedViewState)
+  }, [fitSignature, resolvedViewState])
 
-  const overlayCopy = emptyStateCopy(renderState)
+  const overlayCopy = emptyStateCopy(renderState, activeLayer)
+  const activeNodeExpansions = useMemo<ActiveNodeExpansion[]>(
+    () =>
+      Object.entries(nodeExpansionStates)
+        .filter(([, expansionState]) => expansionState.status === 'loading')
+        .sort(
+          ([, left], [, right]) =>
+            (right.startedAt ?? right.updatedAt ?? 0) -
+            (left.startedAt ?? left.updatedAt ?? 0),
+        )
+        .map(([pubkey, expansionState]) => ({
+          pubkey,
+          nodeLabel:
+            nodes[pubkey]?.label?.trim() || truncatePubkey(pubkey, 8, 6),
+          state: expansionState,
+        })),
+    [nodeExpansionStates, nodes],
+  )
+  const primaryActiveExpansion = activeNodeExpansions[0] ?? null
   const shouldMountRenderer =
     model.nodes.length > 0 &&
     size.width > 0 &&
@@ -1068,27 +1946,91 @@ export function GraphCanvas({
     !shouldMountRenderer &&
     rootNodePubkey !== null &&
     rootLoadStatus !== 'loading'
-  const shouldShowRecoveryEmptyState =
-    shouldShowEmptyState && coverageRecovery.shouldOfferRecovery
-  const shouldShowRecoveryOverlay =
-    shouldMountRenderer && coverageRecovery.shouldOfferRecovery
   const statusCopy = capReached
     ? `Cap ${maxNodes} alcanzado`
+    : activeLayer === 'connections'
+      ? `${model.edges.length} conexiones internas`
+    : activeLayer === 'following'
+      ? `${model.edges.length} seguidos visibles`
+    : activeLayer === 'following-non-followers'
+      ? `${model.edges.length} seguidos sin reciprocidad`
+    : activeLayer === 'mutuals'
+      ? `${model.edges.length} relaciones reciprocas`
+    : activeLayer === 'followers'
+      ? `${model.edges.length} seguidores visibles`
+    : activeLayer === 'nonreciprocal-followers'
+      ? `${model.edges.length} seguidores sin reciprocidad`
+    : activeLayer === 'pathfinding' && pathfinding.path
+      ? `Camino de ${Math.max(0, pathfinding.path.length - 1)} saltos`
     : activeLayer === 'zaps'
       ? `${zapEdges.length} zaps visibles`
+      : activeLayer === 'keywords'
+        ? keywordMatchCount > 0
+          ? `${keywordMatchCount} hits en ${keywordMatchNodeCount} nodos`
+          : keywordExtractCount > 0
+            ? `${keywordExtractCount} extractos listos`
+            : keywordLayerMessage ?? 'Keywords sin corpus'
       : `${model.edges.length} links visibles`
+  const layerStatusNote =
+    activeLayer === 'connections'
+      ? model.edges.length > 0
+        ? 'Solo enlaces internos entre los nodos visibles de la vista anterior.'
+        : 'Todavia no hay enlaces internos entre los nodos visibles de esa vista.'
+    : activeLayer === 'following'
+      ? model.edges.length > 0
+        ? 'Cuentas seguidas por el root en esta sesion.'
+        : 'No hay follows salientes visibles todavia para el root.'
+    : activeLayer === 'following-non-followers'
+      ? model.edges.length > 0
+        ? 'Cuentas seguidas por el root sin follow-back.'
+        : 'No hay follows sin reciprocidad visibles todavia para el root.'
+    : activeLayer === 'followers'
+      ? model.edges.length > 0
+        ? 'Cuentas que siguen al root en esta sesion.'
+        : 'No hay follows entrantes visibles todavia para el root.'
+    : activeLayer === 'nonreciprocal-followers'
+      ? model.edges.length > 0
+        ? 'Cuentas que siguen al root sin recibir follow-back.'
+        : 'No hay seguidores sin reciprocidad visibles todavia para el root.'
+    : activeLayer === 'mutuals'
+      ? model.edges.length > 0
+        ? 'Relaciones reciprocas detectadas para el root.'
+        : 'No hay relaciones reciprocas visibles todavia.'
+    : activeLayer === 'keywords'
+      ? keywordLayerMessage
+      : activeLayer === 'zaps'
+        ? zapLayerStatus === 'enabled'
+          ? `${zapEdges.length} relaciones de zap visibles.`
+          : 'La capa de zaps depende de recibos disponibles.'
+        : graphAnalysis.message
+  const keywordLayerDisabledReason =
+    keywordLayerStatus === 'unavailable'
+      ? keywordLayerMessage ?? 'La capa de keywords no esta disponible.'
+      : keywordLayerStatus === 'loading'
+        ? keywordLayerMessage ?? 'Preparando corpus de notas...'
+        : keywordLayerStatus === 'disabled'
+          ? keywordLayerMessage ?? 'La capa de keywords todavia no esta lista.'
+          : ''
   const streamLabel =
-    rootLoadStatus === 'loading'
-      ? 'Descubriendo'
-      : rootLoadStatus === 'partial'
-        ? 'Evidencia parcial'
-        : rootLoadStatus === 'ready'
-          ? 'Viewport listo'
-          : rootLoadStatus === 'error'
-            ? 'Error de carga'
-            : rootLoadStatus === 'empty'
-              ? 'Sin follows'
-              : 'Esperando root'
+    pathfinding.status === 'computing'
+      ? 'Calculando camino'
+      : primaryActiveExpansion
+        ? 'Expandiendo nodo'
+      : rootLoadStatus === 'loading'
+        ? 'Descubriendo'
+        : rootLoadStatus === 'partial'
+          ? 'Evidencia parcial'
+          : rootLoadStatus === 'ready'
+            ? 'Viewport listo'
+            : rootLoadStatus === 'error'
+              ? 'Error de carga'
+              : rootLoadStatus === 'empty'
+                ? 'Sin follows'
+                : 'Esperando root'
+  const streamMeta = primaryActiveExpansion
+    ? primaryActiveExpansion.state.message ??
+      `Trabajando sobre ${primaryActiveExpansion.nodeLabel}`
+    : statusCopy
 
   const diagnostics = useMemo<GraphCanvasDiagnostics>(
     () => ({
@@ -1110,9 +2052,10 @@ export function GraphCanvas({
       },
       stream: {
         label: streamLabel,
-        meta: statusCopy,
+        meta: streamMeta,
         activeLayer,
         zapLayerStatus,
+        keywordLayerStatus,
       },
     }),
     [
@@ -1125,9 +2068,10 @@ export function GraphCanvas({
       model.nodes.length,
       renderState.reasons,
       renderState.status,
-      statusCopy,
+      streamMeta,
       streamLabel,
       visibleLabels.length,
+      keywordLayerStatus,
       zapLayerStatus,
     ],
   )
@@ -1174,26 +2118,22 @@ export function GraphCanvas({
             containerRef.current = element
           }}
         >
-          {shouldShowRecoveryOverlay && coverageRecovery.reason ? (
-            <div className="graph-panel__overlay-stack">
-              <CoverageRecoveryCard
-                onChangeRelays={() => {
-                  appStore.getState().setOpenPanel('relay-config')
-                }}
-                onTrySampleRoot={onTrySampleRoot}
-                reason={coverageRecovery.reason}
-                relaySummary={coverageRecovery.relaySummary}
-                rootLoadMessage={rootLoadMessage}
-                variant="overlay"
-              />
-            </div>
-          ) : null}
+          <GraphCanvasRecoveryChrome
+            activeNodeExpansions={activeNodeExpansions}
+            browserOnline={isBrowserOnline}
+            links={links}
+            onTrySampleRoot={onTrySampleRoot}
+            rootLoadMessage={rootLoadMessage}
+            rootLoadStatus={rootLoadStatus}
+            rootNodePubkey={rootNodePubkey}
+            shouldMountRenderer={shouldMountRenderer}
+          />
 
-          {isNodeDetailOpen ? (
-            <Suspense fallback={null}>
-              <NodeDetailPanel imageRuntime={imageRuntime} runtime={runtime} />
-            </Suspense>
-          ) : null}
+          <GraphCanvasPanels
+            hasSelectedNode={selectedNodePubkey !== null}
+            imageRuntime={imageRuntime}
+            runtime={runtime}
+          />
 
           {shouldMountRenderer && viewState ? (
             <GraphViewportLazy
@@ -1216,25 +2156,47 @@ export function GraphCanvas({
             />
           ) : null}
 
-          {shouldShowRecoveryEmptyState && coverageRecovery.reason ? (
-            <CoverageRecoveryCard
-              onChangeRelays={() => {
-                appStore.getState().setOpenPanel('relay-config')
-              }}
-              onTrySampleRoot={onTrySampleRoot}
-              reason={coverageRecovery.reason}
-              relaySummary={coverageRecovery.relaySummary}
-              rootLoadMessage={rootLoadMessage}
-              variant="empty"
-            />
-          ) : null}
-
-          {shouldShowEmptyState && !shouldShowRecoveryEmptyState ? (
+          {shouldShowEmptyState ? (
             <div aria-live="polite" className="graph-panel__empty">
               <p className="graph-panel__empty-title">{overlayCopy.title}</p>
               <p className="graph-panel__empty-copy">{overlayCopy.body}</p>
               {modelErrorMessage ? (
                 <p className="graph-panel__empty-copy">{modelErrorMessage}</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="graph-panel__stream-status" role="status">
+            <span className="graph-panel__stream-label">{streamLabel}</span>
+            <span className="graph-panel__stream-meta">{streamMeta}</span>
+          </div>
+
+          <GraphControlRail
+            activeLayer={activeLayer}
+            canToggleOnlyNonReciprocal={canToggleOnlyNonReciprocal}
+            keywordLayerDisabledReason={keywordLayerDisabledReason}
+            keywordSearch={
+              activeLayer === 'keywords' ? (
+                <GraphCanvasKeywordSearch runtime={runtime} />
+              ) : undefined
+            }
+            onlyOneRelationshipSideActive={onlyOneRelationshipSideActive}
+            onToggleLayer={handleToggleLayer}
+            onToggleOnlyNonReciprocal={handleToggleOnlyNonReciprocal}
+            onToggleRelationship={handleToggleRelationship}
+            relationshipToggleState={relationshipToggleState}
+            zapLayerStatus={zapLayerStatus}
+          />
+
+          {activeLayer === 'keywords' && layerStatusNote ? (
+            <div className="graph-panel__status-note" aria-live="polite">
+              <p>{layerStatusNote}</p>
+              {activeLayer === 'keywords' ? (
+                <p>
+                  Corpus {keywordExtractCount} extractos / {keywordCorpusNodeCount}{' '}
+                  nodos / origen {keywordLoadedFrom}
+                  {keywordIsPartial ? ' / parcial' : ''}
+                </p>
               ) : null}
             </div>
           ) : null}

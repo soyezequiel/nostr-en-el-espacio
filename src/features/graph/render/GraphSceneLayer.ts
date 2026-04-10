@@ -857,6 +857,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
     const avatarAtlas = getRendererAvatarAtlas(baseAvatarLayerId)
     avatarAtlas.setSnapshotChangeListener(() => {
       this.setNeedsUpdate()
+      this.setNeedsRedraw()
     })
     const avatarAtlasSnapshot = avatarAtlas.updateVisibleEntries({
       entries: baseAvatarNodes.map((node) => {
@@ -929,6 +930,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
     })
     hdAvatarAtlas.setSnapshotChangeListener(() => {
       this.setNeedsUpdate()
+      this.setNeedsRedraw()
     })
     const hdAvatarAtlasSnapshot = hdAvatarAtlas.updateVisibleEntries({
       // Full HD already usa variantes listas del runtime; aca solo evitamos el

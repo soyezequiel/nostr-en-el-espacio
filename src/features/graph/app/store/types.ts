@@ -33,11 +33,16 @@ export type RelayOverrideStatus =
   | 'invalid'
 export type UiLayer =
   | 'graph'
+  | 'connections'
+  | 'following'
+  | 'following-non-followers'
   | 'mutuals'
   | 'followers'
+  | 'nonreciprocal-followers'
   | 'keywords'
   | 'zaps'
   | 'pathfinding'
+export type ConnectionsSourceLayer = Exclude<UiLayer, 'connections'>
 export type UiPanel =
   | 'none'
   | 'overview'
@@ -153,9 +158,21 @@ export type NodeExpansionStatus =
   | 'empty'
   | 'error'
 
+export type NodeExpansionPhase =
+  | 'idle'
+  | 'preparing'
+  | 'fetching-structure'
+  | 'correlating-followers'
+  | 'merging'
+
 export interface NodeExpansionState {
   status: NodeExpansionStatus
   message: string | null
+  phase: NodeExpansionPhase
+  step: number | null
+  totalSteps: number | null
+  startedAt: number | null
+  updatedAt: number | null
 }
 
 export interface NodeStructurePreviewState {
@@ -303,25 +320,36 @@ export interface SavedRootEntry {
   profileFetchedAt: number | null
 }
 
+export interface ViewportInteractionState {
+  isViewportActive: boolean
+  lastViewportInteractionAt: number | null
+  lastViewportSettledAt: number | null
+}
+
 export interface UiSlice {
   selectedNodePubkey: string | null
   comparedNodePubkeys: ReadonlySet<string>
   activeLayer: UiLayer
+  connectionsSourceLayer: ConnectionsSourceLayer
   openPanel: UiPanel
   currentKeyword: string
   rootLoad: RootLoadState
   renderConfig: RenderConfig
   savedRoots: SavedRootEntry[]
   savedRootsHydrated: boolean
+  interactionState: ViewportInteractionState
   setSelectedNodePubkey: (pubkey: string | null) => void
   setComparedNodePubkeys: (pubkeys: ReadonlySet<string>) => void
   clearComparedNodes: () => void
   setActiveLayer: (layer: UiLayer) => void
+  setConnectionsSourceLayer: (layer: ConnectionsSourceLayer) => void
   setOpenPanel: (panel: UiPanel) => void
   setCurrentKeyword: (keyword: string) => void
   setRootLoadState: (state: Partial<RootLoadState>) => void
   resetRootLoadState: () => void
   setRenderConfig: (config: Partial<RenderConfig>) => void
+  markViewportInteraction: (at?: number) => void
+  markViewportSettled: (at?: number) => void
   upsertSavedRoot: (entry: {
     pubkey: string
     npub: string

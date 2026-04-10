@@ -13,6 +13,7 @@ import {
   type RelayEventEnvelope,
   type RelayHealthSnapshot,
   type RelayQueryFilter,
+  type RelaySubscribeOptions,
   type RelaySubscriptionSummary,
 } from '@/features/graph/nostr'
 import type { NodeDetailProfile } from '@/features/graph/kernel/runtime'
@@ -219,6 +220,7 @@ export function mapStoreRelayHealthStatus(
 export async function collectRelayEvents(
   adapter: RelayAdapterInstance,
   filters: RelayQueryFilter[],
+  options?: RelaySubscribeOptions,
 ): Promise<RelayCollectionResult> {
   return new Promise<RelayCollectionResult>((resolve) => {
     const events: RelayEventEnvelope[] = []
@@ -235,9 +237,12 @@ export async function collectRelayEvents(
       resolve(result)
     }
 
-    cancel = adapter.subscribe(filters).subscribe({
+    cancel = adapter.subscribe(filters, options).subscribe({
       next: (value) => {
         events.push(value)
+      },
+      nextBatch: (values) => {
+        events.push(...values)
       },
       error: (error) => {
         finalize({

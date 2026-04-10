@@ -1,7 +1,7 @@
 'use client'
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { nip19 } from 'nostr-tools'
 
 import { useAppStore } from '@/features/graph/app/store'
@@ -418,6 +418,7 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     : 'Abrir selector de root'
   const primaryTabs = SETTINGS_TABS.filter((tab) => tab.id !== 'internal')
   const advancedTabs = SETTINGS_TABS.filter((tab) => tab.id === 'internal')
+  const shouldCollectDiagnostics = isSettingsOpen && activeTab === 'internal'
   const settingsStatusItems = [
     { label: 'Root', value: rootLoadStatus },
     { label: 'Layer', value: activeLayer },
@@ -426,6 +427,23 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
       value: `${relayCount} ${isGraphStale ? 'stale' : 'live'}`,
     },
   ]
+
+  const handleDiagnosticsChange = useCallback(
+    (snapshot: GraphCanvasDiagnostics | null) => {
+      if (!shouldCollectDiagnostics) {
+        return
+      }
+
+      setGraphDiagnostics(snapshot)
+    },
+    [shouldCollectDiagnostics],
+  )
+
+  useEffect(() => {
+    if (!shouldCollectDiagnostics && graphDiagnostics !== null) {
+      setGraphDiagnostics(null)
+    }
+  }, [graphDiagnostics, shouldCollectDiagnostics])
 
   const handleResolveRoot = ({
     kind,
@@ -803,7 +821,9 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
       <section className="workspace-shell">
         <GraphCanvas
           onTrySampleRoot={handleLoadCuratedSampleRoot}
-          onDiagnosticsChange={setGraphDiagnostics}
+          onDiagnosticsChange={
+            shouldCollectDiagnostics ? handleDiagnosticsChange : undefined
+          }
           runtime={rootLoader}
         />
 

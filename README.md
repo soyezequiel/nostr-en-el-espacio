@@ -1,42 +1,62 @@
+<div align="center">
+
 # Nostr Explorer
 
-Graph-first Nostr identity explorer for La Crypta's IDENTITY Hackathon.
+### Explorador de identidad Nostr orientado a grafos, relays y evidencia exportable
 
-This repository started from the original `nostr-starter`, but the current app is no longer a profile-first starter kit. The primary surface is now an identity graph explorer with relay-aware discovery, worker-backed analysis, layered rendering, and auditable export.
+[![Demo en vivo](https://img.shields.io/badge/Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://nostr-en-el-espacio.vercel.app/)
+[![Hackathon](https://img.shields.io/badge/La%20Crypta-IDENTITY%202026-f7931a?style=for-the-badge)](https://github.com/lacrypta/hackathons-2026)
+[![Next.js](https://img.shields.io/badge/Next.js-16-111111?style=for-the-badge&logo=nextdotjs)](https://nextjs.org/)
+[![Nostr](https://img.shields.io/badge/Nostr-Graph%20First-6f42c1?style=for-the-badge)](https://github.com/nostr-protocol/nostr)
 
-## What the app does today
+[Ver demo](https://nostr-en-el-espacio.vercel.app/) - [Hackathon La Crypta](https://github.com/lacrypta/hackathons-2026) - [Arquitectura actual](./docs/current-codebase.md)
 
-- Explore a discovered identity neighborhood from an `npub` or `nprofile`
-- Inspect node profiles, discovered follow counts, followers, and mutuals
-- Expand nodes without losing the existing graph session
-- Reconfigure relays with reversible overrides and live health feedback
-- Switch graph views for graph, mutual, keyword, and zap-oriented reading
-- Compare selected identities visually inside the graph canvas
-- Export auditable snapshot bundles as deterministic ZIP packages
-- Log in with NIP-07, `nsec`, or NIP-46 bunker
-- View the connected profile and NIP-58 badges on dedicated routes
+</div>
 
-## Routes
+> Proyecto participante de **IDENTITY**, el desafio de **abril 2026** dentro de **Lightning Hackathons 2026** de **La Crypta**.
 
-- `/` - identity graph explorer
-- `/profile` - authenticated profile view with social stats and notes
-- `/badges` - authenticated NIP-58 badge view
+Este repo empezo a partir de `nostr-starter`, pero hoy el producto real es otro: una experiencia **graph-first** para explorar identidad en Nostr, entender relaciones, leer señales de confianza y exportar snapshots auditables.
 
-## Current Graph Capabilities
+## Demo
 
-The graph route is the strongest part of the product and already includes:
+**Deploy publico:** [https://nostr-en-el-espacio.vercel.app/](https://nostr-en-el-espacio.vercel.app/)
 
-- root input for `npub` and `nprofile`
-- relay health indicators and relay override controls
-- root loading states with graceful partial and stale handling
-- node detail panel with async hydration and node expansion
-- discovered graph analysis for communities, leaders, and bridges
-- compare mode for selected nodes
-- zap layer support in the render/store pipeline
-- render diagnostics and image runtime diagnostics
-- export selection for deep users plus auditable snapshot packaging
+## Que hace este proyecto
 
-Note: there is internal support for a `pathfinding` layer in the graph runtime and render pipeline, but it should be treated as in-progress infrastructure rather than a polished user-facing feature.
+- Explora vecindarios de identidad a partir de un `npub` o `nprofile`
+- Descubre conexiones, mutuals, comunidades, lideres y puentes dentro del grafo
+- Trabaja con relays reales, mostrando salud, cobertura parcial y estado stale
+- Permite comparar identidades dentro del canvas
+- Integra senales como perfiles, badges y zaps
+- Exporta evidencia como snapshots auditables en ZIP deterministico
+
+## Por que esta bueno para IDENTITY
+
+La propuesta no se queda en "ver un perfil". El foco esta en **identidad como red**:
+
+- identidad relacional
+- descubrimiento relay-aware
+- senales de confianza y contexto
+- evidencia exportable para demos, research o validacion
+
+## Superficies del producto
+
+| Ruta | Que resuelve |
+| --- | --- |
+| `/` | Explorador principal del grafo de identidad |
+| `/profile` | Vista clasica del perfil autenticado |
+| `/badges` | Vista de badges NIP-58 del usuario autenticado |
+
+## Funcionalidades actuales
+
+- Login con `NIP-07`, `nsec` y `NIP-46` bunker
+- Flujo QR para Nostr Connect / bunker
+- Carga relay-aware con timeouts y fallback visual
+- Expansion estructural de nodos sin perder la sesion del grafo
+- Paneles de configuracion para visualizacion, relays y export
+- Analisis del grafo en background con Web Workers
+- Persistencia local con Dexie para la experiencia del explorador
+- Pipeline de export pensado como paquete de evidencia, no solo descarga
 
 ## Stack
 
@@ -54,28 +74,7 @@ Note: there is internal support for a `pathfinding` layer in the graph runtime a
 - qrcode.react
 - fflate
 
-## Architecture Snapshot
-
-```text
-src/
-|-- app/                  # Next.js routes
-|-- components/           # Shared navbar/login/profile/badges UI
-|-- features/graph/       # Graph application slice
-|   |-- analysis/         # Graph analysis models and helpers
-|   |-- app/store/        # Zustand slices, selectors, store wiring
-|   |-- components/       # Graph-facing panels and controls
-|   |-- db/               # Dexie persistence and repositories
-|   |-- export/           # Snapshot freezing and ZIP packaging
-|   |-- kernel/           # Runtime orchestration and root loading
-|   |-- nostr/            # Graph-specific relay transport logic
-|   |-- render/           # deck.gl model, viewport, image pipeline
-|   `-- workers/          # Event, graph, and verification workers
-|-- lib/                  # Shared Nostr/media helpers for classic surfaces
-|-- store/                # Shared auth state
-`-- types/                # Browser Nostr typings
-```
-
-## Development
+## Desarrollo local
 
 ```bash
 npm install
@@ -84,17 +83,34 @@ npm run build
 npm run lint
 ```
 
-The graph workers are rebuilt automatically through `predev`, `prebuild`, and `prestart`.
+Los workers del grafo se recompilan automaticamente en `predev`, `prebuild` y `prestart`.
 
-## Working Conventions
+## Arquitectura rapida
 
-- Prefer extending `src/features/graph/` for identity-heavy work
-- Keep Nostr fetches time-bounded and relay-aware
-- Preserve partial-state UX when relay coverage is weak
-- Reuse `src/lib/nostr.ts` for auth/profile/badge flows
-- Treat export as evidence packaging, not just a file download
+```text
+src/
+|-- app/                  # Rutas Next.js
+|-- components/           # Navbar, login, profile, badges
+|-- features/graph/       # Aplicacion principal del explorador
+|   |-- analysis/         # Modelos y analisis del grafo
+|   |-- app/store/        # Estado global del grafo
+|   |-- components/       # Canvas, paneles y controles
+|   |-- db/               # Persistencia local con Dexie
+|   |-- export/           # Snapshot y ZIP auditable
+|   |-- kernel/           # Runtime y orquestacion
+|   |-- nostr/            # Transporte y relays especificos del grafo
+|   |-- render/           # deck.gl, viewport e imagen
+|   `-- workers/          # Procesamiento pesado en background
+|-- lib/                  # Helpers compartidos de Nostr y media
+|-- store/                # Auth state compartido
+`-- types/                # Tipados
+```
 
-## Extra Docs
+## Documentacion util
 
-- [`docs/current-codebase.md`](./docs/current-codebase.md) for the real architecture guide
-- [`AGENTS.md`](./AGENTS.md) for repo-specific implementation guidance
+- [Guia del codebase actual](./docs/current-codebase.md)
+- [Instrucciones del repo para agentes](./AGENTS.md)
+
+## Nota importante
+
+La superficie principal del producto es el grafo en `/`. `profile` y `badges` siguen siendo utiles, pero la historia fuerte del proyecto esta en la exploracion de identidad, la incertidumbre de relays y la exportacion de evidencia.

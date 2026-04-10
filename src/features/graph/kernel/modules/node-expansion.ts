@@ -1,6 +1,11 @@
 import type { Filter } from 'nostr-tools'
 
-import type { GraphLink, GraphNode } from '@/features/graph/app/store'
+import type {
+  GraphLink,
+  GraphNode,
+  NodeExpansionPhase,
+  NodeExpansionState,
+} from '@/features/graph/app/store'
 import type { RelayEventEnvelope } from '@/features/graph/nostr'
 import type { ExpandNodeResult } from '@/features/graph/kernel/runtime'
 import type { KernelContext } from '@/features/graph/kernel/modules/context'
@@ -37,6 +42,8 @@ interface InboundFollowerEvidence {
   partial: boolean
 }
 
+const NODE_EXPANSION_TOTAL_STEPS = 4
+
 export function createNodeExpansionModule(
   ctx: KernelContext,
   collaborators: {
@@ -50,6 +57,53 @@ export function createNodeExpansionModule(
   },
 ) {
   const activeNodeExpansionRequests = new Map<string, Promise<ExpandNodeResult>>()
+
+  const buildNodeExpansionState = (
+    state: Partial<NodeExpansionState> & Pick<NodeExpansionState, 'status' | 'message'>,
+  ): NodeExpansionState => ({
+    phase: 'idle',
+    step: null,
+    totalSteps: null,
+    startedAt: null,
+    updatedAt: ctx.now(),
+    ...state,
+  })
+
+  const setLoadingState = (
+    pubkey: string,
+    phase: Exclude<NodeExpansionPhase, 'idle'>,
+    step: number,
+    message: string,
+    startedAt: number,
+  ) => {
+    ctx.store.getState().setNodeExpansionState(
+      pubkey,
+      buildNodeExpansionState({
+        status: 'loading',
+        message,
+        phase,
+        step,
+        totalSteps: NODE_EXPANSION_TOTAL_STEPS,
+        startedAt,
+      }),
+    )
+  }
+
+  const setTerminalState = (
+    pubkey: string,
+    status: Exclude<NodeExpansionState['status'], 'loading'>,
+    message: string | null,
+    startedAt: number | null = null,
+  ) => {
+    ctx.store.getState().setNodeExpansionState(
+      pubkey,
+      buildNodeExpansionState({
+        status,
+        message,
+        startedAt,
+      }),
+    )
+  }
 
   async function expandNode(pubkey: string): Promise<ExpandNodeResult> {
     const activeRequest = activeNodeExpansionRequests.get(pubkey)
@@ -69,10 +123,11 @@ export function createNodeExpansionModule(
     const state = ctx.store.getState()
 
     if (!state.nodes[pubkey]) {
-      state.setNodeExpansionState(pubkey, {
-        status: 'error',
-        message: `Nodo ${pubkey.slice(0, 8)}... no existe en el grafo descubierto.`,
-      })
+      setTerminalState(
+        pubkey,
+        'error',
+        `Nodo ${pubkey.slice(0, 8)}... no existe en el grafo descubierto.`,
+      )
       return {
         status: 'error',
         discoveredFollowCount: 0,
@@ -82,10 +137,11 @@ export function createNodeExpansionModule(
     }
 
     if (state.expandedNodePubkeys.has(pubkey)) {
-      state.setNodeExpansionState(pubkey, {
-        status: 'ready',
-        message: `Nodo ${pubkey.slice(0, 8)}... ya fue expandido.`,
-      })
+      setTerminalState(
+        pubkey,
+        'ready',
+        `Nodo ${pubkey.slice(0, 8)}... ya fue expandido.`,
+      )
       return {
         status: 'ready',
         discoveredFollowCount: 0,
@@ -95,10 +151,11 @@ export function createNodeExpansionModule(
     }
 
     if (state.graphCaps.capReached) {
-      state.setNodeExpansionState(pubkey, {
-        status: 'error',
-        message: `Cap de ${state.graphCaps.maxNodes} nodos alcanzado. No se puede expandir.`,
-      })
+      setTerminalState(
+        pubkey,
+        'error',
+        `Cap de ${state.graphCaps.maxNodes} nodos alcanzado. No se puede expandir.`,
+      )
       return {
         status: 'error',
         discoveredFollowCount: 0,
@@ -112,10 +169,14 @@ export function createNodeExpansionModule(
         ? state.relayUrls.slice()
         : ctx.defaultRelayUrls.slice()
 
-    state.setNodeExpansionState(pubkey, {
-      status: 'loading',
-      message: 'Descubriendo follows estructurales del nodo seleccionado...',
-    })
+    const startedAt = ctx.now()
+    setLoadingState(
+      pubkey,
+      'preparing',
+      1,
+      'Preparando expansion del vecindario seleccionado...',
+      startedAt,
+    )
 
     const previewState = state.nodeStructurePreviewStates?.[pubkey]
     const isRecentFallbackOrEmpty =
@@ -124,6 +185,13 @@ export function createNodeExpansionModule(
       !collaborators.nodeDetail.getActivePreviewRequest(pubkey)
 
     if (isRecentFallbackOrEmpty) {
+      setLoadingState(
+        pubkey,
+        'fetching-structure',
+        2,
+        'Revisando evidencia local para acelerar la expansion...',
+        startedAt,
+      )
       const cachedContactList = await ctx.repositories.contactLists.get(pubkey)
       if (cachedContactList) {
         const cachePreviewMessage =
@@ -135,6 +203,13 @@ export function createNodeExpansionModule(
           }) ??
           buildDiscoveredMessage(cachedContactList.follows.length, true, true)
 
+        setLoadingState(
+          pubkey,
+          'merging',
+          4,
+          'Integrando follows recuperados desde cache local...',
+          startedAt,
+        )
         return applyExpandedStructureEvidence(
           pubkey,
           cachedContactList.follows,
@@ -163,6 +238,13 @@ export function createNodeExpansionModule(
     })
 
     try {
+      setLoadingState(
+        pubkey,
+        'fetching-structure',
+        2,
+        'Consultando relays activos para recuperar follows y followers...',
+        startedAt,
+      )
       const [contactListResult, inboundFollowerResult] = await Promise.all([
         collectRelayEvents(adapter, [{ authors: [pubkey], kinds: [3] } satisfies Filter]),
         collectRelayEvents(adapter, [
@@ -174,6 +256,13 @@ export function createNodeExpansionModule(
         ]),
       ])
 
+      setLoadingState(
+        pubkey,
+        'correlating-followers',
+        3,
+        'Correlacionando followers entrantes y validando evidencia...',
+        startedAt,
+      )
       const inboundFollowerEvidence = await collectInboundFollowerEvidence(
         selectLatestReplaceableEventsByPubkey(inboundFollowerResult.events),
         pubkey,
@@ -196,8 +285,15 @@ export function createNodeExpansionModule(
               diagnostics: [],
               rejectedPubkeyCount: 0,
               loadedFromCache: true,
-            }) ??
-            buildDiscoveredMessage(cachedContactList.follows.length, true, true)
+          }) ??
+          buildDiscoveredMessage(cachedContactList.follows.length, true, true)
+          setLoadingState(
+            pubkey,
+            'merging',
+            4,
+            'Integrando evidencia estructural recuperada...',
+            startedAt,
+          )
           return applyExpandedStructureEvidence(
             pubkey,
             cachedContactList.follows,
@@ -217,6 +313,13 @@ export function createNodeExpansionModule(
           )
         }
 
+        setLoadingState(
+          pubkey,
+          'merging',
+          4,
+          'Actualizando el grafo con la evidencia disponible...',
+          startedAt,
+        )
         return applyExpandedStructureEvidence(
           pubkey,
           [],
@@ -262,6 +365,13 @@ export function createNodeExpansionModule(
             true,
             true,
           )
+        setLoadingState(
+          pubkey,
+          'merging',
+          4,
+          'Integrando evidencia estructural recuperada...',
+          startedAt,
+        )
         return applyExpandedStructureEvidence(
           pubkey,
           cachedContactListBeforePersist.follows,
@@ -278,6 +388,13 @@ export function createNodeExpansionModule(
         )
       }
 
+      setLoadingState(
+        pubkey,
+        'merging',
+        4,
+        'Integrando nodos y conexiones al grafo...',
+        startedAt,
+      )
       return applyExpandedStructureEvidence(
         pubkey,
         parsedContactList.followPubkeys,
@@ -291,13 +408,14 @@ export function createNodeExpansionModule(
         },
       )
     } catch (error) {
-      state.setNodeExpansionState(pubkey, {
-        status: 'error',
-        message:
-          error instanceof Error && error.message.trim().length > 0
-            ? error.message
-            : 'No se pudo expandir este nodo.',
-      })
+      setTerminalState(
+        pubkey,
+        'error',
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : 'No se pudo expandir este nodo.',
+        startedAt,
+      )
       throw error
     } finally {
       adapter.close()
@@ -440,10 +558,7 @@ export function createNodeExpansionModule(
       message: options.previewMessage ?? null,
       discoveredFollowCount: followPubkeys.length,
     })
-    state.setNodeExpansionState(pubkey, {
-      status,
-      message: expansionMessage,
-    })
+    setTerminalState(pubkey, status, expansionMessage)
 
     ctx.emitter.emit({
       type: 'node-expanded',

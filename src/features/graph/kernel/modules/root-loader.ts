@@ -9,9 +9,15 @@ import type {
 import type { KernelContext, RelayAdapterInstance } from '@/features/graph/kernel/modules/context'
 import { ROOT_LOADING_MESSAGE, COVERAGE_RECOVERY_MESSAGE } from '@/features/graph/kernel/modules/constants'
 import {
+  NODE_EXPAND_INBOUND_PARSE_CONCURRENCY,
+  NODE_EXPAND_INBOUND_QUERY_LIMIT,
+} from '@/features/graph/kernel/modules/constants'
+import {
   collectRelayEvents,
   mapProfileRecordToNodeProfile,
+  runWithConcurrencyLimit,
   selectLatestReplaceableEvent,
+  selectLatestReplaceableEventsByPubkey,
   serializeContactListEvent,
 } from '@/features/graph/kernel/modules/helpers'
 import type { AnalysisModule } from '@/features/graph/kernel/modules/analysis'
@@ -45,6 +51,11 @@ interface ActiveLoadSession {
   loadId: number
   adapter: RelayAdapterInstance
   detachRelayHealth: () => void
+}
+
+interface InboundFollowerEvidence {
+  followerPubkeys: string[]
+  partial: boolean
 }
 
 function mergeRelayUrls(
@@ -176,6 +187,7 @@ export function createRootLoaderModule(
       replaceRootGraph(
         rootPubkey,
         cachedSnapshot.followPubkeys,
+        [],
         cachedSnapshot.rootProfile?.name ?? cachedSnapshot.rootLabel,
         cachedSnapshot.rootProfile,
       )
@@ -199,12 +211,28 @@ export function createRootLoaderModule(
       detachRelayHealth,
     }
     try {
-      const contactListResult = await collectRelayEvents(adapter, [
-        {
-          authors: [rootPubkey],
-          kinds: [3],
-        } satisfies Filter,
+      const [contactListResult, inboundFollowerResult] = await Promise.all([
+        collectRelayEvents(adapter, [
+          {
+            authors: [rootPubkey],
+            kinds: [3],
+          } satisfies Filter,
+        ]),
+        collectRelayEvents(adapter, [
+          {
+            kinds: [3],
+            '#p': [rootPubkey],
+            limit: NODE_EXPAND_INBOUND_QUERY_LIMIT,
+          } satisfies Filter & { '#p': string[] },
+        ]),
       ])
+      if (isStaleLoad(loadId)) {
+        return finalize(rootPubkey, createCancelledResult(relayUrls))
+      }
+      const inboundFollowerEvidence = await collectInboundFollowerEvidence(
+        selectLatestReplaceableEventsByPubkey(inboundFollowerResult.events),
+        rootPubkey,
+      )
       if (isStaleLoad(loadId)) {
         return finalize(rootPubkey, createCancelledResult(relayUrls))
       }
@@ -270,6 +298,7 @@ export function createRootLoaderModule(
       const replacementResult = replaceRootGraph(
         rootPubkey,
         parsedContactList.followPubkeys,
+        inboundFollowerEvidence.followerPubkeys,
         cachedSnapshot.rootProfile?.name ?? cachedSnapshot.rootLabel,
         cachedSnapshot.rootProfile,
       )
@@ -299,7 +328,9 @@ export function createRootLoaderModule(
       )
       const hasPartialSignals =
         parsedContactList.diagnostics.length > 0 ||
-        replacementResult.rejectedPubkeys.length > 0
+        replacementResult.rejectedPubkeys.length > 0 ||
+        inboundFollowerEvidence.partial ||
+        inboundFollowerResult.error !== null
       const status =
         replacementResult.discoveredFollowCount === 0
           ? 'empty'
@@ -371,6 +402,7 @@ export function createRootLoaderModule(
   function replaceRootGraph(
     rootPubkey: string,
     followPubkeys: string[],
+    inboundFollowerPubkeys: string[],
     rootLabel: string | null,
     rootProfile: NodeDetailProfile | null = null,
   ): RootGraphReplacementResult {
@@ -387,6 +419,7 @@ export function createRootLoaderModule(
     }
     state.setRootNodePubkey(rootPubkey)
     const discoveredAt = ctx.now()
+    const outboundFollowSet = new Set(followPubkeys)
     const nodes: GraphNode[] = [
       {
         pubkey: rootPubkey,
@@ -409,16 +442,37 @@ export function createRootLoaderModule(
         profileState: 'loading' as const,
         source: 'follow' as const,
       })),
+      ...inboundFollowerPubkeys
+        .filter((pubkey) => !outboundFollowSet.has(pubkey))
+        .map((pubkey) => ({
+          pubkey,
+          keywordHits: 0,
+          discoveredAt,
+          profileState: 'loading' as const,
+          source: 'inbound' as const,
+        })),
     ]
     const nodeResult = state.upsertNodes(nodes)
     const acceptedFollowPubkeys = followPubkeys.filter((pubkey) =>
       nodeResult.acceptedPubkeys.includes(pubkey),
+    )
+    const acceptedInboundFollowerPubkeys = inboundFollowerPubkeys.filter(
+      (pubkey) =>
+        pubkey !== rootPubkey &&
+        (nodeResult.acceptedPubkeys.includes(pubkey) || state.nodes[pubkey]),
     )
     state.upsertLinks(
       acceptedFollowPubkeys.map((pubkey) => ({
         source: rootPubkey,
         target: pubkey,
         relation: 'follow' as const,
+      })),
+    )
+    state.upsertInboundLinks(
+      acceptedInboundFollowerPubkeys.map((pubkey) => ({
+        source: pubkey,
+        target: rootPubkey,
+        relation: 'inbound' as const,
       })),
     )
     state.setNodeStructurePreviewState(rootPubkey, {
@@ -429,12 +483,23 @@ export function createRootLoaderModule(
     state.setNodeExpansionState(rootPubkey, {
       status: 'ready',
       message: null,
+      phase: 'idle',
+      step: null,
+      totalSteps: null,
+      startedAt: null,
+      updatedAt: ctx.now(),
     })
     collaborators.analysis.schedule()
     return {
       discoveredFollowCount: acceptedFollowPubkeys.length,
       rejectedPubkeys: nodeResult.rejectedPubkeys,
-      visiblePubkeys: [rootPubkey, ...acceptedFollowPubkeys],
+      visiblePubkeys: Array.from(
+        new Set([
+          rootPubkey,
+          ...acceptedFollowPubkeys,
+          ...acceptedInboundFollowerPubkeys,
+        ]),
+      ),
     }
   }
   function captureExpandedNeighborhood(
@@ -581,6 +646,52 @@ export function createRootLoaderModule(
       discoveredFollowCount: 0,
       message: 'La carga anterior fue cancelada por una solicitud nueva.',
       relayHealth,
+    }
+  }
+
+  async function collectInboundFollowerEvidence(
+    envelopes: Awaited<
+      ReturnType<typeof selectLatestReplaceableEventsByPubkey>
+    >,
+    targetPubkey: string,
+  ): Promise<InboundFollowerEvidence> {
+    if (envelopes.length === 0) {
+      return {
+        followerPubkeys: [],
+        partial: false,
+      }
+    }
+
+    const followerPubkeys = new Set<string>()
+    let partial = false
+
+    await runWithConcurrencyLimit(
+      envelopes,
+      NODE_EXPAND_INBOUND_PARSE_CONCURRENCY,
+      async (envelope) => {
+        try {
+          const parsedContactList = await ctx.eventsWorker.invoke(
+            'PARSE_CONTACT_LIST',
+            {
+              event: serializeContactListEvent(envelope.event),
+            },
+          )
+
+          if (
+            parsedContactList.followPubkeys.includes(targetPubkey) &&
+            envelope.event.pubkey !== targetPubkey
+          ) {
+            followerPubkeys.add(envelope.event.pubkey)
+          }
+        } catch {
+          partial = true
+        }
+      },
+    )
+
+    return {
+      followerPubkeys: Array.from(followerPubkeys).sort(),
+      partial,
     }
   }
   return {

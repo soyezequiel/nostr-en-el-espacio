@@ -197,6 +197,7 @@ export interface PrepareFrameInput {
   viewState: { target: [number, number, number]; zoom: number }
   velocityScore: number
   viewportQuietForMs: number
+  isViewportActive: boolean
   nodes: readonly GraphRenderNode[]
   nodeScreenRadii: ReadonlyMap<string, number>
   selectedNodePubkey: string | null
@@ -297,19 +298,21 @@ type InFlightVariantRequest = ScheduledVariantRequest & {
 const IMAGE_VARIANT_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const DEFAULT_STORAGE_BUDGET_BYTES = 256 * 1024 * 1024
 const MAX_STORAGE_BUDGET_BYTES = 512 * 1024 * 1024
-const PREFETCH_RING_FACTOR = 0.5
-const MAX_UPLOADS_PER_FRAME = 8
-const MAX_UPLOAD_BYTES_PER_FRAME = 4 * 1024 * 1024
-const FETCH_CONCURRENCY = 8
+const PREFETCH_RING_FACTOR = 0.25
+const MAX_UPLOADS_PER_FRAME = 4
+const MAX_UPLOAD_BYTES_PER_FRAME = 2 * 1024 * 1024
+const FETCH_CONCURRENCY = 6
 const IMAGE_FETCH_TIMEOUT_MS = 5_000
 const FETCH_FAILURE_BASE_COOLDOWN_MS = 30_000
 const FETCH_FAILURE_TIMEOUT_COOLDOWN_MS = 5_000
 const FETCH_FAILURE_NOT_FOUND_COOLDOWN_MS = 10 * 60 * 1000
 const FETCH_FAILURE_MAX_COOLDOWN_MS = 30 * 60 * 1000
-const HD_VIEWPORT_QUIET_MS = 120
-const FULL_HD_VIEWPORT_QUIET_MS = 250
-const IDLE_VISIBLE_HD_WEIGHT_BUDGET = 96
-const MOTION_VISIBLE_HD_WEIGHT_BUDGET = 24
+const SESSION_NEGATIVE_CACHE_COOLDOWN_MS = 12 * 60 * 60 * 1000
+const HIGH_PRIORITY_DIRECT_FALLBACK_DELAY_MS = 450
+const HD_VIEWPORT_QUIET_MS = 400
+const FULL_HD_VIEWPORT_QUIET_MS = 400
+const IDLE_VISIBLE_HD_WEIGHT_BUDGET = 48
+const MOTION_VISIBLE_HD_WEIGHT_BUDGET = 12
 const PRELOAD_BATCH_SIZE = 24
 const PRELOAD_SUMMARY_BATCH_INTERVAL = 6
 const PROXY_FALLBACK_COOLDOWN_MS = 5 * 60 * 1000
@@ -397,6 +400,19 @@ const readErrorMessage = (error: unknown) =>
       ? error.message
       : 'Image fetch failed.'
 
+const isSessionNegativeCacheError = (error: unknown) => {
+  const status = readErrorStatus(error)
+  if (status === 404) {
+    return true
+  }
+
+  const message = readErrorMessage(error).toLowerCase()
+  return (
+    message.includes('err_name_not_resolved') ||
+    message.includes('name not resolved')
+  )
+}
+
 const isTimeoutError = (error: unknown) =>
   typeof error === 'object' &&
   error !== null &&
@@ -408,6 +424,56 @@ const isCancelledError = (error: unknown) =>
   error !== null &&
   'isCancelled' in error &&
   error.isCancelled === true
+
+const pickAggregateImageError = (error: unknown) => {
+  if (!(error instanceof AggregateError)) {
+    return error
+  }
+
+  const errors = error.errors as unknown[]
+  return (
+    errors.find(isTimeoutError) ??
+    errors.find((candidate) => !isCancelledError(candidate)) ??
+    errors[0] ??
+    error
+  )
+}
+
+const createLinkedAbortController = (
+  parent: AbortController | null,
+  cancelReason: string,
+) => {
+  const abortController = new AbortController()
+  const parentSignal = parent?.signal
+
+  if (!parentSignal) {
+    return {
+      abortController,
+      release: () => undefined,
+    }
+  }
+
+  if (parentSignal.aborted) {
+    abortController.abort(parentSignal.reason ?? cancelReason)
+    return {
+      abortController,
+      release: () => undefined,
+    }
+  }
+
+  const handleAbort = () => {
+    abortController.abort(parentSignal.reason ?? cancelReason)
+  }
+
+  parentSignal.addEventListener('abort', handleAbort, { once: true })
+
+  return {
+    abortController,
+    release: () => {
+      parentSignal.removeEventListener('abort', handleAbort)
+    },
+  }
+}
 
 const now = () => Date.now()
 
@@ -1340,7 +1406,11 @@ export class ImageRuntime {
   public prepareFrame(input: PrepareFrameInput): ImageRenderPayload {
     const budgets = pickModeBudgets(input.mode)
     const viewportQuietForMs = Math.max(0, input.viewportQuietForMs)
-    const visibleHdWeightBudget = resolveVisibleHdWeightBudget(viewportQuietForMs)
+    const memoryPressureHigh = this.isMemoryPressureHigh(budgets)
+    const suppressPrefetch = input.isViewportActive || memoryPressureHigh
+    const visibleHdWeightBudget = input.isViewportActive
+      ? MOTION_VISIBLE_HD_WEIGHT_BUDGET
+      : resolveVisibleHdWeightBudget(viewportQuietForMs)
     const viewport = new OrthographicViewport({
       width: input.width,
       height: input.height,
@@ -1350,8 +1420,8 @@ export class ImageRuntime {
     const frameNow = now()
     const visibleWidth = input.width
     const visibleHeight = input.height
-    const prefetchX = visibleWidth * PREFETCH_RING_FACTOR
-    const prefetchY = visibleHeight * PREFETCH_RING_FACTOR
+    const prefetchX = suppressPrefetch ? 0 : visibleWidth * PREFETCH_RING_FACTOR
+    const prefetchY = suppressPrefetch ? 0 : visibleHeight * PREFETCH_RING_FACTOR
     const frameCandidates: FrameCandidate[] = []
     const activeVisiblePubkeys = new Set<string>()
     const visibilitySnapshot = createEmptyVisibilitySnapshot()
@@ -1382,6 +1452,7 @@ export class ImageRuntime {
         screenY >= -bleed &&
         screenY <= visibleHeight + bleed
       const prefetch =
+        !suppressPrefetch &&
         screenX >= -prefetchX &&
         screenX <= visibleWidth + prefetchX &&
         screenY >= -prefetchY &&
@@ -1462,11 +1533,14 @@ export class ImageRuntime {
 
       if (!visible || requestedPromotedTier === 'base') {
         this.fullHdEligibilityStreakByPubkey.delete(node.pubkey)
-      } else if (viewportQuietForMs < HD_VIEWPORT_QUIET_MS) {
+      } else if (input.isViewportActive || viewportQuietForMs < HD_VIEWPORT_QUIET_MS) {
         promotedTier = 'base'
         nextQualityGuideBlockReason = 'motion'
         this.fullHdEligibilityStreakByPubkey.delete(node.pubkey)
       } else if (requestedPromotedTier === 'full-hd') {
+        if (!priorityLane) {
+          promotedTier = 'hd'
+        }
         if (viewportQuietForMs < FULL_HD_VIEWPORT_QUIET_MS) {
           promotedTier = 'hd'
           this.fullHdEligibilityStreakByPubkey.delete(node.pubkey)
@@ -2337,11 +2411,31 @@ export class ImageRuntime {
       const fetchUrl = resolveAvatarFetchUrl(sourceUrl, undefined, bucket)
 
       try {
-        blob = await this.fetchBlob(fetchUrl, abortController, highPriority)
+        const result = highPriority
+          ? await this.fetchHighPriorityAvatarBlob({
+              proxyUrl: fetchUrl,
+              sourceUrl,
+              abortController,
+            })
+          : {
+              blob: await this.fetchBlob(fetchUrl, abortController, highPriority),
+              transport: 'proxy' as const,
+            }
+
+        blob = result.blob
         this.clearProxyFallback(sourceUrl)
       } catch (error) {
         proxyError = error
-        if (isTimeoutError(error) || isCancelledError(error)) {
+        if (isCancelledError(error)) {
+          throw error
+        }
+
+        if (highPriority) {
+          this.noteProxyFallback(sourceUrl, error)
+          throw error
+        }
+
+        if (isTimeoutError(error)) {
           throw error
         }
 
@@ -2388,6 +2482,78 @@ export class ImageRuntime {
     this.schedulePersistentSummaryRefresh()
 
     return this.toCompressedEntry(persistedRecord)
+  }
+
+  private async fetchHighPriorityAvatarBlob({
+    proxyUrl,
+    sourceUrl,
+    abortController,
+  }: {
+    proxyUrl: string
+    sourceUrl: string
+    abortController: AbortController | null
+  }): Promise<{ blob: Blob; transport: 'proxy' | 'direct' }> {
+    const proxyAbort = createLinkedAbortController(
+      abortController,
+      'avatar-proxy-cancelled',
+    )
+    const directAbort = createLinkedAbortController(
+      abortController,
+      'avatar-direct-cancelled',
+    )
+    let winner: 'proxy' | 'direct' | null = null
+    let directStarted = false
+    let directTimer: ReturnType<typeof setTimeout> | null = null
+
+    const proxyRequest = this.fetchBlob(proxyUrl, proxyAbort.abortController, true).then(
+      (blob) => ({
+        blob,
+        transport: 'proxy' as const,
+      }),
+    )
+    const directRequest = new Promise<{ blob: Blob; transport: 'direct' }>(
+      (resolve, reject) => {
+        directTimer = setTimeout(() => {
+          directTimer = null
+          directStarted = true
+          this.fetchBlob(sourceUrl, directAbort.abortController, true)
+            .then((blob) => {
+              resolve({
+                blob,
+                transport: 'direct',
+              })
+            })
+            .catch(reject)
+        }, HIGH_PRIORITY_DIRECT_FALLBACK_DELAY_MS)
+      },
+    )
+
+    try {
+      const result = await Promise.any([proxyRequest, directRequest])
+      winner = result.transport
+      return result
+    } catch (error) {
+      throw pickAggregateImageError(error)
+    } finally {
+      if (directTimer !== null) {
+        clearTimeout(directTimer)
+      }
+
+      if (winner !== 'proxy' && !proxyAbort.abortController.signal.aborted) {
+        proxyAbort.abortController.abort('avatar-direct-fallback-won')
+      }
+
+      if (
+        directStarted &&
+        winner !== 'direct' &&
+        !directAbort.abortController.signal.aborted
+      ) {
+        directAbort.abortController.abort('avatar-proxy-won')
+      }
+
+      proxyAbort.release()
+      directAbort.release()
+    }
   }
 
   private async fetchVariantDirect(
@@ -2539,6 +2705,8 @@ export class ImageRuntime {
     const baseCooldownMs =
       timedOut
         ? FETCH_FAILURE_TIMEOUT_COOLDOWN_MS
+        : isSessionNegativeCacheError(error)
+        ? SESSION_NEGATIVE_CACHE_COOLDOWN_MS
         : status === 404
         ? FETCH_FAILURE_NOT_FOUND_COOLDOWN_MS
         : Math.min(
@@ -2994,6 +3162,44 @@ export class ImageRuntime {
           count,
         })),
     }
+  }
+
+  private isMemoryPressureHigh(
+    budgets: ReturnType<typeof pickModeBudgets>,
+  ): boolean {
+    const decodedBytes = Array.from(this.decodedCache.values()).reduce(
+      (sum, entry) => sum + entry.byteSize,
+      0,
+    )
+    const residentBytes = Array.from(this.residentCache.values()).reduce(
+      (sum, entry) => sum + entry.byteSize,
+      0,
+    )
+
+    if (
+      decodedBytes >= budgets.decodedBytes * 0.9 ||
+      residentBytes >= budgets.vramBytes * 0.9
+    ) {
+      return true
+    }
+
+    const performanceMemory =
+      typeof performance !== 'undefined'
+        ? ((performance as Performance & {
+            memory?: {
+              usedJSHeapSize?: number
+              jsHeapSizeLimit?: number
+            }
+          }).memory ?? null)
+        : null
+
+    return Boolean(
+      performanceMemory?.usedJSHeapSize &&
+        performanceMemory?.jsHeapSizeLimit &&
+        performanceMemory.jsHeapSizeLimit > 0 &&
+        performanceMemory.usedJSHeapSize / performanceMemory.jsHeapSizeLimit >=
+          0.85,
+    )
   }
 
   private getPendingWorkSnapshot(): ImagePendingWorkSnapshot {

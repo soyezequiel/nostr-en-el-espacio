@@ -4,6 +4,11 @@ import { deriveDirectedEvidence } from '@/features/graph/evidence/directedEviden
 const DEFAULT_IDLE_NODE_EXPANSION_STATE = {
   status: 'idle' as const,
   message: null,
+  phase: 'idle' as const,
+  step: null,
+  totalSteps: null,
+  startedAt: null,
+  updatedAt: null,
 }
 
 const DEFAULT_IDLE_NODE_STRUCTURE_PREVIEW_STATE = {

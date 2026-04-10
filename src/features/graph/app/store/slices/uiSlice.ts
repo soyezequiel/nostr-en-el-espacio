@@ -58,16 +58,19 @@ export const createInitialUiSliceState = (): Pick<
   | 'selectedNodePubkey'
   | 'comparedNodePubkeys'
   | 'activeLayer'
+  | 'connectionsSourceLayer'
   | 'openPanel'
   | 'currentKeyword'
   | 'rootLoad'
   | 'renderConfig'
   | 'savedRoots'
   | 'savedRootsHydrated'
+  | 'interactionState'
 > => ({
   selectedNodePubkey: null,
   comparedNodePubkeys: new Set<string>(),
   activeLayer: 'graph',
+  connectionsSourceLayer: 'graph',
   openPanel: 'overview',
   currentKeyword: '',
   rootLoad: {
@@ -91,6 +94,11 @@ export const createInitialUiSliceState = (): Pick<
   },
   savedRoots: [],
   savedRootsHydrated: typeof window === 'undefined',
+  interactionState: {
+    isViewportActive: false,
+    lastViewportInteractionAt: null,
+    lastViewportSettledAt: null,
+  },
 })
 
 export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
@@ -106,6 +114,9 @@ export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
   },
   setActiveLayer: (layer) => {
     set({ activeLayer: layer })
+  },
+  setConnectionsSourceLayer: (layer) => {
+    set({ connectionsSourceLayer: layer })
   },
   setOpenPanel: (panel) => {
     set({ openPanel: panel })
@@ -141,6 +152,32 @@ export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
           ...normalizedZoomThresholds,
         }
       })(),
+    }))
+  },
+  markViewportInteraction: (at = Date.now()) => {
+    set((state) => ({
+      interactionState:
+        state.interactionState.isViewportActive &&
+        state.interactionState.lastViewportInteractionAt === at
+          ? state.interactionState
+          : {
+              ...state.interactionState,
+              isViewportActive: true,
+              lastViewportInteractionAt: at,
+            },
+    }))
+  },
+  markViewportSettled: (at = Date.now()) => {
+    set((state) => ({
+      interactionState:
+        !state.interactionState.isViewportActive &&
+        state.interactionState.lastViewportSettledAt === at
+          ? state.interactionState
+          : {
+              ...state.interactionState,
+              isViewportActive: false,
+              lastViewportSettledAt: at,
+            },
     }))
   },
   upsertSavedRoot: (entry) => {

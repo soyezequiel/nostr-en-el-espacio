@@ -3,6 +3,7 @@ import type {
   DiscoveredGraphAnalysisState,
 } from '@/features/graph/analysis/types'
 import type {
+  ConnectionsSourceLayer,
   GraphLink,
   GraphNodeSource,
   UiLayer,
@@ -21,11 +22,14 @@ export interface BuildRenderModelNodeInput {
 }
 
 export interface BuildRenderModelRequest {
+  jobKind?: 'BUILD_RENDER_MODEL'
+  jobKey?: string
   nodes: Record<string, BuildRenderModelNodeInput>
   links: GraphLink[]
   inboundLinks: GraphLink[]
   zapEdges: ZapLayerEdge[]
   activeLayer: UiLayer
+  connectionsSourceLayer: ConnectionsSourceLayer
   rootNodePubkey: string | null
   selectedNodePubkey: string | null
   expandedNodePubkeys: string[]
@@ -65,11 +69,19 @@ const isGraphNodeSource = (value: unknown): value is GraphNodeSource =>
 
 const isUiLayer = (value: unknown): value is UiLayer =>
   value === 'graph' ||
+  value === 'connections' ||
+  value === 'following' ||
+  value === 'following-non-followers' ||
   value === 'mutuals' ||
   value === 'followers' ||
+  value === 'nonreciprocal-followers' ||
   value === 'keywords' ||
   value === 'zaps' ||
   value === 'pathfinding'
+
+const isConnectionsSourceLayer = (
+  value: unknown,
+): value is ConnectionsSourceLayer => isUiLayer(value) && value !== 'connections'
 
 const isGraphLinkRelation = (
   value: unknown,
@@ -316,11 +328,13 @@ const sanitizePreviousPositions = (
     : undefined
 
 export const serializeBuildGraphRenderModelInput = ({
+  jobKey,
   nodes,
   links,
   inboundLinks,
   zapEdges,
   activeLayer,
+  connectionsSourceLayer,
   rootNodePubkey,
   selectedNodePubkey,
   expandedNodePubkeys,
@@ -330,12 +344,21 @@ export const serializeBuildGraphRenderModelInput = ({
   renderConfig,
   previousPositions,
   previousLayoutKey,
-}: BuildGraphRenderModelInput): BuildRenderModelRequest => ({
+}: BuildGraphRenderModelInput & { jobKey?: string }): BuildRenderModelRequest => ({
+  ...(isNonEmptyString(jobKey)
+    ? {
+        jobKind: 'BUILD_RENDER_MODEL',
+        jobKey: jobKey.trim(),
+      }
+    : {}),
   nodes: sanitizeNodes(nodes),
   links: sanitizeLinks(links),
   inboundLinks: sanitizeLinks(inboundLinks),
   zapEdges: sanitizeZapEdges(zapEdges),
   activeLayer: isUiLayer(activeLayer) ? activeLayer : 'graph',
+  connectionsSourceLayer: isConnectionsSourceLayer(connectionsSourceLayer)
+    ? connectionsSourceLayer
+    : 'graph',
   rootNodePubkey: sanitizeString(rootNodePubkey),
   selectedNodePubkey: sanitizeString(selectedNodePubkey),
   expandedNodePubkeys: sanitizeExpandedNodePubkeys(expandedNodePubkeys),
@@ -358,11 +381,13 @@ export const serializeBuildGraphRenderModelInput = ({
 })
 
 export const deserializeBuildGraphRenderModelInput = ({
+  jobKey,
   nodes,
   links,
   inboundLinks,
   zapEdges,
   activeLayer,
+  connectionsSourceLayer,
   rootNodePubkey,
   selectedNodePubkey,
   expandedNodePubkeys,
@@ -390,6 +415,9 @@ export const deserializeBuildGraphRenderModelInput = ({
   inboundLinks,
   zapEdges,
   activeLayer,
+  connectionsSourceLayer: isConnectionsSourceLayer(connectionsSourceLayer)
+    ? connectionsSourceLayer
+    : 'graph',
   rootNodePubkey,
   selectedNodePubkey,
   expandedNodePubkeys: new Set(expandedNodePubkeys),
@@ -406,4 +434,5 @@ export const deserializeBuildGraphRenderModelInput = ({
     ? new Map(Object.entries(previousPositions))
     : undefined,
   previousLayoutKey,
+  ...(typeof jobKey === 'string' ? { jobKey } : {}),
 })

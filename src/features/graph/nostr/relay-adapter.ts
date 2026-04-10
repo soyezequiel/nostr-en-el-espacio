@@ -8,11 +8,15 @@ import type {
   RelayAdapterOptions,
   RelayClock,
   RelayConnection,
+  RelayEventEnvelope,
   RelayEventObservable,
   RelayHealthSnapshot,
   RelayObserver,
+  RelaySubscribeOptions,
   RelaySubscriptionHandle,
+  RelaySubscriptionPriority,
   RelaySubscriptionStats,
+  RelayVerificationMode,
 } from './types'
 
 const DEFAULT_CONNECT_TIMEOUT_MS = 4_000
@@ -20,6 +24,15 @@ const DEFAULT_PAGE_TIMEOUT_MS = 6_000
 const DEFAULT_RETRY_COUNT = 1
 const DEFAULT_STRAGGLER_GRACE_MS = 250
 const DEFAULT_MAX_AUTHORS_PER_FILTER = 50
+const INTERACTIVE_FLUSH_DELAY_MS = 16
+const BACKGROUND_FLUSH_DELAY_MS = 32
+const RELAY_SESSION_BACKOFF_BASE_MS = 5_000
+const RELAY_SESSION_BACKOFF_MAX_MS = 60_000
+
+const relayRetryBackoffByUrl = new Map<
+  string,
+  { nextAllowedAtMs: number; failures: number }
+>()
 
 type TerminalKind = 'eose' | 'timeout' | 'closed' | 'cancelled'
 
@@ -89,11 +102,15 @@ export class RelayPoolAdapter {
     }
   }
 
-  subscribe(filters: Filter[]): RelayEventObservable {
+  subscribe(
+    filters: Filter[],
+    options: RelaySubscribeOptions = {},
+  ): RelayEventObservable {
     const normalizedFilters = batchFilters(filters, this.maxAuthorsPerFilter)
 
     return {
-      subscribe: (observer) => this.runSubscription(normalizedFilters, observer),
+      subscribe: (observer) =>
+        this.runSubscription(normalizedFilters, observer, options),
     }
   }
 
@@ -126,7 +143,11 @@ export class RelayPoolAdapter {
     }
   }
 
-  private runSubscription(filters: Filter[], observer: RelayObserver): () => void {
+  private runSubscription(
+    filters: Filter[],
+    observer: RelayObserver,
+    options: RelaySubscribeOptions,
+  ): () => void {
     const stats: RelaySubscriptionStats = {
       acceptedEvents: 0,
       duplicateRelayEvents: 0,
@@ -134,6 +155,16 @@ export class RelayPoolAdapter {
     }
     const startedAtMs = this.clock.now()
     const activeAttempts = new Map<string, ActiveRelayAttempt>()
+    const priority: RelaySubscriptionPriority =
+      options.priority ?? 'interactive'
+    const verificationMode: RelayVerificationMode =
+      options.verificationMode ?? 'trusted-relay'
+    const flushDelayMs =
+      priority === 'background'
+        ? BACKGROUND_FLUSH_DELAY_MS
+        : INTERACTIVE_FLUSH_DELAY_MS
+    const pendingEvents: RelayEventEnvelope[] = []
+    let flushHandle: ReturnType<typeof setTimeout> | null = null
 
     // Bounded LRU dedup set. Using Map instead of Set because Map preserves
     // insertion order in V8, giving us O(1) LRU eviction via .keys().next().
@@ -152,11 +183,43 @@ export class RelayPoolAdapter {
     let completed = false
     let pendingRelays = this.relayUrls.length
 
+    const flushPendingEvents = () => {
+      if (flushHandle !== null) {
+        this.clock.clearTimeout(flushHandle)
+        flushHandle = null
+      }
+
+      if (pendingEvents.length === 0 || cancelled || completed) {
+        return
+      }
+
+      const nextBatch = pendingEvents.splice(0, pendingEvents.length)
+      observer.nextBatch?.(nextBatch)
+
+      if (!observer.nextBatch) {
+        for (const envelope of nextBatch) {
+          observer.next?.(envelope)
+        }
+      }
+    }
+
+    const scheduleFlush = () => {
+      if (flushHandle !== null) {
+        return
+      }
+
+      flushHandle = this.clock.setTimeout(() => {
+        flushHandle = null
+        flushPendingEvents()
+      }, flushDelayMs)
+    }
+
     const finalize = () => {
       if (completed || cancelled || pendingRelays > 0) {
         return
       }
 
+      flushPendingEvents()
       completed = true
       observer.complete?.({
         filters,
@@ -195,6 +258,10 @@ export class RelayPoolAdapter {
 
       attempt.finished = true
       this.decrementActiveSubscriptions(attempt.url)
+      this.noteRelayOutcome(
+        attempt.url,
+        terminalKind === 'timeout' || terminalKind === 'closed',
+      )
 
       if (cancelled) {
         finishRelay(attempt.url)
@@ -270,6 +337,12 @@ export class RelayPoolAdapter {
       let connection: RelayConnection
 
       try {
+        await this.waitForRelayBackoff(url)
+        if (cancelled) {
+          finishRelay(url)
+          return
+        }
+
         connection = await this.withTimeout(
           this.getOrCreateConnection(url),
           this.connectTimeoutMs,
@@ -305,6 +378,7 @@ export class RelayPoolAdapter {
               : 'RELAY_CONNECT_FAILED',
           lastCloseReason: relayError.message,
         }))
+        this.noteRelayOutcome(url, true)
 
         if (attemptNumber <= this.retryCount && !cancelled) {
           this.evictConnection(url)
@@ -358,20 +432,22 @@ export class RelayPoolAdapter {
 
           addSeenRelayEvent(relayEventKey)
 
-          const isValid = await isVerifiedEventAsync(event)
+          if (verificationMode === 'verify-worker') {
+            const isValid = await isVerifiedEventAsync(event)
 
-          // After await, we must re-check if the subscription was closed
-          if (cancelled || activeAttempt.finished) {
-            return
-          }
+            // After await, we must re-check if the subscription was closed
+            if (cancelled || activeAttempt.finished) {
+              return
+            }
 
-          if (!isValid) {
-            stats.rejectedEvents += 1
-            this.updateRelayHealth(url, (current) => ({
-              ...current,
-              lastErrorCode: 'RELAY_EVENT_INVALID',
-            }))
-            return
+            if (!isValid) {
+              stats.rejectedEvents += 1
+              this.updateRelayHealth(url, (current) => ({
+                ...current,
+                lastErrorCode: 'RELAY_EVENT_INVALID',
+              }))
+              return
+            }
           }
 
           stats.acceptedEvents += 1
@@ -382,12 +458,13 @@ export class RelayPoolAdapter {
             lastErrorCode: undefined,
             lastEventMs: this.clock.now(),
           }))
-          observer.next?.({
+          pendingEvents.push({
             event,
             relayUrl: url,
             receivedAtMs: this.clock.now(),
             attempt: attemptNumber,
           })
+          scheduleFlush()
         },
         onEose: () => {
           if (cancelled || activeAttempt.finished) {
@@ -438,6 +515,7 @@ export class RelayPoolAdapter {
       }
 
       cancelled = true
+      flushPendingEvents()
 
       for (const attempt of activeAttempts.values()) {
         if (attempt.pageTimeoutHandle) {
@@ -452,6 +530,10 @@ export class RelayPoolAdapter {
       }
 
       activeAttempts.clear()
+      if (flushHandle !== null) {
+        this.clock.clearTimeout(flushHandle)
+        flushHandle = null
+      }
     }
   }
 
@@ -495,6 +577,46 @@ export class RelayPoolAdapter {
     existing.detachNotice?.()
     existing.connection?.close()
     this.connections.delete(url)
+  }
+
+  private noteRelayOutcome(url: string, failed: boolean): void {
+    if (!failed) {
+      relayRetryBackoffByUrl.delete(url)
+      return
+    }
+
+    const currentTime = this.clock.now()
+    const previous = relayRetryBackoffByUrl.get(url)
+    const failures = Math.min((previous?.failures ?? 0) + 1, 6)
+    const delayMs = Math.min(
+      RELAY_SESSION_BACKOFF_MAX_MS,
+      RELAY_SESSION_BACKOFF_BASE_MS * 2 ** Math.max(0, failures - 1),
+    )
+
+    relayRetryBackoffByUrl.set(url, {
+      failures,
+      nextAllowedAtMs: currentTime + delayMs,
+    })
+  }
+
+  private async waitForRelayBackoff(url: string): Promise<void> {
+    const backoff = relayRetryBackoffByUrl.get(url)
+    if (!backoff) {
+      return
+    }
+
+    const delayMs = backoff.nextAllowedAtMs - this.clock.now()
+    if (delayMs <= 0) {
+      relayRetryBackoffByUrl.delete(url)
+      return
+    }
+
+    await new Promise<void>((resolve) => {
+      const handle = this.clock.setTimeout(() => {
+        this.clock.clearTimeout(handle)
+        resolve()
+      }, delayMs)
+    })
   }
 
   private withTimeout<T>(

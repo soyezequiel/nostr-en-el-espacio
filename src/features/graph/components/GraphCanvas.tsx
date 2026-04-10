@@ -23,6 +23,8 @@ import {
 } from '@/features/graph/app/store'
 import type { AppStore } from '@/features/graph/app/store/types'
 import { CoverageRecoveryCard } from '@/features/graph/components/CoverageRecoveryCard'
+import { GraphControlRail } from '@/features/graph/components/GraphControlRail'
+import { NodeExpansionProgressCard } from '@/features/graph/components/NodeExpansionProgressCard'
 import { createPerfCounters } from '@/features/graph/components/perfCounters'
 import type { RootLoader } from '@/features/graph/kernel'
 import {
@@ -35,6 +37,7 @@ import {
   ImageRuntime,
   resolveGraphNodeScreenRadii,
   selectVisibleGraphLabels,
+  truncatePubkey,
   type GraphRenderLabel,
   type GraphRenderModel,
   type GraphRenderModelPhase,
@@ -76,8 +79,10 @@ const selectGraphCanvasRenderState = (state: AppStore) => ({
   rootLoadStatus: state.rootLoad.status,
   rootLoadMessage: state.rootLoad.message,
   activeLayer: state.activeLayer,
+  connectionsSourceLayer: state.connectionsSourceLayer,
   capReached: state.graphCaps.capReached,
   maxNodes: state.graphCaps.maxNodes,
+  nodeExpansionStates: state.nodeExpansionStates,
   renderConfig: state.renderConfig,
 })
 
@@ -139,15 +144,23 @@ const EMPTY_IMAGE_FRAME = createEmptyImageRenderPayload()
 const EMPTY_IMAGE_DIAGNOSTICS = createEmptyImageResidencySnapshot()
 const EMPTY_NODE_SCREEN_RADII = new Map<string, number>()
 const QUIET_VIEWPORT_READY_MS = 10_000
-const AVATAR_HD_VIEWPORT_QUIET_MS = 120
-const AVATAR_FULL_HD_VIEWPORT_QUIET_MS = 250
+const AVATAR_HD_VIEWPORT_QUIET_MS = 400
+const AVATAR_FULL_HD_VIEWPORT_QUIET_MS = 400
 const COALESCED_FRAME_DELAY_MS = 16
-const DIAGNOSTICS_COMMIT_DELAY_MS = 120
+const DIAGNOSTICS_COMMIT_DELAY_MS = 250
+const RESIZE_SETTLE_DELAY_MS = 80
+const VIEWPORT_SETTLE_DELAY_MS = 400
 
 interface HoverGraphState {
   nodePubkey: string | null
   edgeId: string | null
   edgePubkeys: readonly string[]
+}
+
+interface ActiveNodeExpansion {
+  pubkey: string
+  nodeLabel: string
+  state: AppStore['nodeExpansionStates'][string]
 }
 
 const EMPTY_HOVER_STATE: HoverGraphState = {
@@ -156,9 +169,49 @@ const EMPTY_HOVER_STATE: HoverGraphState = {
   edgePubkeys: [],
 }
 
+const isRelationshipLayer = (layer: AppStore['activeLayer']) =>
+  layer === 'following' ||
+  layer === 'following-non-followers' ||
+  layer === 'followers' ||
+  layer === 'nonreciprocal-followers' ||
+  layer === 'mutuals'
+
+const getRelationshipToggleState = (activeLayer: AppStore['activeLayer']) => ({
+  following:
+    activeLayer === 'following' ||
+    activeLayer === 'following-non-followers' ||
+    activeLayer === 'mutuals',
+  followers:
+    activeLayer === 'followers' ||
+    activeLayer === 'nonreciprocal-followers' ||
+    activeLayer === 'mutuals',
+  onlyNonReciprocal:
+    activeLayer === 'following-non-followers' ||
+    activeLayer === 'nonreciprocal-followers',
+})
+
 const equalStringLists = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&
   left.every((value, index) => value === right[index])
+
+const createBuildRenderModelJobKey = (
+  request: ReturnType<typeof serializeBuildGraphRenderModelInput>,
+) =>
+  JSON.stringify({
+    nodes: request.nodes,
+    links: request.links,
+    inboundLinks: request.inboundLinks,
+    zapEdges: request.zapEdges,
+    activeLayer: request.activeLayer,
+    connectionsSourceLayer: request.connectionsSourceLayer,
+    rootNodePubkey: request.rootNodePubkey,
+    selectedNodePubkey: request.selectedNodePubkey,
+    expandedNodePubkeys: request.expandedNodePubkeys,
+    comparedNodePubkeys: request.comparedNodePubkeys ?? [],
+    pathfinding: request.pathfinding,
+    graphAnalysisKey: request.graphAnalysis?.analysisKey ?? null,
+    renderConfig: request.renderConfig,
+  })
 
 const equalImageSourceHandleRecords = (
   left: Record<string, ImageSourceHandle>,
@@ -301,17 +354,45 @@ const emptyStateCopy = (
     }
   }
 
+  if (activeLayer === 'connections') {
+    return {
+      title: 'Todavia no hay conexiones internas visibles.',
+      body: 'Esta vista muestra solo enlaces internos entre los nodos visibles de la vista desde la que entraste.',
+    }
+  }
+
+  if (activeLayer === 'following') {
+    return {
+      title: 'Todavia no hay follows visibles.',
+      body: 'No hay follows salientes visibles todavia desde el root; prueba otros relays o recarga el vecindario.',
+    }
+  }
+
+  if (activeLayer === 'following-non-followers') {
+    return {
+      title: 'Todavia no hay follows sin reciprocidad visibles.',
+      body: 'Esta vista muestra solo las cuentas que sigue el root y que no lo siguen de vuelta segun la evidencia descubierta.',
+    }
+  }
+
   if (activeLayer === 'followers') {
     return {
-      title: 'Todavia no hay followers inbound visibles.',
-      body: 'No hay follows entrantes descubiertos todavia; hace falta expandir root u otros nodos.',
+      title: 'Todavia no hay followers visibles.',
+      body: 'No hay follows entrantes visibles todavia hacia el root; prueba otros relays o recarga el vecindario.',
+    }
+  }
+
+  if (activeLayer === 'nonreciprocal-followers') {
+    return {
+      title: 'Todavia no hay seguidores sin reciprocidad visibles.',
+      body: 'Esta vista muestra solo las cuentas que siguen al root y no reciben reciprocidad segun la evidencia descubierta.',
     }
   }
 
   if (activeLayer === 'mutuals') {
     return {
-      title: 'Todavia no hay mutuals visibles.',
-      body: 'Hace falta combinar evidencia saliente e inbound expandiendo root u otros nodos del vecindario.',
+      title: 'Todavia no hay vinculos reciprocos visibles.',
+      body: 'Hace falta descubrir follows salientes y entrantes del root y de los nodos expandidos para confirmar relaciones reciprocas.',
     }
   }
 
@@ -322,6 +403,7 @@ const emptyStateCopy = (
 }
 
 interface GraphCanvasRecoveryChromeProps {
+  activeNodeExpansions: readonly ActiveNodeExpansion[]
   browserOnline: boolean
   links: AppStore['links']
   rootLoadMessage: string | null
@@ -332,6 +414,7 @@ interface GraphCanvasRecoveryChromeProps {
 }
 
 const GraphCanvasRecoveryChrome = memo(function GraphCanvasRecoveryChrome({
+  activeNodeExpansions,
   browserOnline,
   links,
   rootLoadMessage,
@@ -357,21 +440,35 @@ const GraphCanvasRecoveryChrome = memo(function GraphCanvasRecoveryChrome({
   )
   const shouldShowRecoveryOverlay =
     shouldMountRenderer && coverageRecovery.shouldOfferRecovery
+  const shouldShowOverlayStack =
+    shouldShowRecoveryOverlay || activeNodeExpansions.length > 0
 
   return (
     <>
-      {shouldShowRecoveryOverlay && coverageRecovery.reason ? (
+      {shouldShowOverlayStack ? (
         <div className="graph-panel__overlay-stack">
-          <CoverageRecoveryCard
-            onChangeRelays={() => {
-              appStore.getState().setOpenPanel('relay-config')
-            }}
-            onTrySampleRoot={onTrySampleRoot}
-            reason={coverageRecovery.reason}
-            relaySummary={coverageRecovery.relaySummary}
-            rootLoadMessage={rootLoadMessage}
-            variant="overlay"
-          />
+          {activeNodeExpansions.map((expansion) => (
+            <NodeExpansionProgressCard
+              key={expansion.pubkey}
+              nodeLabel={expansion.nodeLabel}
+              state={expansion.state}
+              title="Expandiendo nodo"
+              variant="overlay"
+            />
+          ))}
+
+          {shouldShowRecoveryOverlay && coverageRecovery.reason ? (
+            <CoverageRecoveryCard
+              onChangeRelays={() => {
+                appStore.getState().setOpenPanel('relay-config')
+              }}
+              onTrySampleRoot={onTrySampleRoot}
+              reason={coverageRecovery.reason}
+              relaySummary={coverageRecovery.relaySummary}
+              rootLoadMessage={rootLoadMessage}
+              variant="overlay"
+            />
+          ) : null}
         </div>
       ) : null}
     </>
@@ -514,8 +611,10 @@ export function GraphCanvas({
     rootLoadStatus,
     rootLoadMessage,
     activeLayer,
+    connectionsSourceLayer,
     capReached,
     maxNodes,
+    nodeExpansionStates,
     renderConfig,
   } = useAppStore(useShallow(selectGraphCanvasRenderState))
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -526,6 +625,9 @@ export function GraphCanvas({
     viewState: GraphViewState
   } | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
+  const [heavyWorkSize, setHeavyWorkSize] = useState({ width: 0, height: 0 })
+  const [heavyWorkViewState, setHeavyWorkViewState] =
+    useState<GraphViewState | null>(null)
   const [isShiftPressed, setIsShiftPressed] = useState(false)
   const previousRenderSnapshotRef = useRef({
     nodes,
@@ -562,6 +664,8 @@ export function GraphCanvas({
   const refreshImageFrameRef = useRef<() => void>(() => undefined)
   const imageRefreshTimerRef = useRef<number | null>(null)
   const diagnosticsCommitTimerRef = useRef<number | null>(null)
+  const resizeSettleTimerRef = useRef<number | null>(null)
+  const viewportSettleTimerRef = useRef<number | null>(null)
   const [imageRuntime, setImageRuntime] = useState<ImageRuntime | null>(null)
   const [imageFrame, setImageFrame] =
     useState<ImageRenderPayload>(EMPTY_IMAGE_FRAME)
@@ -580,6 +684,10 @@ export function GraphCanvas({
     zoom: number
   } | null>(null)
   const lastViewportInteractionAtRef = useRef<number | null>(null)
+  const viewportActiveRef = useRef(false)
+  const pendingSettledViewStateRef = useRef<GraphViewState | null>(null)
+  const lastBuildJobKeyRef = useRef<string | null>(null)
+  const lastQueuedBuildJobKeyRef = useRef<string | null>(null)
   const viewportVelocityRef = useRef(0)
   const viewportQuietForMsRef = useRef(QUIET_VIEWPORT_READY_MS)
   const [isBrowserOnline, setIsBrowserOnline] = useState(() =>
@@ -653,6 +761,56 @@ export function GraphCanvas({
   }, [])
 
   useEffect(() => {
+    modelRef.current = model
+  }, [model])
+
+  const refreshViewportQuietState = useCallback(() => {
+    const lastInteractionAt = lastViewportInteractionAtRef.current
+    const nextQuietForMs =
+      lastInteractionAt === null
+        ? QUIET_VIEWPORT_READY_MS
+        : Math.max(0, readNowMs() - lastInteractionAt)
+
+    if (Math.abs(viewportQuietForMsRef.current - nextQuietForMs) < 8) {
+      return
+    }
+
+    viewportQuietForMsRef.current = nextQuietForMs
+  }, [])
+
+  const scheduleImageFrameRefresh = useCallback(
+    (delayMs = COALESCED_FRAME_DELAY_MS) => {
+      if (imageRefreshTimerRef.current !== null) {
+        window.clearTimeout(imageRefreshTimerRef.current)
+      }
+
+      imageRefreshTimerRef.current = window.setTimeout(() => {
+        imageRefreshTimerRef.current = null
+        refreshImageFrameRef.current()
+      }, delayMs)
+    },
+    [],
+  )
+
+  const markViewportSettled = useCallback(
+    (settledAt: number, nextViewState?: GraphViewState | null) => {
+      viewportActiveRef.current = false
+      viewportVelocityRef.current = 0
+      viewportQuietForMsRef.current = Math.max(
+        0,
+        readNowMs() - (lastViewportInteractionAtRef.current ?? settledAt),
+      )
+      appStore.getState().markViewportSettled(settledAt)
+      if (nextViewState) {
+        pendingSettledViewStateRef.current = nextViewState
+        setHeavyWorkViewState(nextViewState)
+      }
+      scheduleImageFrameRefresh()
+    },
+    [scheduleImageFrameRefresh],
+  )
+
+  useEffect(() => {
     const element = containerRef.current
     if (!element) {
       return
@@ -670,6 +828,24 @@ export function GraphCanvas({
       setSize((previous) => {
         if (previous.width === nextWidth && previous.height === nextHeight) {
           return previous
+        }
+
+        viewportActiveRef.current = true
+        appStore.getState().markViewportInteraction(readNowMs())
+        lastViewportInteractionAtRef.current = readNowMs()
+        viewportQuietForMsRef.current = 0
+
+        if (resizeSettleTimerRef.current !== null) {
+          window.clearTimeout(resizeSettleTimerRef.current)
+        }
+        resizeSettleTimerRef.current = window.setTimeout(() => {
+          resizeSettleTimerRef.current = null
+          setHeavyWorkSize({ width: nextWidth, height: nextHeight })
+          markViewportSettled(readNowMs(), pendingSettledViewStateRef.current)
+        }, RESIZE_SETTLE_DELAY_MS)
+
+        if (previous.width === 0 && previous.height === 0) {
+          setHeavyWorkSize({ width: nextWidth, height: nextHeight })
         }
 
         return {
@@ -697,33 +873,38 @@ export function GraphCanvas({
 
     return () => {
       resizeObserver.disconnect()
+      if (resizeSettleTimerRef.current !== null) {
+        window.clearTimeout(resizeSettleTimerRef.current)
+        resizeSettleTimerRef.current = null
+      }
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [])
+  }, [markViewportSettled])
 
-  useEffect(() => {
-    modelRef.current = model
-  }, [model])
+  const scheduleViewportSettled = useCallback(
+    (delayMs: number, nextViewState?: GraphViewState | null) => {
+      if (viewportSettleTimerRef.current !== null) {
+        window.clearTimeout(viewportSettleTimerRef.current)
+      }
 
-  const refreshViewportQuietState = useCallback(() => {
-    const lastInteractionAt = lastViewportInteractionAtRef.current
-    const nextQuietForMs =
-      lastInteractionAt === null
-        ? QUIET_VIEWPORT_READY_MS
-        : Math.max(0, readNowMs() - lastInteractionAt)
+      viewportSettleTimerRef.current = window.setTimeout(() => {
+        viewportSettleTimerRef.current = null
+        markViewportSettled(readNowMs(), nextViewState ?? pendingSettledViewStateRef.current)
+      }, delayMs)
+    },
+    [markViewportSettled],
+  )
 
-    if (Math.abs(viewportQuietForMsRef.current - nextQuietForMs) < 8) {
-      return
-    }
-
-    viewportQuietForMsRef.current = nextQuietForMs
-  }, [])
-
-  const markViewportInteraction = useCallback(() => {
-    lastViewportInteractionAtRef.current = readNowMs()
+  const markViewportInteraction = useCallback((nextViewState?: GraphViewState | null) => {
+    const nextInteractionAt = readNowMs()
+    viewportActiveRef.current = true
+    pendingSettledViewStateRef.current = nextViewState ?? pendingSettledViewStateRef.current
+    appStore.getState().markViewportInteraction(nextInteractionAt)
+    lastViewportInteractionAtRef.current = nextInteractionAt
     viewportQuietForMsRef.current = 0
-  }, [])
+    scheduleViewportSettled(VIEWPORT_SETTLE_DELAY_MS, nextViewState)
+  }, [scheduleViewportSettled])
 
   const scheduleImageDiagnosticsCommit = useCallback(() => {
     if (diagnosticsCommitTimerRef.current !== null) {
@@ -762,6 +943,14 @@ export function GraphCanvas({
         window.clearTimeout(diagnosticsCommitTimerRef.current)
         diagnosticsCommitTimerRef.current = null
       }
+      if (resizeSettleTimerRef.current !== null) {
+        window.clearTimeout(resizeSettleTimerRef.current)
+        resizeSettleTimerRef.current = null
+      }
+      if (viewportSettleTimerRef.current !== null) {
+        window.clearTimeout(viewportSettleTimerRef.current)
+        viewportSettleTimerRef.current = null
+      }
     }
   }, [])
 
@@ -789,6 +978,7 @@ export function GraphCanvas({
       inboundLinks,
       zapEdges,
       activeLayer,
+      connectionsSourceLayer,
       rootNodePubkey,
       selectedNodePubkey,
       expandedNodePubkeys,
@@ -837,6 +1027,10 @@ export function GraphCanvas({
           return
         }
 
+        if (request.jobKey) {
+          lastBuildJobKeyRef.current = request.jobKey
+        }
+
         previousPositionsRef.current = new Map(
           nextModel.nodes.map((node) => [node.pubkey, node.position]),
         )
@@ -881,11 +1075,32 @@ export function GraphCanvas({
       }
 
       const request = serializeBuildGraphRenderModelInput(buildInput)
+      const jobKey = createBuildRenderModelJobKey(request)
+
+      if (
+        jobKey === lastBuildJobKeyRef.current ||
+        jobKey === lastQueuedBuildJobKeyRef.current
+      ) {
+        onWorkerSettled()
+        return
+      }
+
+      request.jobKind = 'BUILD_RENDER_MODEL'
+      request.jobKey = jobKey
+      lastQueuedBuildJobKeyRef.current = jobKey
 
       void graphRenderWorker
         .invoke('BUILD_RENDER_MODEL', request)
-        .then(commitModel)
+        .then((nextModel) => {
+          if (lastQueuedBuildJobKeyRef.current === request.jobKey) {
+            lastQueuedBuildJobKeyRef.current = null
+          }
+          commitModel(nextModel)
+        })
         .catch((workerError) => {
+          if (lastQueuedBuildJobKeyRef.current === request.jobKey) {
+            lastQueuedBuildJobKeyRef.current = null
+          }
           failModelBuild(workerError)
         })
     }
@@ -898,6 +1113,7 @@ export function GraphCanvas({
     }
   }, [
     activeLayer,
+    connectionsSourceLayer,
     comparedNodePubkeys,
     expandedNodePubkeys,
     graphAnalysis,
@@ -980,6 +1196,22 @@ export function GraphCanvas({
 
     stableViewStateRef.current = resolvedViewState
     return resolvedViewState
+  }, [resolvedViewState])
+
+  useEffect(() => {
+    if (!resolvedViewState) {
+      pendingSettledViewStateRef.current = null
+      setHeavyWorkViewState(null)
+      return
+    }
+
+    pendingSettledViewStateRef.current = resolvedViewState
+
+    if (!viewportActiveRef.current) {
+      setHeavyWorkViewState((current) =>
+        equalGraphViewState(current, resolvedViewState) ? current : resolvedViewState,
+      )
+    }
   }, [resolvedViewState])
 
   useEffect(() => {
@@ -1112,7 +1344,12 @@ export function GraphCanvas({
 
   refreshImageFrameRef.current = () => {
     const runtimeInstance = imageRuntimeRef.current
-    if (!runtimeInstance || !viewState || size.width === 0 || size.height === 0) {
+    if (
+      !runtimeInstance ||
+      !heavyWorkViewState ||
+      heavyWorkSize.width === 0 ||
+      heavyWorkSize.height === 0
+    ) {
       startTransition(() => {
         setImageFrame((current) =>
           equalImageRenderPayload(current, EMPTY_IMAGE_FRAME)
@@ -1126,11 +1363,12 @@ export function GraphCanvas({
     }
 
     const nextImageFrame = runtimeInstance.prepareFrame({
-      width: size.width,
-      height: size.height,
-      viewState,
+      width: heavyWorkSize.width,
+      height: heavyWorkSize.height,
+      viewState: heavyWorkViewState,
       velocityScore: viewportVelocityRef.current,
       viewportQuietForMs: viewportQuietForMsRef.current,
+      isViewportActive: viewportActiveRef.current,
       nodes: model.nodes,
       nodeScreenRadii: stableNodeScreenRadii,
       selectedNodePubkey,
@@ -1153,16 +1391,11 @@ export function GraphCanvas({
   }
 
   useEffect(() => {
-    if (imageRefreshTimerRef.current !== null) {
-      window.clearTimeout(imageRefreshTimerRef.current)
-    }
-
-    imageRefreshTimerRef.current = window.setTimeout(() => {
-      imageRefreshTimerRef.current = null
-      refreshImageFrameRef.current()
-    }, COALESCED_FRAME_DELAY_MS)
+    scheduleImageFrameRefresh()
   }, [
-    hoveredNodePubkey,
+    heavyWorkSize.height,
+    heavyWorkSize.width,
+    heavyWorkViewState,
     imageRuntime,
     model.nodes,
     stableNodeScreenRadii,
@@ -1170,9 +1403,18 @@ export function GraphCanvas({
     renderConfig.avatarHdZoomThreshold,
     renderConfig.imageQualityMode,
     selectedNodePubkey,
-    size.height,
-    size.width,
-    viewState,
+    scheduleImageFrameRefresh,
+  ])
+
+  useEffect(() => {
+    if (viewportActiveRef.current) {
+      return
+    }
+
+    scheduleImageFrameRefresh(48)
+  }, [
+    hoveredNodePubkey,
+    scheduleImageFrameRefresh,
   ])
 
   useEffect(() => {
@@ -1194,13 +1436,7 @@ export function GraphCanvas({
       .map((delayMs) =>
         window.setTimeout(() => {
           refreshViewportQuietState()
-          if (imageRefreshTimerRef.current !== null) {
-            window.clearTimeout(imageRefreshTimerRef.current)
-          }
-          imageRefreshTimerRef.current = window.setTimeout(() => {
-            imageRefreshTimerRef.current = null
-            refreshImageFrameRef.current()
-          }, COALESCED_FRAME_DELAY_MS)
+          scheduleImageFrameRefresh()
         }, delayMs + 1),
       )
 
@@ -1209,7 +1445,7 @@ export function GraphCanvas({
         window.clearTimeout(timeoutId)
       }
     }
-  }, [refreshViewportQuietState, viewState])
+  }, [refreshViewportQuietState, scheduleImageFrameRefresh, viewState])
 
   const handleAvatarRendererDelivery = useCallback(
     (snapshot: ImageRendererDeliverySnapshot) => {
@@ -1341,7 +1577,7 @@ export function GraphCanvas({
         target: [nextViewState.target[0], nextViewState.target[1]],
         zoom: nextViewState.zoom,
       }
-      markViewportInteraction()
+      markViewportInteraction(nextViewState)
 
       setInteractionViewState((current) => {
         if (
@@ -1369,14 +1605,105 @@ export function GraphCanvas({
     [runtime],
   )
 
+  const relationshipToggleState = getRelationshipToggleState(activeLayer)
+  const onlyOneRelationshipSideActive =
+    relationshipToggleState.following !== relationshipToggleState.followers
+  const canToggleOnlyNonReciprocal =
+    isRelationshipLayer(activeLayer) &&
+    (relationshipToggleState.following || relationshipToggleState.followers)
+
+  const handleToggleRelationship = useCallback(
+    (role: 'following' | 'followers') => {
+      const current = getRelationshipToggleState(activeLayer)
+      const nextFollowing =
+        role === 'following' ? !current.following : current.following
+      const nextFollowers =
+        role === 'followers' ? !current.followers : current.followers
+
+      if (!nextFollowing && !nextFollowers) {
+        runtime.toggleLayer('graph')
+        return
+      }
+
+      if (nextFollowing && nextFollowers) {
+        runtime.toggleLayer('mutuals')
+        return
+      }
+
+      if (nextFollowing) {
+        runtime.toggleLayer(
+          current.onlyNonReciprocal ? 'following-non-followers' : 'following',
+        )
+        return
+      }
+
+      runtime.toggleLayer(
+        current.onlyNonReciprocal
+          ? 'nonreciprocal-followers'
+          : 'followers',
+      )
+    },
+    [activeLayer, runtime],
+  )
+
+  const handleToggleOnlyNonReciprocal = useCallback(() => {
+    const current = getRelationshipToggleState(activeLayer)
+
+    if (!canToggleOnlyNonReciprocal || !onlyOneRelationshipSideActive) {
+      return
+    }
+
+    if (current.following) {
+      runtime.toggleLayer(
+        current.onlyNonReciprocal ? 'following' : 'following-non-followers',
+      )
+      return
+    }
+
+    if (current.followers) {
+      runtime.toggleLayer(
+        current.onlyNonReciprocal
+          ? 'followers'
+          : 'nonreciprocal-followers',
+      )
+    }
+  }, [
+    activeLayer,
+    canToggleOnlyNonReciprocal,
+    onlyOneRelationshipSideActive,
+    runtime,
+  ])
+
   useEffect(() => {
     lastViewSampleRef.current = null
     lastViewportInteractionAtRef.current = null
+    viewportActiveRef.current = false
+    pendingSettledViewStateRef.current = null
     viewportVelocityRef.current = 0
     viewportQuietForMsRef.current = QUIET_VIEWPORT_READY_MS
-  }, [fitSignature])
+    appStore.getState().markViewportSettled(readNowMs())
+    setHeavyWorkViewState(resolvedViewState)
+  }, [fitSignature, resolvedViewState])
 
   const overlayCopy = emptyStateCopy(renderState, activeLayer)
+  const activeNodeExpansions = useMemo<ActiveNodeExpansion[]>(
+    () =>
+      Object.entries(nodeExpansionStates)
+        .filter(([, expansionState]) => expansionState.status === 'loading')
+        .sort(
+          ([, left], [, right]) =>
+            (right.startedAt ?? right.updatedAt ?? 0) -
+            (left.startedAt ?? left.updatedAt ?? 0),
+        )
+        .map(([pubkey, expansionState]) => ({
+          pubkey,
+          nodeLabel:
+            nodes[pubkey]?.label?.trim() || truncatePubkey(pubkey, 8, 6),
+          state: expansionState,
+        })),
+    [nodeExpansionStates, nodes],
+  )
+  const primaryActiveExpansion = activeNodeExpansions[0] ?? null
   const shouldMountRenderer =
     model.nodes.length > 0 &&
     size.width > 0 &&
@@ -1388,10 +1715,18 @@ export function GraphCanvas({
     rootLoadStatus !== 'loading'
   const statusCopy = capReached
     ? `Cap ${maxNodes} alcanzado`
+    : activeLayer === 'connections'
+      ? `${model.edges.length} conexiones internas`
+    : activeLayer === 'following'
+      ? `${model.edges.length} seguidos visibles`
+    : activeLayer === 'following-non-followers'
+      ? `${model.edges.length} seguidos sin reciprocidad`
     : activeLayer === 'mutuals'
       ? `${model.edges.length} relaciones reciprocas`
     : activeLayer === 'followers'
-      ? `${model.edges.length} followers visibles`
+      ? `${model.edges.length} seguidores visibles`
+    : activeLayer === 'nonreciprocal-followers'
+      ? `${model.edges.length} seguidores sin reciprocidad`
     : activeLayer === 'pathfinding' && pathfinding.path
       ? `Camino de ${Math.max(0, pathfinding.path.length - 1)} saltos`
     : activeLayer === 'zaps'
@@ -1404,13 +1739,29 @@ export function GraphCanvas({
             : keywordLayerMessage ?? 'Keywords sin corpus'
       : `${model.edges.length} links visibles`
   const layerStatusNote =
-    activeLayer === 'followers'
+    activeLayer === 'connections'
       ? model.edges.length > 0
-        ? 'Followers inbound reales descubiertos en esta sesion.'
-        : 'No hay follows entrantes descubiertos todavia; expande root u otros nodos.'
+        ? 'Solo enlaces internos entre los nodos visibles de la vista anterior.'
+        : 'Todavia no hay enlaces internos entre los nodos visibles de esa vista.'
+    : activeLayer === 'following'
+      ? model.edges.length > 0
+        ? 'Cuentas seguidas por el root en esta sesion.'
+        : 'No hay follows salientes visibles todavia para el root.'
+    : activeLayer === 'following-non-followers'
+      ? model.edges.length > 0
+        ? 'Cuentas seguidas por el root sin follow-back.'
+        : 'No hay follows sin reciprocidad visibles todavia para el root.'
+    : activeLayer === 'followers'
+      ? model.edges.length > 0
+        ? 'Cuentas que siguen al root en esta sesion.'
+        : 'No hay follows entrantes visibles todavia para el root.'
+    : activeLayer === 'nonreciprocal-followers'
+      ? model.edges.length > 0
+        ? 'Cuentas que siguen al root sin recibir follow-back.'
+        : 'No hay seguidores sin reciprocidad visibles todavia para el root.'
     : activeLayer === 'mutuals'
       ? model.edges.length > 0
-        ? 'Mutuals derivados de evidencia saliente e inbound deduplicada.'
+        ? 'Relaciones reciprocas detectadas para el root.'
         : 'No hay relaciones reciprocas visibles todavia.'
     : activeLayer === 'keywords'
       ? keywordLayerMessage
@@ -1430,17 +1781,23 @@ export function GraphCanvas({
   const streamLabel =
     pathfinding.status === 'computing'
       ? 'Calculando camino'
+      : primaryActiveExpansion
+        ? 'Expandiendo nodo'
       : rootLoadStatus === 'loading'
-      ? 'Descubriendo'
-      : rootLoadStatus === 'partial'
-        ? 'Evidencia parcial'
-        : rootLoadStatus === 'ready'
-          ? 'Viewport listo'
-          : rootLoadStatus === 'error'
-            ? 'Error de carga'
-            : rootLoadStatus === 'empty'
-              ? 'Sin follows'
-              : 'Esperando root'
+        ? 'Descubriendo'
+        : rootLoadStatus === 'partial'
+          ? 'Evidencia parcial'
+          : rootLoadStatus === 'ready'
+            ? 'Viewport listo'
+            : rootLoadStatus === 'error'
+              ? 'Error de carga'
+              : rootLoadStatus === 'empty'
+                ? 'Sin follows'
+                : 'Esperando root'
+  const streamMeta = primaryActiveExpansion
+    ? primaryActiveExpansion.state.message ??
+      `Trabajando sobre ${primaryActiveExpansion.nodeLabel}`
+    : statusCopy
 
   const diagnostics = useMemo<GraphCanvasDiagnostics>(
     () => ({
@@ -1462,7 +1819,7 @@ export function GraphCanvas({
       },
       stream: {
         label: streamLabel,
-        meta: statusCopy,
+        meta: streamMeta,
         activeLayer,
         zapLayerStatus,
         keywordLayerStatus,
@@ -1478,7 +1835,7 @@ export function GraphCanvas({
       model.nodes.length,
       renderState.reasons,
       renderState.status,
-      statusCopy,
+      streamMeta,
       streamLabel,
       visibleLabels.length,
       keywordLayerStatus,
@@ -1529,6 +1886,7 @@ export function GraphCanvas({
           }}
         >
           <GraphCanvasRecoveryChrome
+            activeNodeExpansions={activeNodeExpansions}
             browserOnline={isBrowserOnline}
             links={links}
             onTrySampleRoot={onTrySampleRoot}
@@ -1577,76 +1935,27 @@ export function GraphCanvas({
 
           <div className="graph-panel__stream-status" role="status">
             <span className="graph-panel__stream-label">{streamLabel}</span>
-            <span className="graph-panel__stream-meta">{statusCopy}</span>
+            <span className="graph-panel__stream-meta">{streamMeta}</span>
           </div>
 
-          <div className="graph-panel__control-bar">
-            <div className="graph-panel__control-group" role="group" aria-label="Capas del grafo">
-              <button
-                aria-pressed={activeLayer === 'graph'}
-                className={`graph-panel__control-btn${
-                  activeLayer === 'graph' ? ' graph-panel__control-btn--primary' : ''
-                }`}
-                onClick={() => handleToggleLayer('graph')}
-                type="button"
-              >
-                Graph
-              </button>
-              <button
-                aria-pressed={activeLayer === 'mutuals'}
-                className={`graph-panel__control-btn${
-                  activeLayer === 'mutuals' ? ' graph-panel__control-btn--primary' : ''
-                }`}
-                onClick={() => handleToggleLayer('mutuals')}
-                type="button"
-              >
-                Mutuals
-              </button>
-              <button
-                aria-pressed={activeLayer === 'followers'}
-                className={`graph-panel__control-btn${
-                  activeLayer === 'followers' ? ' graph-panel__control-btn--primary' : ''
-                }`}
-                onClick={() => handleToggleLayer('followers')}
-                type="button"
-              >
-                Followers
-              </button>
-              <button
-                aria-pressed={activeLayer === 'keywords'}
-                className={`graph-panel__control-btn${
-                  activeLayer === 'keywords' ? ' graph-panel__control-btn--primary' : ''
-                }`}
-                onClick={() => handleToggleLayer('keywords')}
-                title={keywordLayerDisabledReason || undefined}
-                type="button"
-              >
-                Keywords
-              </button>
-              <button
-                aria-pressed={activeLayer === 'zaps'}
-                className={`graph-panel__control-btn${
-                  activeLayer === 'zaps' ? ' graph-panel__control-btn--primary' : ''
-                }`}
-                disabled={zapLayerStatus !== 'enabled'}
-                onClick={() => handleToggleLayer('zaps')}
-                title={
-                  zapLayerStatus !== 'enabled'
-                    ? 'La capa de zaps depende de recibos disponibles.'
-                    : undefined
-                }
-                type="button"
-              >
-                Zaps
-              </button>
-            </div>
+          <GraphControlRail
+            activeLayer={activeLayer}
+            canToggleOnlyNonReciprocal={canToggleOnlyNonReciprocal}
+            keywordLayerDisabledReason={keywordLayerDisabledReason}
+            keywordSearch={
+              activeLayer === 'keywords' ? (
+                <GraphCanvasKeywordSearch runtime={runtime} />
+              ) : undefined
+            }
+            onlyOneRelationshipSideActive={onlyOneRelationshipSideActive}
+            onToggleLayer={handleToggleLayer}
+            onToggleOnlyNonReciprocal={handleToggleOnlyNonReciprocal}
+            onToggleRelationship={handleToggleRelationship}
+            relationshipToggleState={relationshipToggleState}
+            zapLayerStatus={zapLayerStatus}
+          />
 
-            {activeLayer === 'keywords' ? (
-              <GraphCanvasKeywordSearch runtime={runtime} />
-            ) : null}
-          </div>
-
-          {layerStatusNote ? (
+          {activeLayer === 'keywords' && layerStatusNote ? (
             <div className="graph-panel__status-note" aria-live="polite">
               <p>{layerStatusNote}</p>
               {activeLayer === 'keywords' ? (

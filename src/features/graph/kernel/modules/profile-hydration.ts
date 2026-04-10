@@ -15,6 +15,29 @@ import {
 } from '@/features/graph/kernel/modules/helpers'
 
 export function createProfileHydrationModule(ctx: KernelContext) {
+  const wait = (delayMs: number) =>
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, delayMs)
+    })
+
+  const waitForInteractivePauseToSettle = async (isStale: () => boolean) => {
+    while (!isStale()) {
+      const {
+        interactionState: { isViewportActive, lastViewportInteractionAt },
+      } = ctx.store.getState()
+
+      if (
+        !isViewportActive &&
+        (lastViewportInteractionAt === null ||
+          Date.now() - lastViewportInteractionAt >= 50)
+      ) {
+        return
+      }
+
+      await wait(50)
+    }
+  }
+
   async function hydrateNodeProfiles(
     pubkeys: string[],
     relayUrls: string[],
@@ -72,9 +95,18 @@ export function createProfileHydrationModule(ctx: KernelContext) {
           return
         }
 
+        await waitForInteractivePauseToSettle(isStale)
+
+        if (isStale()) {
+          return
+        }
+
         const profileResult = await collectRelayEvents(adapter, [
           { authors: batch, kinds: [0] } satisfies Filter,
-        ])
+        ], {
+          priority: 'background',
+          verificationMode: 'trusted-relay',
+        })
 
         if (isStale()) {
           return

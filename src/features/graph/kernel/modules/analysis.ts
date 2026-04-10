@@ -4,27 +4,42 @@ import type { KernelContext } from '@/features/graph/kernel/modules/context'
 import { DISCOVERED_GRAPH_ANALYSIS_LOADING_MESSAGE } from '@/features/graph/kernel/modules/constants'
 import { buildDiscoveredGraphAnalysisMessage } from '@/features/graph/kernel/modules/text-helpers'
 
+const ANALYSIS_DEBOUNCE_MS = 50
+
 export function createAnalysisModule(ctx: KernelContext) {
   let analysisFlushScheduled = false
   let analysisInFlight = false
   let analysisScheduleVersion = 0
+  let analysisFlushHandle: ReturnType<typeof setTimeout> | null = null
 
   function schedule(): void {
     analysisScheduleVersion += 1
 
-    if (analysisFlushScheduled) {
-      return
+    scheduleFlush(ANALYSIS_DEBOUNCE_MS)
+  }
+
+  function scheduleFlush(delayMs: number): void {
+    analysisFlushScheduled = true
+
+    if (analysisFlushHandle !== null) {
+      clearTimeout(analysisFlushHandle)
     }
 
-    analysisFlushScheduled = true
-    queueMicrotask(() => {
+    analysisFlushHandle = setTimeout(() => {
+      analysisFlushHandle = null
       analysisFlushScheduled = false
       void flush()
-    })
+    }, delayMs)
   }
 
   async function flush(): Promise<void> {
     if (analysisInFlight) {
+      return
+    }
+
+    const interactionState = ctx.store.getState().interactionState
+    if (interactionState.isViewportActive) {
+      scheduleFlush(ANALYSIS_DEBOUNCE_MS)
       return
     }
 
@@ -45,6 +60,7 @@ export function createAnalysisModule(ctx: KernelContext) {
     }
 
     const scheduledVersion = analysisScheduleVersion
+    const scheduledJobKey = request.jobKey
     state.setGraphAnalysisLoading(
       request.analysisKey,
       DISCOVERED_GRAPH_ANALYSIS_LOADING_MESSAGE,
@@ -58,7 +74,10 @@ export function createAnalysisModule(ctx: KernelContext) {
         request,
       )
 
-      if (scheduledVersion !== analysisScheduleVersion) {
+      if (
+        scheduledVersion !== analysisScheduleVersion ||
+        scheduledJobKey !== request.jobKey
+      ) {
         return
       }
 
@@ -79,7 +98,10 @@ export function createAnalysisModule(ctx: KernelContext) {
         analysisKey: request.analysisKey,
       })
     } catch (error) {
-      if (scheduledVersion !== analysisScheduleVersion) {
+      if (
+        scheduledVersion !== analysisScheduleVersion ||
+        scheduledJobKey !== request.jobKey
+      ) {
         return
       }
 
@@ -140,15 +162,19 @@ export function createAnalysisModule(ctx: KernelContext) {
       return null
     }
 
+    const analysisKey = createDiscoveredGraphAnalysisKey({
+      nodes: state.nodes,
+      links: state.links,
+      rootNodePubkey: state.rootNodePubkey,
+      capReached: state.graphCaps.capReached,
+      isGraphStale: state.isGraphStale,
+      relayHealth: state.relayHealth,
+    })
+
     return {
-      analysisKey: createDiscoveredGraphAnalysisKey({
-        nodes: state.nodes,
-        links: state.links,
-        rootNodePubkey: state.rootNodePubkey,
-        capReached: state.graphCaps.capReached,
-        isGraphStale: state.isGraphStale,
-        relayHealth: state.relayHealth,
-      }),
+      jobKind: 'ANALYZE_DISCOVERED_GRAPH',
+      jobKey: analysisKey,
+      analysisKey,
       nodes: nodeEntries,
       links: sortedLinks,
       rootNodePubkey: state.rootNodePubkey,
@@ -157,6 +183,15 @@ export function createAnalysisModule(ctx: KernelContext) {
       relayHealth,
     }
   }
+
+  ctx.store.subscribe((nextState, previousState) => {
+    if (
+      previousState.interactionState.isViewportActive &&
+      !nextState.interactionState.isViewportActive
+    ) {
+      scheduleFlush(ANALYSIS_DEBOUNCE_MS)
+    }
+  })
 
   return {
     schedule,

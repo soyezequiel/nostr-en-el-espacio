@@ -193,8 +193,12 @@ const getNodeFillColor = (
 
   if (
     node.isCommonFollow &&
+    activeLayer !== 'connections' &&
+    activeLayer !== 'following' &&
+    activeLayer !== 'following-non-followers' &&
     activeLayer !== 'mutuals' &&
-    activeLayer !== 'followers'
+    activeLayer !== 'followers' &&
+    activeLayer !== 'nonreciprocal-followers'
   ) {
     return COMMON_FOLLOW_NODE_COLOR
   }
@@ -414,7 +418,12 @@ const getGraphSceneTopologyData = (
     ),
     sharedEmphasisNodes: getSharedEmphasisNodes(model.nodes),
     commonFollowNodes:
-      model.activeLayer === 'mutuals' || model.activeLayer === 'followers'
+      model.activeLayer === 'connections' ||
+      model.activeLayer === 'following' ||
+      model.activeLayer === 'following-non-followers' ||
+      model.activeLayer === 'mutuals' ||
+      model.activeLayer === 'followers' ||
+      model.activeLayer === 'nonreciprocal-followers'
         ? []
         : getCommonFollowNodes(model.nodes),
   }

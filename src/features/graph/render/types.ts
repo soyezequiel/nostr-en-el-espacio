@@ -5,6 +5,7 @@ import type {
   DiscoveredGraphAnalysisStatus,
 } from '@/features/graph/analysis/types'
 import type {
+  ConnectionsSourceLayer,
   GraphLink,
   GraphLinkRelation,
   GraphNode,
@@ -141,11 +142,13 @@ export interface GraphRenderModel {
 }
 
 export interface BuildGraphRenderModelInput {
+  jobKey?: string
   nodes: Record<string, GraphNode>
   links: readonly GraphLink[]
   inboundLinks: readonly GraphLink[]
   zapEdges: readonly ZapLayerEdge[]
   activeLayer: UiLayer
+  connectionsSourceLayer: ConnectionsSourceLayer
   rootNodePubkey: string | null
   selectedNodePubkey: string | null
   expandedNodePubkeys: ReadonlySet<string>

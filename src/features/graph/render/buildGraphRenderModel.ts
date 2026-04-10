@@ -58,6 +58,9 @@ type NodeRadiusContext = {
   maxKeywordHits: number
 }
 
+type VisibleLayer = Exclude<BuildGraphRenderModelInput['activeLayer'], 'connections'>
+type VisibleLink = Pick<GraphLink, 'source' | 'target'> | Pick<ZapLayerEdge, 'source' | 'target'>
+
 const GRAPH_FORCE_SETTINGS = {
   alphaDecay: 0.04,
   chargeStrength: -220,
@@ -143,6 +146,96 @@ const createLinkId = (
 
 const createPathPairKey = (source: string, target: string) =>
   [source, target].sort().join('<->')
+
+const INTERNAL_CONNECTION_SORT_OPTIONS = {
+  numeric: false,
+  sensitivity: 'base',
+} as const
+
+const compareGraphLinks = (left: GraphLink, right: GraphLink) => {
+  if (left.source !== right.source) {
+    return left.source.localeCompare(
+      right.source,
+      undefined,
+      INTERNAL_CONNECTION_SORT_OPTIONS,
+    )
+  }
+
+  if (left.target !== right.target) {
+    return left.target.localeCompare(
+      right.target,
+      undefined,
+      INTERNAL_CONNECTION_SORT_OPTIONS,
+    )
+  }
+
+  return left.relation.localeCompare(right.relation, undefined, INTERNAL_CONNECTION_SORT_OPTIONS)
+}
+
+const sortAndDedupeGraphLinks = (links: readonly GraphLink[]) => {
+  const linksById = new Map<string, GraphLink>()
+
+  for (const link of links) {
+    linksById.set(createLinkId(link.source, link.target, link.relation), link)
+  }
+
+  return Array.from(linksById.values()).sort(compareGraphLinks)
+}
+
+const isRelationshipLayer = (layer: BuildGraphRenderModelInput['activeLayer']) =>
+  layer === 'following' ||
+  layer === 'following-non-followers' ||
+  layer === 'mutuals' ||
+  layer === 'followers' ||
+  layer === 'nonreciprocal-followers'
+
+const buildVisiblePubkeysForLayer = ({
+  layer,
+  layerLinks,
+  nodes,
+  rootNodePubkey,
+  selectedNodePubkey,
+  expandedNodePubkeys,
+}: {
+  layer: VisibleLayer
+  layerLinks: readonly VisibleLink[]
+  nodes: BuildGraphRenderModelInput['nodes']
+  rootNodePubkey: string | null
+  selectedNodePubkey: string | null
+  expandedNodePubkeys: ReadonlySet<string>
+}) => {
+  const visiblePubkeys = new Set<string>()
+  const layerIsRelationship = isRelationshipLayer(layer)
+
+  if (rootNodePubkey) {
+    visiblePubkeys.add(rootNodePubkey)
+  }
+
+  if (selectedNodePubkey && !layerIsRelationship) {
+    visiblePubkeys.add(selectedNodePubkey)
+  }
+
+  if (!layerIsRelationship) {
+    for (const pubkey of expandedNodePubkeys) {
+      visiblePubkeys.add(pubkey)
+    }
+  }
+
+  for (const link of layerLinks) {
+    visiblePubkeys.add(link.source)
+    visiblePubkeys.add(link.target)
+  }
+
+  if (layer === 'keywords') {
+    for (const node of Object.values(nodes)) {
+      if (node.keywordHits > 0) {
+        visiblePubkeys.add(node.pubkey)
+      }
+    }
+  }
+
+  return visiblePubkeys
+}
 
 const compareNodes = (
   left: GraphNode,
@@ -977,6 +1070,7 @@ export const buildGraphRenderModel = ({
   inboundLinks,
   zapEdges,
   activeLayer,
+  connectionsSourceLayer,
   rootNodePubkey,
   selectedNodePubkey,
   expandedNodePubkeys,
@@ -991,52 +1085,173 @@ export const buildGraphRenderModel = ({
     links,
     inboundLinks,
   })
-  const mutualLayerLinks: GraphLink[] = evidence.mutualPairs.map((pair) => ({
-    source: pair.source,
-    target: pair.target,
-    relation: 'follow',
-  }))
-  const followerLayerLinks: GraphLink[] = evidence.inboundEdges.map((edge) => ({
-    source: edge.source,
-    target: edge.target,
-    relation: 'inbound',
-  }))
+  const isRelationshipFocusLayer = isRelationshipLayer(activeLayer)
+  const relationshipAnchorPubkeys = new Set<string>()
+
+  if (rootNodePubkey !== null) {
+    relationshipAnchorPubkeys.add(rootNodePubkey)
+  }
+
+  const followingLayerLinks = sortAndDedupeGraphLinks(
+    links
+      .filter(
+        (link) =>
+          link.relation === 'follow' &&
+          relationshipAnchorPubkeys.has(link.source),
+      )
+      .map((link) => ({
+        source: link.source,
+        target: link.target,
+        relation: 'follow' as const,
+      })),
+  )
+  const followerLayerLinks = sortAndDedupeGraphLinks([
+    ...evidence.inboundEdges
+      .filter((edge) => relationshipAnchorPubkeys.has(edge.target))
+      .map((edge) => ({
+        source: edge.source,
+        target: edge.target,
+        relation: 'inbound' as const,
+      })),
+    ...links
+      .filter(
+        (link) =>
+          link.relation === 'follow' &&
+          relationshipAnchorPubkeys.has(link.target) &&
+          !relationshipAnchorPubkeys.has(link.source),
+      )
+      .map((link) => ({
+        source: link.source,
+        target: link.target,
+        relation: 'inbound' as const,
+      })),
+  ])
+  const followTargetsBySource = new Map<string, Set<string>>()
+
+  for (const link of followingLayerLinks) {
+    const targets = followTargetsBySource.get(link.source) ?? new Set<string>()
+    targets.add(link.target)
+    followTargetsBySource.set(link.source, targets)
+  }
+
+  const followerSourcesByTarget = new Map<string, Set<string>>()
+
+  for (const edge of followerLayerLinks) {
+    const followers = followerSourcesByTarget.get(edge.target) ?? new Set<string>()
+    followers.add(edge.source)
+    followerSourcesByTarget.set(edge.target, followers)
+  }
+
+  const mutualLayerLinks = sortAndDedupeGraphLinks(
+    Array.from(relationshipAnchorPubkeys).flatMap((anchorPubkey) => {
+      const followedPubkeys = followTargetsBySource.get(anchorPubkey)
+      const followerPubkeys = followerSourcesByTarget.get(anchorPubkey)
+
+      if (!followedPubkeys || !followerPubkeys) {
+        return []
+      }
+
+      return Array.from(followedPubkeys)
+        .filter((targetPubkey) => followerPubkeys.has(targetPubkey))
+        .map((targetPubkey) => ({
+          source: anchorPubkey,
+          target: targetPubkey,
+          relation: 'follow' as const,
+        }))
+    }),
+  )
+  const nonReciprocalFollowingLayerLinks = sortAndDedupeGraphLinks(
+    followingLayerLinks.filter(
+      (link) => !evidence.combinedAdjacency[link.target]?.includes(link.source),
+    ),
+  )
+  const nonReciprocalFollowerLayerLinks = sortAndDedupeGraphLinks(
+    followerLayerLinks.filter(
+      (edge) => !evidence.combinedAdjacency[edge.target]?.includes(edge.source),
+    ),
+  )
+  const graphLayerLinks = [...links]
+  const zapLayerLinks = [...links, ...zapEdges]
+  const baseConnectionVisiblePubkeys = buildVisiblePubkeysForLayer({
+    layer: connectionsSourceLayer,
+    layerLinks:
+      connectionsSourceLayer === 'following'
+        ? followingLayerLinks
+        : connectionsSourceLayer === 'following-non-followers'
+          ? nonReciprocalFollowingLayerLinks
+        : connectionsSourceLayer === 'mutuals'
+          ? mutualLayerLinks
+        : connectionsSourceLayer === 'followers'
+          ? followerLayerLinks
+        : connectionsSourceLayer === 'nonreciprocal-followers'
+          ? nonReciprocalFollowerLayerLinks
+        : connectionsSourceLayer === 'zaps'
+          ? zapLayerLinks
+        : graphLayerLinks,
+    nodes,
+    rootNodePubkey,
+    selectedNodePubkey,
+    expandedNodePubkeys,
+  })
+  const currentGraphNodePubkeys = new Set(Object.keys(nodes))
+  const internalConnectionLinksByKey = new Map<string, GraphLink>()
+
+  for (const link of [...links, ...inboundLinks]) {
+    if (
+      link.relation === 'zap' ||
+      link.source === rootNodePubkey ||
+      link.target === rootNodePubkey ||
+      !baseConnectionVisiblePubkeys.has(link.source) ||
+      !baseConnectionVisiblePubkeys.has(link.target) ||
+      !currentGraphNodePubkeys.has(link.source) ||
+      !currentGraphNodePubkeys.has(link.target)
+    ) {
+      continue
+    }
+
+    const key = `${link.source}->${link.target}`
+    const normalizedLink: GraphLink = {
+      source: link.source,
+      target: link.target,
+      relation: link.relation === 'follow' ? 'follow' : 'inbound',
+    }
+    const existingLink = internalConnectionLinksByKey.get(key)
+
+    if (!existingLink || normalizedLink.relation === 'follow') {
+      internalConnectionLinksByKey.set(key, normalizedLink)
+    }
+  }
+
+  const internalConnectionLayerLinks = Array.from(
+    internalConnectionLinksByKey.values(),
+  ).sort(compareGraphLinks)
   const renderedLinks =
     activeLayer === 'zaps'
-      ? [...links, ...zapEdges]
+      ? zapLayerLinks
+      : activeLayer === 'connections'
+        ? internalConnectionLayerLinks
+      : activeLayer === 'following'
+        ? followingLayerLinks
+        : activeLayer === 'following-non-followers'
+          ? nonReciprocalFollowingLayerLinks
       : activeLayer === 'mutuals'
         ? mutualLayerLinks
         : activeLayer === 'followers'
           ? followerLayerLinks
-          : [...links]
-  const visiblePubkeys = new Set<string>()
-
-  if (rootNodePubkey) {
-    visiblePubkeys.add(rootNodePubkey)
-  }
-
-  if (selectedNodePubkey) {
-    visiblePubkeys.add(selectedNodePubkey)
-  }
-
-  if (activeLayer !== 'mutuals' && activeLayer !== 'followers') {
-    for (const pubkey of expandedNodePubkeys) {
-      visiblePubkeys.add(pubkey)
-    }
-  }
-
-  for (const link of renderedLinks) {
-    visiblePubkeys.add(link.source)
-    visiblePubkeys.add(link.target)
-  }
-
-  if (activeLayer === 'keywords') {
-    for (const node of Object.values(nodes)) {
-      if (node.keywordHits > 0) {
-        visiblePubkeys.add(node.pubkey)
-      }
-    }
-  }
+          : activeLayer === 'nonreciprocal-followers'
+          ? nonReciprocalFollowerLayerLinks
+          : graphLayerLinks
+  const visiblePubkeys =
+    activeLayer === 'connections'
+      ? new Set(baseConnectionVisiblePubkeys)
+      : buildVisiblePubkeysForLayer({
+          layer: activeLayer,
+          layerLinks: renderedLinks,
+          nodes,
+          rootNodePubkey,
+          selectedNodePubkey,
+          expandedNodePubkeys,
+        })
 
   const orderedNodes = Object.values(nodes)
     .filter((node) => visiblePubkeys.has(node.pubkey))
@@ -1200,8 +1415,8 @@ export const buildGraphRenderModel = ({
 
   if (
     comparedArray.length >= 2 &&
-    activeLayer !== 'mutuals' &&
-    activeLayer !== 'followers'
+    !isRelationshipFocusLayer &&
+    activeLayer !== 'connections'
   ) {
     const followsBySource = new Map<string, Set<string>>()
     

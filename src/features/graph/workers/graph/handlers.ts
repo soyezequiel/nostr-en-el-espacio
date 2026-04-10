@@ -133,6 +133,11 @@ function validateAnalyzeDiscoveredGraphRequest(
   const relayHealth = expectRecord(request.relayHealth, 'payload.relayHealth')
 
   return {
+    jobKind:
+      request.jobKind === 'ANALYZE_DISCOVERED_GRAPH'
+        ? 'ANALYZE_DISCOVERED_GRAPH'
+        : 'ANALYZE_DISCOVERED_GRAPH',
+    jobKey: expectString(request.jobKey, 'payload.jobKey'),
     analysisKey: expectString(request.analysisKey, 'payload.analysisKey'),
     nodes: expectArray(request.nodes, 'payload.nodes').map((node, index) =>
       validateGraphAnalysisNode(node, index),
@@ -236,8 +241,12 @@ function validateGraphNodeSource(
 function validateUiLayer(value: unknown, path: string): UiLayer {
   if (
     value !== 'graph' &&
+    value !== 'connections' &&
+    value !== 'following' &&
+    value !== 'following-non-followers' &&
     value !== 'mutuals' &&
     value !== 'followers' &&
+    value !== 'nonreciprocal-followers' &&
     value !== 'keywords' &&
     value !== 'zaps' &&
     value !== 'pathfinding'
@@ -582,6 +591,14 @@ function validateBuildRenderModelRequest(
       : expectRecord(request.previousPositions, 'payload.previousPositions')
 
   return {
+    jobKind:
+      request.jobKind === 'BUILD_RENDER_MODEL'
+        ? 'BUILD_RENDER_MODEL'
+        : undefined,
+    jobKey:
+      typeof request.jobKey === 'undefined'
+        ? undefined
+        : expectString(request.jobKey, 'payload.jobKey'),
     nodes: Object.fromEntries(
       Object.entries(nodesRecord).map(([pubkey, node]) => [
         pubkey,
@@ -601,6 +618,18 @@ function validateBuildRenderModelRequest(
       (edge, index) => validateZapEdge(edge, `payload.zapEdges[${index}]`),
     ),
     activeLayer: validateUiLayer(request.activeLayer, 'payload.activeLayer'),
+    connectionsSourceLayer:
+      request.connectionsSourceLayer === 'graph' ||
+      request.connectionsSourceLayer === 'following' ||
+      request.connectionsSourceLayer === 'following-non-followers' ||
+      request.connectionsSourceLayer === 'mutuals' ||
+      request.connectionsSourceLayer === 'followers' ||
+      request.connectionsSourceLayer === 'nonreciprocal-followers' ||
+      request.connectionsSourceLayer === 'keywords' ||
+      request.connectionsSourceLayer === 'zaps' ||
+      request.connectionsSourceLayer === 'pathfinding'
+        ? request.connectionsSourceLayer
+        : 'graph',
     rootNodePubkey:
       request.rootNodePubkey === null
         ? null

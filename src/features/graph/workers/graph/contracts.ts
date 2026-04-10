@@ -15,6 +15,8 @@ export interface AnalyzeDiscoveredGraphNodeInput {
 }
 
 export interface AnalyzeDiscoveredGraphRequest {
+  jobKind: 'ANALYZE_DISCOVERED_GRAPH'
+  jobKey: string
   analysisKey: string
   nodes: AnalyzeDiscoveredGraphNodeInput[]
   links: Array<{
@@ -26,6 +28,11 @@ export interface AnalyzeDiscoveredGraphRequest {
   capReached: boolean
   isGraphStale: boolean
   relayHealth: Record<string, { status: RelayHealthStatus }>
+}
+
+export interface GraphWorkerJobMetadata {
+  jobKind: 'ANALYZE_DISCOVERED_GRAPH' | 'BUILD_RENDER_MODEL'
+  jobKey: string
 }
 
 export interface FindPathRequest {

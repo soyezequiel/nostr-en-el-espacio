@@ -18,6 +18,11 @@ const createInitialGraphCaps = (): GraphCaps => ({
 const createInitialNodeExpansionState = (): NodeExpansionState => ({
   status: 'idle',
   message: null,
+  phase: 'idle',
+  step: null,
+  totalSteps: null,
+  startedAt: null,
+  updatedAt: null,
 })
 
 const createInitialNodeStructurePreviewState = (): NodeStructurePreviewState => ({
@@ -258,7 +263,12 @@ export const createGraphSlice: AppStateCreator<GraphSlice> = (set, get) => ({
 
     if (
       currentState.status === nextState.status &&
-      currentState.message === nextState.message
+      currentState.message === nextState.message &&
+      currentState.phase === nextState.phase &&
+      currentState.step === nextState.step &&
+      currentState.totalSteps === nextState.totalSteps &&
+      currentState.startedAt === nextState.startedAt &&
+      currentState.updatedAt === nextState.updatedAt
     ) {
       return
     }

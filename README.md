@@ -15,54 +15,58 @@
 
 <img src="./public/graph-explorer-preview.png" alt="Vista del explorador de grafo de identidad Nostr" width="760" />
 
-<sub>Vista graph-first de las identidades que seguis y que tambien te siguen, con senales y conexiones relay-aware.</sub>
+<sub>Vista graph-first para explorar identidades, relaciones y senales de confianza con lectura relay-aware.</sub>
 
 </div>
 
-> Proyecto participante de **IDENTITY**, el desafio de **abril 2026** dentro de **Lightning Hackathons 2026** de **La Crypta**.
+> Proyecto participante de **IDENTITY**, el desafio de **abril de 2026** dentro de **Lightning Hackathons 2026** de **La Crypta**.
 
-Este repo empezo a partir de `nostr-starter`, pero hoy el producto real es otro: una experiencia **graph-first** para explorar identidad en Nostr, entender relaciones, leer señales de confianza y exportar snapshots auditables.
+Este repositorio nacio a partir de `nostr-starter`, pero hoy responde a otro producto: una experiencia **graph-first** para explorar identidad en Nostr, leer contexto social, entender incertidumbre de relays y exportar snapshots auditables.
+
+La documentacion esta escrita en espanol y pensada para una audiencia tecnica de Argentina: gente que quiera preparar una demo para jurado, investigar identidad en Nostr o extender el proyecto sin tener que reconstruir primero el estado real del repo.
 
 ## Demo
 
 **Deploy publico:** [https://nostr-en-el-espacio.vercel.app/](https://nostr-en-el-espacio.vercel.app/)
 
-## Que hace este proyecto
+## Que resuelve este proyecto
 
 - Explora vecindarios de identidad a partir de un `npub` o `nprofile`
-- Descubre conexiones, mutuals, comunidades, lideres y puentes dentro del grafo
+- Descubre conexiones, mutuals, comunidades, liderazgos y puentes dentro del grafo
 - Trabaja con relays reales, mostrando salud, cobertura parcial y estado stale
 - Permite comparar identidades dentro del canvas
 - Integra senales como perfiles, badges y zaps
-- Exporta evidencia como snapshots auditables en ZIP deterministico
+- Exporta evidencia como snapshots auditables en un ZIP deterministico
 
-## Por que esta bueno para IDENTITY
+## Por que encaja bien en IDENTITY
 
-La propuesta no se queda en "ver un perfil". El foco esta en **identidad como red**:
+La propuesta no se limita a "ver un perfil". El foco esta en **identidad como red**:
 
 - identidad relacional
 - descubrimiento relay-aware
 - senales de confianza y contexto
-- evidencia exportable para demos, research o validacion
+- evidencia exportable para demo, investigacion o validacion
+
+Ese enfoque conversa bien con lo que suele valorar un jurado tecnico: innovacion en identidad, demo funcionando, criterio de protocolo y una historia de producto clara.
 
 ## Superficies del producto
 
-| Ruta | Que resuelve |
+| Ruta | Para que sirve |
 | --- | --- |
 | `/` | Explorador principal del grafo de identidad |
 | `/profile` | Vista clasica del perfil autenticado |
-| `/badges` | Vista de badges NIP-58 del usuario autenticado |
+| `/badges` | Vista de badges NIP-58 de la cuenta autenticada |
 
 ## Funcionalidades actuales
 
 - Login con `NIP-07`, `nsec` y `NIP-46` bunker
-- Flujo QR para Nostr Connect / bunker
+- Flujo QR para Nostr Connect y bunker login
 - Carga relay-aware con timeouts y fallback visual
 - Expansion estructural de nodos sin perder la sesion del grafo
 - Paneles de configuracion para visualizacion, relays y export
 - Analisis del grafo en background con Web Workers
-- Persistencia local con Dexie para la experiencia del explorador
-- Pipeline de export pensado como paquete de evidencia, no solo descarga
+- Persistencia local con Dexie para sostener la experiencia del explorador
+- Pipeline de export pensado como paquete de evidencia, no solo como descarga
 
 ## Stack
 
@@ -108,7 +112,7 @@ src/
 |   |-- render/           # deck.gl, viewport e imagen
 |   `-- workers/          # Procesamiento pesado en background
 |-- lib/                  # Helpers compartidos de Nostr y media
-|-- store/                # Auth state compartido
+|-- store/                # Estado compartido de autenticacion
 `-- types/                # Tipados
 ```
 
@@ -116,8 +120,9 @@ src/
 
 - [Guia del codebase actual](./docs/current-codebase.md)
 - [Workflow de validacion del avatar pipeline](./docs/avatar-pipeline-validation.md)
+- [Resolucion de problemas del avatar pipeline](./docs/avatar-pipeline-troubleshooting.md)
 - [Instrucciones del repo para agentes](./AGENTS.md)
 
 ## Nota importante
 
-La superficie principal del producto es el grafo en `/`. `profile` y `badges` siguen siendo utiles, pero la historia fuerte del proyecto esta en la exploracion de identidad, la incertidumbre de relays y la exportacion de evidencia.
+La superficie principal del producto es el grafo en `/`. `profile` y `badges` siguen siendo utiles, pero la historia mas fuerte del proyecto esta en la exploracion de identidad, la incertidumbre de relays y la exportacion de evidencia.

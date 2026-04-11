@@ -1,67 +1,67 @@
-# Avatar Pipeline Validation
+# Validacion del avatar pipeline
 
-This workflow measures avatar delivery in a production-like build instead of `next dev`.
+Este workflow mide la entrega de avatares en un build parecido al de produccion, no en `next dev`.
 
-It is intentionally narrow:
+El alcance es deliberadamente acotado:
 
-- build the app
-- run `next start`
-- open `/` with a fresh Playwright browser context
-- load a fixed root (`Damus` by default)
-- read the existing image-runtime counters through a query-gated probe
+- compilar la app
+- levantar `next start`
+- abrir `/` con un contexto nuevo de Playwright
+- cargar un root fijo (`Damus` por default)
+- leer los contadores existentes del runtime de imagenes a traves de un probe habilitado por query param
 
-## What it measures
+## Que mide
 
-The probe surfaces the counters that matter for the avatar pipeline:
+El probe expone los contadores que importan para el avatar pipeline:
 
-- visible queued requests
-- visible in-flight requests
-- critical visible base queue and in-flight pressure
-- runtime-ready visible nodes
-- painted visible nodes
-- runtime-to-paint gap
-- icon layer pending visible nodes
-- proxy fallback sources
-- hydration backlog
-- blocked source URLs and timed-out requests
+- requests visibles en cola
+- requests visibles en vuelo
+- presion critica de cola e in-flight en la base visible
+- nodos visibles listos en runtime
+- nodos visibles efectivamente pintados
+- brecha entre runtime y paint
+- nodos visibles pendientes en la icon layer
+- sources que cayeron a proxy fallback
+- backlog de hidratacion
+- URLs bloqueadas y requests que agotaron timeout
 
-The validation script turns those counters into comparison-friendly metrics:
+El script de validacion transforma esos contadores en metricas comparables:
 
-- time to first visible avatar request
-- time to first runtime-ready visible avatar
-- time to first painted visible avatar
-- time to 50% and 90% painted visible coverage
-- settled time
-- peak visible queue pressure
-- peak visible in-flight pressure
-- peak proxy fallback sources
-- peak hydration backlog
-- peak runtime-to-paint gap
-- final painted coverage
+- tiempo hasta el primer request visible de avatar
+- tiempo hasta el primer avatar visible listo en runtime
+- tiempo hasta el primer avatar visible pintado
+- tiempo hasta 50% y 90% de cobertura pintada visible
+- tiempo de settle
+- pico de presion de cola visible
+- pico de presion in-flight visible
+- pico de sources en proxy fallback
+- pico de backlog de hidratacion
+- pico de brecha runtime-to-paint
+- cobertura final pintada
 
-## Commands
+## Comandos
 
-First run after installing dependencies:
+Primera corrida despues de instalar dependencias:
 
 ```bash
 npx playwright install chromium
 ```
 
-Cold production-like validation:
+Validacion en frio, similar a produccion:
 
 ```bash
 npm run avatar:validate -- --output tmp/avatar-baseline.json
 ```
 
-That command:
+Ese comando:
 
-- runs `npm run build`
-- starts `next start` on `http://127.0.0.1:3200`
-- opens `/?avatarProbe=1`
-- fills the root input with the curated sample `npub`
-- samples the avatar probe until the pipeline settles or the timeout expires
+- corre `npm run build`
+- levanta `next start` en `http://127.0.0.1:3200`
+- abre `/?avatarProbe=1`
+- completa el input raiz con el `npub` curado
+- samplea el probe hasta que el pipeline quede estable o venza el timeout
 
-If you already have a production build running, reuse it:
+Si ya hay un build de produccion levantado, se puede reutilizar:
 
 ```bash
 npm run build
@@ -69,36 +69,36 @@ npm run start -- --hostname 127.0.0.1 --port 3200
 npm run avatar:validate -- --server-url http://127.0.0.1:3200 --output tmp/avatar-current.json
 ```
 
-Useful flags:
+Flags utiles:
 
-- `--root <npub-or-nprofile>` to test another identity
-- `--timeout-ms <ms>` to extend the run for slower relay conditions
-- `--settle-ms <ms>` to change how long the script waits for a stable painted state
-- `--sample-interval-ms <ms>` to sample more or less often
-- `--headed` to watch the browser session
-- `--skip-build` when you already ran `npm run build` and want the script to only start the server
+- `--root <npub-or-nprofile>` para probar otra identidad
+- `--timeout-ms <ms>` para extender la corrida si los relays estan lentos
+- `--settle-ms <ms>` para cambiar cuanto espera el script antes de considerar estable el estado pintado
+- `--sample-interval-ms <ms>` para samplear mas o menos seguido
+- `--headed` para mirar la sesion del navegador
+- `--skip-build` si ya se corrio `npm run build` y solo hace falta iniciar el server
 
-## Before / After comparison
+## Comparacion antes y despues
 
-Capture a baseline before avatar changes:
+Capturar una linea base antes de tocar el pipeline:
 
 ```bash
 npm run avatar:validate -- --output tmp/avatar-before.json
 ```
 
-Capture the candidate after the change:
+Capturar la version candidata despues del cambio:
 
 ```bash
 npm run avatar:validate -- --output tmp/avatar-after.json
 ```
 
-Compare both runs:
+Comparar ambas corridas:
 
 ```bash
 npm run avatar:compare -- tmp/avatar-before.json tmp/avatar-after.json
 ```
 
-For the same root and viewport, prioritize these deltas:
+Para el mismo root y viewport, conviene priorizar estas diferencias:
 
 - `timeToFirstPaintedMs`
 - `timeTo90PctPaintedMs`
@@ -112,18 +112,18 @@ For the same root and viewport, prioritize these deltas:
 - `maxHydrationBacklog`
 - `finalPaintCoverage`
 
-## Manual spot checks
+## Chequeos manuales puntuales
 
-If you want to inspect the raw latest snapshot during a production run, open:
+Si hace falta inspeccionar el ultimo snapshot crudo durante una corrida en produccion, abrir:
 
 ```text
 http://127.0.0.1:3200/?avatarProbe=1
 ```
 
-Then read this browser global in DevTools:
+Luego leer este global del navegador en DevTools:
 
 ```js
 window.__NOSTR_AVATAR_PIPELINE_PROBE__
 ```
 
-The probe is only populated when the `avatarProbe=1` query param is present, so it stays local to this workflow.
+El probe solo se completa cuando esta presente el query param `avatarProbe=1`, asi que queda acotado a este workflow.

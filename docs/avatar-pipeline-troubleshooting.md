@@ -1,11 +1,16 @@
-# Avatar Pipeline Troubleshooting
+# Resolucion de problemas del avatar pipeline
 
 Fecha: 2026-04-10
 
 Este documento resume los problemas reales que aparecieron durante la
 optimizacion del pipeline de imagenes del grafo y como resolverlos si vuelven a
-aparecer. No asumir que la cache de imagenes esta limitada por cantidad fija de
-filas: casi todos los problemas vistos fueron limites aguas arriba del pipeline.
+aparecer. Esta escrito para que cualquier persona tecnica del equipo pueda
+retomar el tema rapido, sin depender de contexto oral ni de supuestos del
+starter original.
+
+No asumir que la cache de imagenes esta limitada por una cantidad fija de
+filas: casi todos los problemas observados estuvieron aguas arriba del
+pipeline.
 
 ## Mapa rapido
 

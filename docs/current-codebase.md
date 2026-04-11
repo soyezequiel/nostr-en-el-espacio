@@ -1,153 +1,153 @@
-# Current Codebase Guide
+# Guia del codebase actual
 
-This document describes the code that actually exists in this repository today. It intentionally overrides the assumptions of the original starter kit.
+Este documento describe el codigo que realmente existe hoy en este repositorio. Reemplaza a conciencia varias suposiciones del starter original.
 
-## 1. Product shape
+## 1. Forma actual del producto
 
-The original starter was profile-centric.
+El starter inicial estaba centrado en perfil.
 
-This repository is now graph-first.
+Este repositorio ahora es **graph-first**.
 
-Today:
+Hoy:
 
-- the home route mounts a dedicated identity graph application
-- profile and badges live on separate routes
-- relay uncertainty is part of the UX, not an edge case
-- the graph slice includes storage, workers, analysis, export, and rendering layers
-- the app already supports evidence-oriented export rather than only on-screen exploration
+- la ruta principal monta una aplicacion dedicada al grafo de identidad
+- `profile` y `badges` viven en rutas separadas
+- la incertidumbre de relays forma parte de la UX, no es un caso borde
+- el slice del grafo ya incluye storage, workers, analisis, export y render
+- la app soporta export orientado a evidencia, no solo exploracion en pantalla
 
-## 2. Route map
+## 2. Mapa de rutas
 
 ### `/`
 
-Entry points:
+Puntos de entrada:
 
 - `src/app/page.tsx`
 - `src/features/graph/GraphClient.tsx`
 - `src/features/graph/GraphApp.tsx`
 
-Purpose:
+Objetivo:
 
-- accept an `npub` or `nprofile`
-- load a discovered neighborhood
-- inspect and expand nodes
-- switch relay sets
-- tune rendering
-- export an auditable snapshot package
+- aceptar un `npub` o `nprofile`
+- cargar un vecindario descubierto
+- inspeccionar y expandir nodos
+- cambiar sets de relays
+- ajustar el render
+- exportar un paquete auditable de snapshot
 
-Notes:
+Notas:
 
-- `GraphClient.tsx` loads the graph app with `ssr: false`
-- this route is the main product surface
+- `GraphClient.tsx` carga la app del grafo con `ssr: false`
+- esta ruta es la superficie principal del producto
 
 ### `/profile`
 
-Entry points:
+Puntos de entrada:
 
 - `src/app/profile/page.tsx`
 - `src/components/Profile.tsx`
 
-Purpose:
+Objetivo:
 
-- authenticate the connected user
-- render profile metadata, social stats, and notes
-- reuse shared auth and Nostr helpers
+- autenticar a la cuenta conectada
+- renderizar metadata de perfil, estadisticas sociales y notas
+- reutilizar auth y helpers compartidos de Nostr
 
 ### `/badges`
 
-Entry points:
+Puntos de entrada:
 
 - `src/app/badges/page.tsx`
 - `src/components/Badges.tsx`
 
-Purpose:
+Objetivo:
 
-- fetch NIP-58 badge awards for the connected identity
-- resolve badge definitions and media
+- traer premios NIP-58 para la identidad conectada
+- resolver definiciones de badges y sus medios asociados
 
-## 3. Shared app layer
+## 3. Capa compartida de la app
 
 ### `src/components/Navbar.tsx`
 
-Shared route navigation for:
+Navegacion compartida entre:
 
-- graph
+- grafo
 - profile
 - badges
 
-It also exposes the shared connect/disconnect entry point through `LoginModal`.
+Tambien expone el punto comun de conectar y desconectar mediante `LoginModal`.
 
 ### `src/components/LoginModal.tsx`
 
-Current login flows:
+Flujos de login actuales:
 
-- NIP-07 extension
+- extension `NIP-07`
 - `nsec`
-- NIP-46 bunker
-- Nostr Connect QR flow for bunker login
+- bunker `NIP-46`
+- flujo QR de Nostr Connect para bunker login
 
 ### `src/components/SkeletonImage.tsx`
 
-Shared image wrapper used in the classic routes and navbar for:
+Wrapper de imagen compartido, usado en las rutas clasicas y en la navbar para:
 
-- loading placeholders
-- graceful media fallback
-- avatar/banner rendering
+- placeholders de carga
+- fallback de media cuando algo falla
+- render de avatar y banner
 
 ### `src/lib/nostr.ts`
 
-Use this for the classic app surfaces:
+Usar este modulo para las superficies clasicas de la app:
 
-- shared NDK singleton setup
-- login methods
-- NIP-65 relay enrichment
-- profile parsing
-- followers/following/notes fetches
-- bounded timeouts for user-facing network calls
+- setup compartido del singleton de NDK
+- metodos de login
+- enriquecimiento de relays via `NIP-65`
+- parseo de perfiles
+- fetches de followers, following y notas
+- timeouts acotados para llamadas de red visibles para usuario
 
 ### `src/store/auth.ts`
 
-Shared auth state used by:
+Estado compartido de autenticacion usado por:
 
 - `Navbar`
 - `Profile`
 - `Badges`
 
-It persists:
+Persiste:
 
-- login method
-- parsed profile
+- metodo de login
+- perfil parseado
 
-## 4. Graph architecture
+## 4. Arquitectura del grafo
 
-The graph is not a single component. It is a client application slice inside the repo.
+El grafo no es un componente aislado. Es una aplicacion cliente completa dentro del repo.
 
-### Top-level shell
+### Shell principal
 
 - `src/features/graph/GraphApp.tsx`
 
-Responsibilities:
+Responsabilidades:
 
-- root entry flow
-- settings drawer orchestration
-- relay and export panels
-- runtime diagnostics
-- graph canvas + node detail coordination
+- flujo de entrada del root
+- orquestacion del drawer de configuracion
+- paneles de relays y export
+- diagnosticos de runtime
+- coordinacion entre canvas del grafo y detalle de nodo
 
-### State
+### Estado
 
 - `src/features/graph/app/store/`
 
-Important slices:
+Slices importantes:
 
-- `graphSlice.ts` for nodes, links, adjacency, root state, expansion state
-- `relaySlice.ts` for relay URLs, relay health, override status, stale graph status
-- `uiSlice.ts` for active panel, selected node, compare selection, render config, active layer
-- `analysisSlice.ts` for discovered graph analysis status and result reuse
-- `zapSlice.ts` for zap-layer state and sorted zap edges
-- `exportSlice.ts` for deep-user selection and export job progress
+- `graphSlice.ts` para nodos, links, adyacencia, estado del root y expansion
+- `relaySlice.ts` para URLs de relays, salud, overrides y estado stale del grafo
+- `uiSlice.ts` para panel activo, nodo seleccionado, comparacion, render config y capa activa
+- `analysisSlice.ts` para estado de analisis del grafo descubierto y reutilizacion de resultados
+- `zapSlice.ts` para estado de la capa de zaps y ordenamiento de aristas
+- `exportSlice.ts` para seleccion profunda de usuarios y progreso del job de export
 
-Current UI layers in store/render:
+Capas actuales representadas en store y render:
 
 - `graph`
 - `mutuals`
@@ -155,64 +155,64 @@ Current UI layers in store/render:
 - `zaps`
 - `pathfinding`
 
-Important caution:
+Advertencia importante:
 
-- `pathfinding` exists in runtime/store/render contracts, but it should be treated as partial infrastructure until there is a complete end-user workflow and panel around it
+- `pathfinding` existe en los contratos de runtime, store y render, pero hay que tratarlo como infraestructura parcial hasta que tenga workflow y panel de usuario completos
 
-### Kernel and runtime
+### Kernel y runtime
 
 - `src/features/graph/kernel/runtime.ts`
 - `src/features/graph/kernel/runner.ts`
 - `src/features/graph/kernel/headless.ts`
 - `src/features/graph/kernel/transcript-relay.ts`
 
-This layer handles:
+Esta capa resuelve:
 
-- root decoding and loading
-- relay session management
-- reversible relay overrides
-- node detail hydration
-- node structure preview and expansion
-- keyword search
-- layer toggling
-- discovered graph analysis scheduling
-- zap-layer prefetching
-- snapshot export orchestration
+- decodificacion y carga del root
+- manejo de sesiones de relays
+- overrides reversibles de relays
+- hidratacion del detalle de nodo
+- preview estructural y expansion
+- busqueda por keywords
+- cambio de capas
+- programacion del analisis del grafo descubierto
+- precarga de la capa de zaps
+- orquestacion del export de snapshots
 
-If the logic feels like workflow, session lifecycle, or cross-cutting graph behavior, it belongs here.
+Si la logica se parece a workflow, ciclo de vida de sesion o comportamiento transversal del grafo, pertenece aca.
 
-### Database and persistence
+### Base de datos y persistencia
 
 - `src/features/graph/db/`
 
-This layer owns client persistence through Dexie and repository helpers for:
+Esta capa maneja persistencia cliente con Dexie y helpers de repositorio para:
 
-- profiles
-- contact lists
-- raw events
-- replaceable and addressable heads
-- zap records
-- inbound references
+- perfiles
+- listas de contactos
+- eventos crudos
+- heads replaceable y addressable
+- registros de zaps
+- referencias entrantes
 
-### Transport and protocol details
+### Transporte y detalles de protocolo
 
 - `src/features/graph/nostr/`
 
-Use this layer for graph-specific relay and subscription behavior. Keep generic auth/profile helpers in `src/lib/nostr.ts`.
+Usar esta capa para comportamiento de relays y suscripciones especifico del grafo. Los helpers genericos de auth y perfil deben seguir en `src/lib/nostr.ts`.
 
-### Rendering
+### Render
 
 - `src/features/graph/render/`
 - `src/features/graph/components/GraphCanvas.tsx`
 
-This layer owns:
+Esta capa maneja:
 
-- deck.gl integration
-- viewport and fit logic
-- worker-backed render model generation
-- avatar/image runtime and zoom-aware quality thresholds
-- label selection and scene geometry
-- compare highlighting and layer-specific visual transforms
+- integracion con deck.gl
+- viewport y logica de fit
+- generacion del render model apoyada en workers
+- runtime de avatares e imagenes con umbrales segun zoom
+- seleccion de labels y geometria de escena
+- resaltado de comparacion y transformaciones visuales por capa
 
 ### Workers
 
@@ -220,155 +220,155 @@ This layer owns:
 - `src/features/graph/workers/graph.worker.ts`
 - `src/features/graph/workers/verifyWorker.ts`
 
-Use workers for heavy or repeated operations such as:
+Conviene usar workers para operaciones pesadas o repetidas como:
 
-- event parsing and normalization
-- keyword extraction
-- graph analysis
-- render-model preparation
-- event signature verification
+- parseo y normalizacion de eventos
+- extraccion de keywords
+- analisis del grafo
+- preparacion del render model
+- verificacion de firmas de eventos
 
 ### Export
 
 - `src/features/graph/export/`
 
-This layer already supports:
+Esta capa ya soporta:
 
-- frozen snapshots
-- deterministic ZIP packaging
-- multipart archive generation
-- manifest and file-tree construction
-- profile photo archive artifacts
-- per-user evidence packaging
+- snapshots congelados
+- ZIP deterministico
+- generacion de archivos multipart
+- manifiesto y arbol de archivos
+- artefactos de archivo para fotos de perfil
+- empaquetado de evidencia por usuario
 
-If the request is about downloadable evidence, provenance, or reproducible capture, extend this layer instead of building a second export path elsewhere.
+Si el pedido tiene que ver con evidencia descargable, procedencia o captura reproducible, conviene extender esta capa en vez de abrir una segunda via de export en otro lado.
 
-## 5. Current graph workflow
+## 5. Workflow actual del grafo
 
-At a high level:
+A nivel general:
 
-1. The user enters an `npub` or `nprofile`.
-2. `NpubInput.tsx` validates and decodes the root pointer.
-3. The kernel loads the root neighborhood from the active relay set.
-4. Workers parse events and compute graph analysis.
-5. Store slices receive nodes, links, relay state, analysis, zap state, and export state.
-6. The render pipeline translates store data into deck.gl-friendly structures.
-7. The UI exposes node detail, relay controls, render controls, export actions, and runtime diagnostics.
+1. La persona usuaria ingresa un `npub` o `nprofile`.
+2. `NpubInput.tsx` valida y decodifica el puntero raiz.
+3. El kernel carga el vecindario raiz desde el set activo de relays.
+4. Los workers parsean eventos y calculan analisis del grafo.
+5. Los slices del store reciben nodos, links, estado de relays, analisis, estado de zaps y estado de export.
+6. El pipeline de render traduce esos datos a estructuras aptas para deck.gl.
+7. La UI expone detalle de nodo, controles de relays, controles de render, acciones de export y diagnosticos de runtime.
 
-This means:
+Esto implica:
 
-- validation belongs near the input/kernel boundary
-- session and relay behavior belongs in the kernel
-- expensive transforms belong in workers or analysis
-- visual decisions belong in render/components
+- la validacion vive cerca del borde input-kernel
+- la sesion y el comportamiento de relays viven en el kernel
+- las transformaciones costosas van en workers o analysis
+- las decisiones visuales van en render y components
 
-## 6. User-facing strengths already present
+## 6. Fortalezas de producto que ya existen
 
-The repo is already strong at:
+El repo ya es fuerte en:
 
-- relay-aware identity discovery
-- graph exploration with graceful degraded states
-- node expansion without discarding the existing session
-- visual comparison of selected identities
-- discovered-graph analysis for communities, leaders, and bridges
-- zap-aware graph reading
-- evidence-oriented export for research or demo packaging
+- descubrimiento de identidad relay-aware
+- exploracion de grafo con degradacion controlada
+- expansion de nodos sin perder la sesion en curso
+- comparacion visual entre identidades seleccionadas
+- analisis del grafo descubierto para comunidades, lideres y puentes
+- lectura del grafo con soporte para zaps
+- export orientado a evidencia para investigacion o demos
 
-This is a stronger hackathon story than positioning the app as a plain profile viewer.
+Para un hackathon, esta historia es bastante mas solida que presentar la app como un visor de perfiles.
 
-## 7. Safe extension points
+## 7. Puntos seguros para extender
 
-### Add a new top-level page
+### Agregar una ruta nueva
 
-Touch:
+Tocar:
 
 - `src/app/<route>/page.tsx`
 - `src/components/Navbar.tsx`
 
-Use this for:
+Sirve para:
 
-- standalone profile utilities
-- badge workflows
-- export viewers
+- utilidades standalone de perfil
+- workflows de badges
+- visores de export
 
-### Add a graph-side panel or control
+### Agregar un panel o control del lado del grafo
 
-Touch:
+Tocar:
 
 - `src/features/graph/GraphApp.tsx`
-- one or more files in `src/features/graph/components/`
-- the relevant graph store slice
+- uno o mas archivos en `src/features/graph/components/`
+- el slice de store correspondiente
 
-Use this for:
+Sirve para:
 
-- trust overlays
-- explanation panels
-- richer node detail workflows
-- compare-mode controls
+- overlays de confianza
+- paneles de explicacion
+- workflows mas ricos de detalle de nodo
+- controles de modo comparacion
 
-### Add heavy discovery or analysis logic
+### Agregar logica pesada de discovery o analysis
 
-Touch:
+Tocar:
 
 - `src/features/graph/kernel/`
 - `src/features/graph/analysis/`
 - `src/features/graph/workers/`
 
-Use this for:
+Sirve para:
 
-- ranking/scoring
-- community heuristics
-- pathfinding completion
-- more expensive graph transforms
+- ranking y scoring
+- heuristicas de comunidades
+- completar `pathfinding`
+- transformaciones de grafo mas costosas
 
-### Add shared account capabilities
+### Agregar capacidades compartidas de cuenta
 
-Touch:
+Tocar:
 
 - `src/lib/nostr.ts`
 - `src/store/auth.ts`
 - `src/components/LoginModal.tsx`
 
-Use this for:
+Sirve para:
 
-- new auth flows
-- shared publishing helpers
-- account-level mutations
+- nuevos flujos de auth
+- helpers compartidos de publicacion
+- mutaciones a nivel cuenta
 
-## 8. Recommended next-step features
+## 8. Features recomendadas para seguir
 
-Features that fit the current code well:
+Las que mejor encajan con el codebase actual son:
 
-- NIP-05 trust overlay on nodes and node detail
-- web-of-trust scoring with explanation
-- stronger badge and zap overlays inside graph analysis
-- export-ready identity cards for selected nodes
-- relay reliability summaries tied to discovery confidence
-- external attestations shown in node detail
+- overlay de confianza NIP-05 sobre nodos y detalle de nodo
+- scoring de web of trust con explicacion
+- overlays mas fuertes de badges y zaps dentro del analisis
+- identity cards exportables para nodos seleccionados
+- resumen de confiabilidad de relays ligado a confianza de discovery
+- attestations externas mostradas en detalle de nodo
 
-Feature that is plausible but not yet complete:
+Feature plausible, pero todavia incompleta:
 
-- follow pathfinding between identities
+- seguimiento de `pathfinding` entre identidades
 
-If you build that, finish the full flow:
+Si se avanza con eso, conviene cerrar el flujo completo:
 
-- runtime request
-- store state
-- UI controls
-- explanation copy
-- visual layer treatment
+- pedido al runtime
+- estado en store
+- controles de UI
+- copy explicativo
+- tratamiento visual de la capa
 
-## 9. Working conventions
+## 9. Convenciones de trabajo
 
-- Keep async fetches bounded by timeouts.
-- Preserve partial-state UX when relays underperform.
-- Reuse the existing La Crypta visual language.
-- Prefer extending `src/features/graph/` rather than bypassing it.
-- Do not reintroduce the old `store/nav.ts` pattern.
+- Mantener fetches async acotados por timeouts.
+- Preservar la UX de estado parcial cuando los relays rinden mal.
+- Reutilizar el lenguaje visual actual de La Crypta.
+- Preferir extensiones dentro de `src/features/graph/` antes que rodearlo.
+- No reintroducir el patron viejo de `store/nav.ts`.
 
-## 10. Recommended reading order
+## 10. Orden de lectura recomendado
 
-If you are new to the repo, read files in this order:
+Si alguien se suma al repo o hace onboarding tecnico, este orden funciona bien:
 
 1. `src/app/page.tsx`
 2. `src/features/graph/GraphClient.tsx`

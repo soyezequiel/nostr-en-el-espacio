@@ -1,4 +1,4 @@
-import type { ImageResidencySnapshot } from '@/features/graph/render'
+import type { ImageResidencySnapshot } from '@/features/graph/render/imageRuntime'
 
 export interface AvatarPipelineProbeSnapshot {
   sampledAt: number

@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { useAppStore } from '@/features/graph/app/store'
 import type { GraphNode } from '@/features/graph/app/store/types'
-import { truncatePubkey } from '@/features/graph/render'
+import { truncatePubkey } from '@/features/graph/render/labels'
 
 type SelectionFeedbackTone = 'neutral' | 'ok' | 'warn'
 
@@ -46,7 +47,6 @@ const getSelectionStateCopy = (
 
 export function DeepCaptureSelectionPanel() {
   const rootNodePubkey = useAppStore((state) => state.rootNodePubkey)
-  const nodes = useAppStore((state) => state.nodes)
   const selectedDeepUserPubkeys = useAppStore(
     (state) => state.selectedDeepUserPubkeys,
   )
@@ -55,11 +55,21 @@ export function DeepCaptureSelectionPanel() {
   )
   const exportJobPhase = useAppStore((state) => state.exportJob.phase)
   const selectedNodePubkey = useAppStore((state) => state.selectedNodePubkey)
+  const rootNode = useAppStore((state) =>
+    rootNodePubkey ? state.nodes[rootNodePubkey] ?? null : null,
+  )
+  const currentNode = useAppStore((state) =>
+    selectedNodePubkey ? state.nodes[selectedNodePubkey] ?? null : null,
+  )
+  const selectedDeepUserNodes = useAppStore(
+    useShallow((state) =>
+      selectedDeepUserPubkeys.map((pubkey) => state.nodes[pubkey] ?? null),
+    ),
+  )
   const toggleDeepUserSelection = useAppStore(
     (state) => state.toggleDeepUserSelection,
   )
   const [feedback, setFeedback] = useState<SelectionFeedback | null>(null)
-  const rootNode = rootNodePubkey ? nodes[rootNodePubkey] ?? null : null
   const selectedDeepUserCount = selectedDeepUserPubkeys.length
   const slotsRemaining = Math.max(
     0,
@@ -76,20 +86,11 @@ export function DeepCaptureSelectionPanel() {
         ? ('max' as const)
         : ('partial' as const)
   const currentNodePubkey =
-    selectedNodePubkey && nodes[selectedNodePubkey] ? selectedNodePubkey : null
-  const currentNode = currentNodePubkey ? nodes[currentNodePubkey] ?? null : null
+    selectedNodePubkey && currentNode ? selectedNodePubkey : null
   const currentNodeIsRoot = currentNodePubkey === rootNodePubkey
   const currentNodeIsSelected =
     currentNodePubkey !== null &&
     selectedDeepUserPubkeys.includes(currentNodePubkey)
-  const selectedDeepUserNodes = useMemo(
-    () =>
-      selectedDeepUserPubkeys.map((pubkey) => ({
-        pubkey,
-        node: nodes[pubkey] ?? null,
-      })),
-    [nodes, selectedDeepUserPubkeys],
-  )
 
   if (!rootNodePubkey) {
     return null
@@ -223,25 +224,29 @@ export function DeepCaptureSelectionPanel() {
             Todavia no marcaste extras para la captura profunda.
           </p>
         ) : (
-          selectedDeepUserNodes.map(({ pubkey, node }) => (
-            <article className="deep-selection-row" key={pubkey} role="listitem">
-              <div className="deep-selection-row__copy">
-                <div className="deep-selection-row__headline">
-                  <strong>{getNodeLabel(node, pubkey)}</strong>
-                  <span className="deep-selection-row__badge">Extra</span>
+          selectedDeepUserPubkeys.map((pubkey, index) => {
+            const node = selectedDeepUserNodes[index] ?? null
+
+            return (
+              <article className="deep-selection-row" key={pubkey} role="listitem">
+                <div className="deep-selection-row__copy">
+                  <div className="deep-selection-row__headline">
+                    <strong>{getNodeLabel(node, pubkey)}</strong>
+                    <span className="deep-selection-row__badge">Extra</span>
+                  </div>
+                  <code>{truncatePubkey(pubkey, 12, 10)}</code>
                 </div>
-                <code>{truncatePubkey(pubkey, 12, 10)}</code>
-              </div>
-              <button
-                className="settings-secondary-btn"
-                disabled={isSelectionLocked}
-                onClick={() => handleToggle(pubkey, false)}
-                type="button"
-              >
-                Quitar
-              </button>
-            </article>
-          ))
+                <button
+                  className="settings-secondary-btn"
+                  disabled={isSelectionLocked}
+                  onClick={() => handleToggle(pubkey, false)}
+                  type="button"
+                >
+                  Quitar
+                </button>
+              </article>
+            )
+          })
         )}
       </div>
 

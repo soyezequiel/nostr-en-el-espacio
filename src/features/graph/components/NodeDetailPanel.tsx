@@ -8,13 +8,10 @@ import AvatarFallback from '@/components/AvatarFallback'
 import { selectNodeDetailContext, useAppStore } from '@/features/graph/app/store'
 import type { GraphNode, GraphNodeProfile } from '@/features/graph/app/store/types'
 import { NodeExpansionProgressCard } from '@/features/graph/components/NodeExpansionProgressCard'
-import type { ExpandNodeResult, RootLoader } from '@/features/graph/kernel'
-import {
-  getAvatarMonogram,
-  isSafeAvatarUrl,
-  truncatePubkey,
-  type ImageRuntime,
-} from '@/features/graph/render'
+import type { ExpandNodeResult, RootLoader } from '@/features/graph/kernel/runtime'
+import { getAvatarMonogram, isSafeAvatarUrl } from '@/features/graph/render/avatar'
+import type { ImageRuntime } from '@/features/graph/render/imageRuntime'
+import { truncatePubkey } from '@/features/graph/render/labels'
 
 interface NodeDetailPanelProps {
   imageRuntime?: ImageRuntime | null

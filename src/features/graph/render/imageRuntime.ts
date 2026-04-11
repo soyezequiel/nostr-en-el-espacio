@@ -1,5 +1,3 @@
-import { OrthographicViewport } from '@deck.gl/core'
-
 import {
   createNostrGraphDatabase,
   createRepositories,
@@ -29,6 +27,7 @@ import {
   type AvatarQualityGuideSnapshot,
 } from '@/features/graph/render/avatarQualityGuide'
 import { resolveAvatarFetchUrl } from '@/features/graph/render/avatarProxyUrl'
+import { projectGraphPointToScreen } from '@/features/graph/render/graphViewState'
 import type { GraphRenderNode } from '@/features/graph/render/types'
 import type { EffectiveImageBudget } from '@/features/graph/app/store/types'
 
@@ -1490,12 +1489,6 @@ export class ImageRuntime {
     const visibleHdWeightBudget = input.isViewportActive
       ? MOTION_VISIBLE_HD_WEIGHT_BUDGET
       : resolveVisibleHdWeightBudget(viewportQuietForMs)
-    const viewport = new OrthographicViewport({
-      width: input.width,
-      height: input.height,
-      target: input.viewState.target,
-      zoom: input.viewState.zoom,
-    })
     const frameNow = now()
     const visibleWidth = input.width
     const visibleHeight = input.height
@@ -1520,11 +1513,12 @@ export class ImageRuntime {
         continue
       }
 
-      const [screenX, screenY] = viewport.project([
-        node.position[0],
-        node.position[1],
-        0,
-      ])
+      const [screenX, screenY] = projectGraphPointToScreen({
+        height: input.height,
+        position: node.position,
+        viewState: input.viewState,
+        width: input.width,
+      })
       const bleed = screenRadius + 12
       const visible =
         screenX >= -bleed &&

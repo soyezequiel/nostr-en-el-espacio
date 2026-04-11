@@ -87,3 +87,22 @@ export const createFittedGraphViewState = ({
     zoom: fitZoom,
   })
 }
+
+export const projectGraphPointToScreen = ({
+  height,
+  position,
+  viewState,
+  width,
+}: {
+  height: number
+  position: readonly [number, number]
+  viewState: Pick<GraphViewState, 'target' | 'zoom'>
+  width: number
+}): [number, number] => {
+  const scale = Math.pow(2, viewState.zoom)
+
+  return [
+    (position[0] - viewState.target[0]) * scale + width / 2,
+    (position[1] - viewState.target[1]) * scale + height / 2,
+  ]
+}

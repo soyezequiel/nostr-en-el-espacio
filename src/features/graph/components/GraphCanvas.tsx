@@ -30,33 +30,39 @@ import { CoverageRecoveryCard } from '@/features/graph/components/CoverageRecove
 import { GraphControlRail } from '@/features/graph/components/GraphControlRail'
 import { NodeExpansionProgressCard } from '@/features/graph/components/NodeExpansionProgressCard'
 import { createPerfCounters } from '@/features/graph/components/perfCounters'
-import type { RootLoader } from '@/features/graph/kernel'
+import type { RootLoader } from '@/features/graph/kernel/runtime'
+import { createEmptyGraphRenderModel } from '@/features/graph/render/createEmptyGraphRenderModel'
 import {
-  createEmptyGraphRenderModel,
-  createEmptyImageRenderPayload,
-  createEmptyImageResidencySnapshot,
   createFittedGraphViewState,
   createGraphFitSignature,
-  deriveGraphRenderState,
+  type GraphViewState,
+} from '@/features/graph/render/graphViewState'
+import {
+  createEmptyImageRenderPayload,
+  createEmptyImageResidencySnapshot,
   ImageRuntime,
-  resolveGraphNodeScreenRadii,
-  resolveGraphNodeScreenRadiiFast,
+  type ImageFrameComputationMode,
+  type ImageFrameSkipReason,
+  type ImageRenderPayload,
+  type ImageRendererDeliverySnapshot,
+  type ImageResidencySnapshot,
+  type ImageSourceHandle,
+} from '@/features/graph/render/imageRuntime'
+import {
   selectVisibleGraphLabels,
   truncatePubkey,
-  type GraphRenderLabel,
-  type GraphRenderModel,
-  type GraphRenderModelPhase,
-  type GraphViewState,
-  type ImageRenderPayload,
-  type ImageResidencySnapshot,
-} from '@/features/graph/render'
-import { isMobileDevicePerformanceProfile } from '@/features/graph/devicePerformance'
+} from '@/features/graph/render/labels'
+import {
+  resolveGraphNodeScreenRadii,
+  resolveGraphNodeScreenRadiiFast,
+} from '@/features/graph/render/nodeSizing'
+import { deriveGraphRenderState } from '@/features/graph/render/status'
 import type {
-  ImageFrameComputationMode,
-  ImageFrameSkipReason,
-  ImageRendererDeliverySnapshot,
-  ImageSourceHandle,
-} from '@/features/graph/render/imageRuntime'
+  GraphRenderLabel,
+  GraphRenderModel,
+  GraphRenderModelPhase,
+} from '@/features/graph/render/types'
+import { isMobileDevicePerformanceProfile } from '@/features/graph/devicePerformance'
 import { serializeBuildGraphRenderModelInput } from '@/features/graph/render/renderModelPayload'
 import {
   createGraphRenderModelWorkerGateway,
@@ -685,7 +691,7 @@ const GraphCanvasKeywordSearch = memo(function GraphCanvasKeywordSearch({
   )
 })
 
-export function GraphCanvas({
+export const GraphCanvas = memo(function GraphCanvas({
   runtime,
   onTrySampleRoot,
   onDiagnosticsChange,
@@ -2393,4 +2399,4 @@ export function GraphCanvas({
       </section>
     </Profiler>
   )
-}
+})

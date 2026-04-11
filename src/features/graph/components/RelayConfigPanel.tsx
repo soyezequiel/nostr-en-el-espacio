@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { appStore, useAppStore } from '@/features/graph/app/store'
-import type { RootLoader } from '@/features/graph/kernel'
+import type { RootLoader } from '@/features/graph/kernel/runtime'
 
 interface RelayConfigPanelProps {
   rootLoader: RootLoader

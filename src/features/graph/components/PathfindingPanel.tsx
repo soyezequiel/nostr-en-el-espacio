@@ -10,12 +10,12 @@ import type {
   PathfindingStatus,
   UiLayer,
 } from '@/features/graph/app/store/types'
-import type { RootLoader } from '@/features/graph/kernel'
+import type { RootLoader } from '@/features/graph/kernel/runtime'
 import {
   decodeProfilePointer,
   type ProfilePointerDecodeResult,
 } from '@/features/graph/kernel/nip19'
-import { truncatePubkey } from '@/features/graph/render'
+import { truncatePubkey } from '@/features/graph/render/labels'
 
 interface PathfindingPanelProps {
   runtime: RootLoader

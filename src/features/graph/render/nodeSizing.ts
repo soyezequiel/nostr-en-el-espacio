@@ -1,7 +1,8 @@
-import { OrthographicViewport } from '@deck.gl/core'
-
 import type { UiLayer } from '@/features/graph/app/store/types'
-import type { GraphViewState } from '@/features/graph/render/graphViewState'
+import {
+  projectGraphPointToScreen,
+  type GraphViewState,
+} from '@/features/graph/render/graphViewState'
 import type { GraphRenderNode } from '@/features/graph/render/types'
 
 const GRAPH_NODE_SCREEN_SCALE_SETTINGS = {
@@ -197,19 +198,13 @@ const buildProjectedNodeMetrics = ({
   height: number
   visibleNodeCount: number
 }) => {
-  const viewport = new OrthographicViewport({
-    width,
-    height,
-    target: viewState.target,
-    zoom: viewState.zoom,
-  })
-
   return nodes.map((node) => {
-    const [screenX, screenY] = viewport.project([
-      node.position[0],
-      node.position[1],
-      0,
-    ])
+    const [screenX, screenY] = projectGraphPointToScreen({
+      height,
+      position: node.position,
+      viewState,
+      width,
+    })
     const globalRadius = resolveGraphNodeScreenRadius({
       baseRadius: node.radius,
       isRoot: node.isRoot,

@@ -30,11 +30,13 @@ import { RelayHealthIndicator } from '@/features/graph/components/RelayHealthInd
 import { RenderConfigPanel } from '@/features/graph/components/RenderConfigPanel'
 import { SavedRootsPanel } from '@/features/graph/components/SavedRootsPanel'
 import {
-  browserAppKernel,
   CURATED_SAMPLE_ROOT,
+} from '@/features/graph/kernel/recovery'
+import {
+  browserAppKernel,
   type LoadRootOptions,
   type RootLoader,
-} from '@/features/graph/kernel'
+} from '@/features/graph/kernel/runtime'
 import {
   fetchProfileByPubkey,
   type NostrProfile,
@@ -520,42 +522,62 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     }
   }, [graphDiagnostics, shouldCollectDiagnostics])
 
-  const handleResolveRoot = ({
-    kind,
-    npub,
-    pubkey,
-    relays = [],
-  }: {
-    npub?: string
-    pubkey: string
-    kind: 'npub' | 'nprofile'
-    relays?: string[]
-  }, loadOptions?: LoadRootOptions) => {
-    setRootKind(kind)
-    upsertSavedRoot({
-      pubkey,
-      npub: npub ?? nip19.npubEncode(pubkey),
-      openedAt: Date.now(),
-      relayHints: relays,
-    })
-    setIsSettingsOpen(false)
-    setIsRootEntryOpen(false)
-    void rootLoader.loadRoot(pubkey, {
-      ...loadOptions,
-      bootstrapRelayUrls: relays,
-    })
-  }
+  const handleResolveRoot = useCallback(
+    (
+      {
+        kind,
+        npub,
+        pubkey,
+        relays = [],
+      }: {
+        npub?: string
+        pubkey: string
+        kind: 'npub' | 'nprofile'
+        relays?: string[]
+      },
+      loadOptions?: LoadRootOptions,
+    ) => {
+      setRootKind(kind)
+      upsertSavedRoot({
+        pubkey,
+        npub: npub ?? nip19.npubEncode(pubkey),
+        openedAt: Date.now(),
+        relayHints: relays,
+      })
+      setIsSettingsOpen(false)
+      setIsRootEntryOpen(false)
+      void rootLoader.loadRoot(pubkey, {
+        ...loadOptions,
+        bootstrapRelayUrls: relays,
+      })
+    },
+    [rootLoader, upsertSavedRoot],
+  )
 
-  const handleSelectSavedRoot = (savedRoot: SavedRootEntry) => {
-    handleResolveRoot({
-      pubkey: savedRoot.pubkey,
-      kind: 'npub',
-      npub: savedRoot.npub,
-      relays: savedRoot.relayHints ?? [],
-    })
-  }
+  const handleSelectSavedRoot = useCallback(
+    (savedRoot: SavedRootEntry) => {
+      handleResolveRoot({
+        pubkey: savedRoot.pubkey,
+        kind: 'npub',
+        npub: savedRoot.npub,
+        relays: savedRoot.relayHints ?? [],
+      })
+    },
+    [handleResolveRoot],
+  )
 
-  const handleLoadCuratedSampleRoot = () => {
+  const handleDeleteSavedRoot = useCallback(
+    (savedRoot: SavedRootEntry) => {
+      removeSavedRoot(savedRoot.pubkey)
+    },
+    [removeSavedRoot],
+  )
+
+  const handleInvalidRoot = useCallback(() => {
+    setRootKind(null)
+  }, [])
+
+  const handleLoadCuratedSampleRoot = useCallback(() => {
     handleResolveRoot(
       {
         pubkey: CURATED_SAMPLE_ROOT.pubkey,
@@ -564,9 +586,9 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
       },
       { useDefaultRelays: true },
     )
-  }
+  }, [handleResolveRoot])
 
-  const handleOpenSettings = (tab: SettingsTab = 'appearance') => {
+  const handleOpenSettings = useCallback((tab: SettingsTab = 'appearance') => {
     if (openPanel === 'node-detail' || openPanel === 'pathfinding') {
       setOpenPanel('overview')
     }
@@ -574,9 +596,9 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     setActiveTab(tab)
     setIsRootEntryOpen(false)
     setIsSettingsOpen(true)
-  }
+  }, [openPanel, setOpenPanel])
 
-  const handleTogglePathfinding = () => {
+  const handleTogglePathfinding = useCallback(() => {
     if (isPathfindingOpen) {
       if (pathfindingSelectionMode !== 'idle') {
         setPathfindingSelectionMode('idle')
@@ -593,30 +615,36 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     setIsRootEntryOpen(false)
     setPathfindingSelectionMode('idle')
     setOpenPanel('pathfinding')
-  }
+  }, [
+    isPathfindingOpen,
+    openPanel,
+    pathfindingSelectionMode,
+    setOpenPanel,
+    setPathfindingSelectionMode,
+  ])
 
-  const handleCloseSettings = () => {
+  const handleCloseSettings = useCallback(() => {
     setIsSettingsOpen(false)
     if (mapPanelToSettingsTab(openPanel)) {
       setOpenPanel('overview')
     }
-  }
+  }, [openPanel, setOpenPanel])
 
-  const handleOpenRootEntry = () => {
+  const handleOpenRootEntry = useCallback(() => {
     if (openPanel === 'node-detail' || openPanel === 'pathfinding') {
       setOpenPanel('overview')
     }
 
     setIsSettingsOpen(false)
     setIsRootEntryOpen(true)
-  }
+  }, [openPanel, setOpenPanel])
 
-  const handleCloseRootEntry = () => {
+  const handleCloseRootEntry = useCallback(() => {
     if (isRootEntryInline) {
       return
     }
     setIsRootEntryOpen(false)
-  }
+  }, [isRootEntryInline])
 
   const exportSummary =
     exportJobPhase === 'idle'
@@ -1056,7 +1084,7 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
               <SavedRootsPanel
                 entries={savedRoots}
                 isHydrated={savedRootsHydrated}
-                onDelete={(savedRoot) => removeSavedRoot(savedRoot.pubkey)}
+                onDelete={handleDeleteSavedRoot}
                 onSelect={handleSelectSavedRoot}
               />
 
@@ -1068,9 +1096,7 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
 
               <div className="root-entry-sheet__manual">
                 <NpubInput
-                  onInvalidRoot={() => {
-                    setRootKind(null)
-                  }}
+                  onInvalidRoot={handleInvalidRoot}
                   onValidRoot={handleResolveRoot}
                 />
               </div>

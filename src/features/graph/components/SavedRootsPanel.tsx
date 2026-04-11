@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { memo, useState } from 'react'
 
 import AvatarFallback from '@/components/AvatarFallback'
 import SkeletonImage from '@/components/SkeletonImage'
@@ -87,7 +87,7 @@ function renderSavedRootSkeleton(index: number) {
   )
 }
 
-export function SavedRootsPanel({
+export const SavedRootsPanel = memo(function SavedRootsPanel({
   entries,
   isHydrated,
   onDelete,
@@ -209,4 +209,4 @@ export function SavedRootsPanel({
       </div>
     </section>
   )
-}
+})

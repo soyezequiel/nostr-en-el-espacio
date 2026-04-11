@@ -1,5 +1,8 @@
 import type { AppStore } from '@/features/graph/app/store/types'
-import { deriveDirectedEvidence } from '@/features/graph/evidence/directedEvidence'
+import {
+  deriveDirectedEvidence,
+  type DirectedEvidenceSnapshot,
+} from '@/features/graph/evidence/directedEvidence'
 
 const DEFAULT_IDLE_NODE_EXPANSION_STATE = {
   status: 'idle' as const,
@@ -32,6 +35,37 @@ const DEFAULT_IDLE_PATHFINDING_STATE = {
   algorithm: 'bfs' as const,
   message: null,
   previousLayer: null,
+}
+
+let directedEvidenceCache:
+  | {
+      links: AppStore['links']
+      inboundLinks: AppStore['inboundLinks']
+      snapshot: DirectedEvidenceSnapshot
+    }
+  | null = null
+
+const selectDirectedEvidenceSnapshot = (state: AppStore) => {
+  if (
+    directedEvidenceCache &&
+    directedEvidenceCache.links === state.links &&
+    directedEvidenceCache.inboundLinks === state.inboundLinks
+  ) {
+    return directedEvidenceCache.snapshot
+  }
+
+  const snapshot = deriveDirectedEvidence({
+    links: state.links,
+    inboundLinks: state.inboundLinks,
+  })
+
+  directedEvidenceCache = {
+    links: state.links,
+    inboundLinks: state.inboundLinks,
+    snapshot,
+  }
+
+  return snapshot
 }
 
 export const selectGraphSummary = (state: AppStore) => ({
@@ -85,10 +119,7 @@ export const selectKeywordLayerSummary = (state: AppStore) => ({
 })
 
 const countMutualsDiscovered = (state: AppStore, pubkey: string) => {
-  const evidence = deriveDirectedEvidence({
-    links: state.links,
-    inboundLinks: state.inboundLinks,
-  })
+  const evidence = selectDirectedEvidenceSnapshot(state)
 
   return evidence.mutualAdjacency[pubkey]?.length ?? 0
 }
@@ -363,10 +394,7 @@ export const selectDegreeCounts = (state: AppStore) => {
 }
 
 export const selectMutualConnections = (state: AppStore) => {
-  const evidence = deriveDirectedEvidence({
-    links: state.links,
-    inboundLinks: state.inboundLinks,
-  })
+  const evidence = selectDirectedEvidenceSnapshot(state)
 
   return evidence.mutualPairs
     .map((pair) => `${pair.source}<->${pair.target}`)

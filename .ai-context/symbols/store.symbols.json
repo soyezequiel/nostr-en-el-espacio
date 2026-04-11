@@ -1,0 +1,26 @@
+[
+  {
+    "exported": false,
+    "filePath": "src/store/auth.ts",
+    "kind": "interface",
+    "lastSourceHashUsed": "ece08c99e4814bde7b890134aedc39131ab53cb42379ec116f12ab26e92b5796",
+    "name": "AuthState",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "src/store/auth.ts",
+    "kind": "variable",
+    "lastSourceHashUsed": "ece08c99e4814bde7b890134aedc39131ab53cb42379ec116f12ab26e92b5796",
+    "name": "LEGACY_AUTH_STORAGE_KEY",
+    "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/store/auth.ts",
+    "kind": "variable",
+    "lastSourceHashUsed": "ece08c99e4814bde7b890134aedc39131ab53cb42379ec116f12ab26e92b5796",
+    "name": "useAuthStore",
+    "references": []
+  }
+]

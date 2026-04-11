@@ -2,6 +2,7 @@ import { Relay, type Filter } from 'nostr-tools'
 
 import type {
   RelayConnection,
+  RelayCountRequestOptions,
   RelaySubscribeHandlers,
   RelaySubscriptionHandle,
   RelayTransport,
@@ -56,6 +57,17 @@ class NostrToolsRelayConnection implements RelayConnection {
         subscription.close(reason)
       },
     }
+  }
+
+  async count(
+    filters: Filter[],
+    options: RelayCountRequestOptions = {},
+  ): Promise<number> {
+    if (!this.isOpen()) {
+      throw new Error(`Relay ${this.url} is not open.`)
+    }
+
+    return this.relay.count(filters, options)
   }
 
   onNotice(listener: (message: string) => void): () => void {

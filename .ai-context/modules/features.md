@@ -1,0 +1,1012 @@
+# Modulo: features
+
+> Generado por la capa deterministica de context-artifact-generator.
+
+## Responsabilidad
+Agrupa el contexto deterministico de features para archivos bajo src/features.
+
+## Archivos Propios
+- src/features/graph/GraphApp.tsx
+- src/features/graph/GraphClient.tsx
+- src/features/graph/analysis/analysisKey.ts
+- src/features/graph/analysis/types.ts
+- src/features/graph/app/store/createAppStore.ts
+- src/features/graph/app/store/index.ts
+- src/features/graph/app/store/selectors.ts
+- src/features/graph/app/store/slices/analysisSlice.ts
+- src/features/graph/app/store/slices/exportSlice.ts
+- src/features/graph/app/store/slices/graphSlice.ts
+- src/features/graph/app/store/slices/keywordSlice.ts
+- src/features/graph/app/store/slices/pathfindingSlice.ts
+- src/features/graph/app/store/slices/relaySlice.ts
+- src/features/graph/app/store/slices/uiSlice.ts
+- src/features/graph/app/store/slices/zapSlice.ts
+- src/features/graph/app/store/types.ts
+- src/features/graph/components/CoverageRecoveryCard.tsx
+- src/features/graph/components/DeepCaptureSelectionPanel.tsx
+- src/features/graph/components/GraphCanvas.tsx
+- src/features/graph/components/GraphControlRail.tsx
+- src/features/graph/components/NodeAccessRail.tsx
+- src/features/graph/components/NodeDetailPanel.tsx
+- src/features/graph/components/NodeExpansionProgressCard.tsx
+- src/features/graph/components/NpubInput.tsx
+- src/features/graph/components/PathfindingPanel.tsx
+- src/features/graph/components/PerfOverlay.tsx
+- src/features/graph/components/RelayConfigPanel.tsx
+- src/features/graph/components/RelayHealthIndicator.tsx
+- src/features/graph/components/RenderConfigPanel.tsx
+- src/features/graph/components/SavedRootsPanel.tsx
+- src/features/graph/components/avatarPipelineProbe.ts
+- src/features/graph/components/perfCounters.ts
+- src/features/graph/db/database.ts
+- src/features/graph/db/entities.ts
+- src/features/graph/db/index.ts
+- src/features/graph/db/repositories.ts
+- src/features/graph/db/utils.ts
+- src/features/graph/dev/clearSiteCache.ts
+- src/features/graph/devicePerformance.ts
+- src/features/graph/evidence/directedEvidence.ts
+- src/features/graph/export/archive-builder.ts
+- src/features/graph/export/canonical.ts
+- src/features/graph/export/capture-profile-v1.json
+- src/features/graph/export/download.ts
+- src/features/graph/export/index.ts
+- src/features/graph/export/profile-photo-archive.ts
+- src/features/graph/export/snapshot-freezer.ts
+- src/features/graph/export/types.ts
+- src/features/graph/kernel/events.ts
+- src/features/graph/kernel/facade.ts
+- src/features/graph/kernel/headless.ts
+- src/features/graph/kernel/index.ts
+- src/features/graph/kernel/modules/analysis.ts
+- src/features/graph/kernel/modules/constants.ts
+- src/features/graph/kernel/modules/context.ts
+- src/features/graph/kernel/modules/export-orch.ts
+- src/features/graph/kernel/modules/follower-discovery.ts
+- src/features/graph/kernel/modules/helpers.ts
+- src/features/graph/kernel/modules/keyword-layer.ts
+- src/features/graph/kernel/modules/node-detail.ts
+- src/features/graph/kernel/modules/node-expansion.ts
+- src/features/graph/kernel/modules/persistence.ts
+- src/features/graph/kernel/modules/profile-hydration.ts
+- src/features/graph/kernel/modules/relay-session.ts
+- src/features/graph/kernel/modules/root-loader.ts
+- src/features/graph/kernel/modules/text-helpers.ts
+- src/features/graph/kernel/modules/zap-layer.ts
+- src/features/graph/kernel/nip19.ts
+- src/features/graph/kernel/recovery.ts
+- src/features/graph/kernel/runner.ts
+- src/features/graph/kernel/runtime.ts
+- src/features/graph/kernel/transcript-relay.ts
+- src/features/graph/kernel/transitions/export-job.ts
+- src/features/graph/kernel/transitions/relay-override.ts
+- src/features/graph/kernel/transitions/root-load.ts
+- src/features/graph/nostr/errors.ts
+- src/features/graph/nostr/index.ts
+- src/features/graph/nostr/primal-cache-client.ts
+- src/features/graph/nostr/relay-adapter.ts
+- src/features/graph/nostr/relay-transport.ts
+- src/features/graph/nostr/relay-url.ts
+- src/features/graph/nostr/types.ts
+- src/features/graph/render/DeckGraphRenderer.tsx
+- src/features/graph/render/DeckRendererAsync.tsx
+- src/features/graph/render/GraphSceneLayer.ts
+- src/features/graph/render/GraphViewport.tsx
+- src/features/graph/render/GraphViewportLazy.tsx
+- src/features/graph/render/avatar.ts
+- src/features/graph/render/avatarAtlasManager.ts
+- src/features/graph/render/avatarProxyUrl.ts
+- src/features/graph/render/avatarQualityGuide.ts
+- src/features/graph/render/buildGraphRenderModel.ts
+- src/features/graph/render/constants.ts
+- src/features/graph/render/createEmptyGraphRenderModel.ts
+- src/features/graph/render/devicePixels.ts
+- src/features/graph/render/graphSceneGeometry.ts
+- src/features/graph/render/graphViewState.ts
+- src/features/graph/render/imageRuntime.ts
+- src/features/graph/render/index.ts
+- src/features/graph/render/labels.ts
+- src/features/graph/render/nodeSizing.ts
+- src/features/graph/render/patchLumaCanvasContext.ts
+- src/features/graph/render/renderModelPayload.ts
+- src/features/graph/render/renderModelWorker.ts
+- src/features/graph/render/status.ts
+- src/features/graph/render/types.ts
+- src/features/graph/workers/browser.ts
+- src/features/graph/workers/events.worker.ts
+- src/features/graph/workers/events/contracts.ts
+- src/features/graph/workers/events/handlers.ts
+- src/features/graph/workers/gateway.ts
+- src/features/graph/workers/graph.worker.ts
+- src/features/graph/workers/graph/analyzeDiscoveredGraph.ts
+- src/features/graph/workers/graph/contracts.ts
+- src/features/graph/workers/graph/handlers.ts
+- src/features/graph/workers/shared/protocol.ts
+- src/features/graph/workers/shared/runtime.ts
+- src/features/graph/workers/shared/validation.ts
+- src/features/graph/workers/verifyWorker.ts
+- src/features/graph/workers/verifyWorkerPool.ts
+
+## Hashes Fuente
+- src/features/graph/analysis/analysisKey.ts: 1a0196ed2fad
+- src/features/graph/analysis/types.ts: 13487883a760
+- src/features/graph/app/store/createAppStore.ts: bacce5d46c53
+- src/features/graph/app/store/index.ts: f510c3d0688c
+- src/features/graph/app/store/selectors.ts: d3bc46162b1f
+- src/features/graph/app/store/slices/analysisSlice.ts: 01db5db5ec48
+- src/features/graph/app/store/slices/exportSlice.ts: 385ce0d2a903
+- src/features/graph/app/store/slices/graphSlice.ts: 5a93ddd4e0ed
+- src/features/graph/app/store/slices/keywordSlice.ts: 0da96c4ee919
+- src/features/graph/app/store/slices/pathfindingSlice.ts: 85f7d55e915e
+- src/features/graph/app/store/slices/relaySlice.ts: b442ca93b9a9
+- src/features/graph/app/store/slices/uiSlice.ts: b18819c36673
+- src/features/graph/app/store/slices/zapSlice.ts: c8f0e3b74d17
+- src/features/graph/app/store/types.ts: b3a3aa7eb13e
+- src/features/graph/components/avatarPipelineProbe.ts: cb60447c28ec
+- src/features/graph/components/CoverageRecoveryCard.tsx: 9791e1322cfa
+- src/features/graph/components/DeepCaptureSelectionPanel.tsx: f680d644ae7b
+- src/features/graph/components/GraphCanvas.tsx: cbf9ef5bdcb3
+- src/features/graph/components/GraphControlRail.tsx: 413d79643402
+- src/features/graph/components/NodeAccessRail.tsx: f0ca626b3ebb
+- src/features/graph/components/NodeDetailPanel.tsx: 7710257acc89
+- src/features/graph/components/NodeExpansionProgressCard.tsx: a004c883a773
+- src/features/graph/components/NpubInput.tsx: c2bb8a8ddcf6
+- src/features/graph/components/PathfindingPanel.tsx: 88f461e0424e
+- src/features/graph/components/perfCounters.ts: 57b47cbba29a
+- src/features/graph/components/PerfOverlay.tsx: ac9dc0795c4d
+- src/features/graph/components/RelayConfigPanel.tsx: 66ad7155e6f5
+- src/features/graph/components/RelayHealthIndicator.tsx: b618bcc6589d
+- src/features/graph/components/RenderConfigPanel.tsx: c8b51c63aa91
+- src/features/graph/components/SavedRootsPanel.tsx: 25cf0d8f73af
+- src/features/graph/db/database.ts: 59a577913a3a
+- src/features/graph/db/entities.ts: 5d36b3f4ed7e
+- src/features/graph/db/index.ts: 276cd1cfcfa6
+- src/features/graph/db/repositories.ts: d1e9ea1e9d12
+- src/features/graph/db/utils.ts: 87c044047406
+- src/features/graph/dev/clearSiteCache.ts: b409de670337
+- src/features/graph/devicePerformance.ts: afad53c58784
+- src/features/graph/evidence/directedEvidence.ts: 68945f781ec6
+- src/features/graph/export/archive-builder.ts: 4ba0db20a442
+- src/features/graph/export/canonical.ts: 0a87d3e67f19
+- src/features/graph/export/capture-profile-v1.json: 0ba28060c106
+- src/features/graph/export/download.ts: a8d4a4960fc6
+- src/features/graph/export/index.ts: ecc2b42ea39a
+- src/features/graph/export/profile-photo-archive.ts: 940176cf5a43
+- src/features/graph/export/snapshot-freezer.ts: b084dfd84ec8
+- src/features/graph/export/types.ts: 39304c700e85
+- src/features/graph/GraphApp.tsx: 29c6f7417df3
+- src/features/graph/GraphClient.tsx: daa360261a3f
+- src/features/graph/kernel/events.ts: 03cba343e2d6
+- src/features/graph/kernel/facade.ts: b261643c9d46
+- src/features/graph/kernel/headless.ts: 4d9c39f9e462
+- src/features/graph/kernel/index.ts: b2fd76eb6d88
+- src/features/graph/kernel/modules/analysis.ts: 57addf45f373
+- src/features/graph/kernel/modules/constants.ts: 3796f12d1bb9
+- src/features/graph/kernel/modules/context.ts: 637942dc3fc8
+- src/features/graph/kernel/modules/export-orch.ts: 6e03d147e7e3
+- src/features/graph/kernel/modules/follower-discovery.ts: b9ed9fa00b05
+- src/features/graph/kernel/modules/helpers.ts: 3d5f144aab72
+- src/features/graph/kernel/modules/keyword-layer.ts: dc2271880d8c
+- src/features/graph/kernel/modules/node-detail.ts: d4a79ed9c062
+- src/features/graph/kernel/modules/node-expansion.ts: ce0df37de0a5
+- src/features/graph/kernel/modules/persistence.ts: 399c4538c050
+- src/features/graph/kernel/modules/profile-hydration.ts: efa5089f588e
+- src/features/graph/kernel/modules/relay-session.ts: 1e625a7bb79a
+- src/features/graph/kernel/modules/root-loader.ts: 494f57a8f2e6
+- src/features/graph/kernel/modules/text-helpers.ts: 6bea7420c40d
+- src/features/graph/kernel/modules/zap-layer.ts: b3e9599ab794
+- src/features/graph/kernel/nip19.ts: 752875acfb13
+- src/features/graph/kernel/recovery.ts: bc5d043443ac
+- src/features/graph/kernel/runner.ts: feda78ea968a
+- src/features/graph/kernel/runtime.ts: 78b6375b0f72
+- src/features/graph/kernel/transcript-relay.ts: eb8091f2f983
+- src/features/graph/kernel/transitions/export-job.ts: dde000211965
+- src/features/graph/kernel/transitions/relay-override.ts: caf281023db5
+- src/features/graph/kernel/transitions/root-load.ts: aa8bf9bd7fd8
+- src/features/graph/nostr/errors.ts: 683a87c85a23
+- src/features/graph/nostr/index.ts: 4b18e244ae8f
+- src/features/graph/nostr/primal-cache-client.ts: d1c7394babae
+- src/features/graph/nostr/relay-adapter.ts: 7870cefb81f1
+- src/features/graph/nostr/relay-transport.ts: 48a0483b4375
+- src/features/graph/nostr/relay-url.ts: 0bc0bb7c3086
+- src/features/graph/nostr/types.ts: 572e22e0ca20
+- src/features/graph/render/avatar.ts: 95c71a07eeb1
+- src/features/graph/render/avatarAtlasManager.ts: 3f42622a840b
+- src/features/graph/render/avatarProxyUrl.ts: d0bdc8c6401a
+- src/features/graph/render/avatarQualityGuide.ts: 91a51b9a529b
+- src/features/graph/render/buildGraphRenderModel.ts: 9fe5d579ae36
+- src/features/graph/render/constants.ts: 87666ca5556a
+- src/features/graph/render/createEmptyGraphRenderModel.ts: a6d4794e68e7
+- src/features/graph/render/DeckGraphRenderer.tsx: 81bac4467b4c
+- src/features/graph/render/DeckRendererAsync.tsx: 4b9483e23c54
+- src/features/graph/render/devicePixels.ts: 359b731d9812
+- src/features/graph/render/graphSceneGeometry.ts: 115f18b34499
+- src/features/graph/render/GraphSceneLayer.ts: 92e9b95193f7
+- src/features/graph/render/GraphViewport.tsx: e7029c17974f
+- src/features/graph/render/GraphViewportLazy.tsx: eafc1c02736f
+- src/features/graph/render/graphViewState.ts: cc1f6a3c61ff
+- src/features/graph/render/imageRuntime.ts: b525f4c89ceb
+- src/features/graph/render/index.ts: 200cef92848b
+- src/features/graph/render/labels.ts: 8235aa00b88a
+- src/features/graph/render/nodeSizing.ts: 60219aa710c4
+- src/features/graph/render/patchLumaCanvasContext.ts: d0e5d5bd4e22
+- src/features/graph/render/renderModelPayload.ts: 39f82417b7b1
+- src/features/graph/render/renderModelWorker.ts: e8d2d1be2391
+- src/features/graph/render/status.ts: 2c62327e285e
+- src/features/graph/render/types.ts: a97b33d5bdeb
+- src/features/graph/workers/browser.ts: ba1f1f55cd41
+- src/features/graph/workers/events.worker.ts: 7c4c51da2d70
+- src/features/graph/workers/events/contracts.ts: fa1748336290
+- src/features/graph/workers/events/handlers.ts: 967e9f32a456
+- src/features/graph/workers/gateway.ts: e6a14a46ca92
+- src/features/graph/workers/graph.worker.ts: fae4948e6b27
+- src/features/graph/workers/graph/analyzeDiscoveredGraph.ts: 788a03170278
+- src/features/graph/workers/graph/contracts.ts: 77f1300e0661
+- src/features/graph/workers/graph/handlers.ts: 38aa2cb9ea0e
+- src/features/graph/workers/shared/protocol.ts: 2e5199485724
+- src/features/graph/workers/shared/runtime.ts: 570b21540666
+- src/features/graph/workers/shared/validation.ts: 5790e69d81d1
+- src/features/graph/workers/verifyWorker.ts: cbe0d993063e
+- src/features/graph/workers/verifyWorkerPool.ts: 37a76d28bb2b
+
+## Simbolos Exportados
+- variable createDiscoveredGraphAnalysisKey (src/features/graph/analysis/analysisKey.ts)
+- variable summarizeRelayHealth (src/features/graph/analysis/analysisKey.ts)
+- tipo DiscoveredGraphAnalysisConfidence (src/features/graph/analysis/types.ts)
+- tipo DiscoveredGraphAnalysisFlag (src/features/graph/analysis/types.ts)
+- tipo DiscoveredGraphAnalysisMode (src/features/graph/analysis/types.ts)
+- interfaz DiscoveredGraphAnalysisResult (src/features/graph/analysis/types.ts)
+- interfaz DiscoveredGraphAnalysisState (src/features/graph/analysis/types.ts)
+- tipo DiscoveredGraphAnalysisStatus (src/features/graph/analysis/types.ts)
+- interfaz DiscoveredGraphCommunity (src/features/graph/analysis/types.ts)
+- interfaz DiscoveredGraphNodeAnalysis (src/features/graph/analysis/types.ts)
+- interfaz DiscoveredGraphRelayHealthSummary (src/features/graph/analysis/types.ts)
+- variable appStore (src/features/graph/app/store/createAppStore.ts)
+- variable createAppStore (src/features/graph/app/store/createAppStore.ts)
+- variable useAppStore (src/features/graph/app/store/createAppStore.ts)
+- tipo CoverageRecoveryReason (src/features/graph/app/store/selectors.ts)
+- interfaz CoverageRecoveryState (src/features/graph/app/store/selectors.ts)
+- variable deriveCoverageRecovery (src/features/graph/app/store/selectors.ts)
+- variable selectCoverageRecovery (src/features/graph/app/store/selectors.ts)
+- variable selectDeepCaptureSelectionContext (src/features/graph/app/store/selectors.ts)
+- variable selectDegreeCounts (src/features/graph/app/store/selectors.ts)
+- variable selectDevicePerformanceSummary (src/features/graph/app/store/selectors.ts)
+- variable selectExportSummary (src/features/graph/app/store/selectors.ts)
+- variable selectGraphSummary (src/features/graph/app/store/selectors.ts)
+- variable selectKeywordLayerSummary (src/features/graph/app/store/selectors.ts)
+- variable selectMutualConnections (src/features/graph/app/store/selectors.ts)
+- variable selectNodeDetailContext (src/features/graph/app/store/selectors.ts)
+- variable selectPathfindingContext (src/features/graph/app/store/selectors.ts)
+- variable selectRelayHealthData (src/features/graph/app/store/selectors.ts)
+- variable selectRelaySummary (src/features/graph/app/store/selectors.ts)
+- variable selectUiSummary (src/features/graph/app/store/selectors.ts)
+- variable selectZapLayerSummary (src/features/graph/app/store/selectors.ts)
+- variable createAnalysisSlice (src/features/graph/app/store/slices/analysisSlice.ts)
+- variable createInitialGraphAnalysisState (src/features/graph/app/store/slices/analysisSlice.ts)
+- variable createExportSlice (src/features/graph/app/store/slices/exportSlice.ts)
+- variable createInitialExportSliceState (src/features/graph/app/store/slices/exportSlice.ts)
+- variable DEFAULT_MAX_SELECTED_DEEP_USERS (src/features/graph/app/store/slices/exportSlice.ts)
+- variable createGraphSlice (src/features/graph/app/store/slices/graphSlice.ts)
+- variable createInitialGraphSliceState (src/features/graph/app/store/slices/graphSlice.ts)
+- variable DEFAULT_MAX_GRAPH_NODES (src/features/graph/app/store/slices/graphSlice.ts)
+- variable createInitialKeywordLayerState (src/features/graph/app/store/slices/keywordSlice.ts)
+- variable createKeywordSlice (src/features/graph/app/store/slices/keywordSlice.ts)
+- variable createPathfindingSlice (src/features/graph/app/store/slices/pathfindingSlice.ts)
+- variable createInitialRelaySliceState (src/features/graph/app/store/slices/relaySlice.ts)
+- variable createRelaySlice (src/features/graph/app/store/slices/relaySlice.ts)
+- variable createInitialUiSliceState (src/features/graph/app/store/slices/uiSlice.ts)
+- variable createUiSlice (src/features/graph/app/store/slices/uiSlice.ts)
+- variable createInitialZapLayerState (src/features/graph/app/store/slices/zapSlice.ts)
+- variable createZapSlice (src/features/graph/app/store/slices/zapSlice.ts)
+- interfaz AnalysisSlice (src/features/graph/app/store/types.ts)
+- tipo AppStateCreator (src/features/graph/app/store/types.ts)
+- tipo AppStore (src/features/graph/app/store/types.ts)
+- tipo AppStoreApi (src/features/graph/app/store/types.ts)
+- tipo ArrowType (src/features/graph/app/store/types.ts)
+- tipo ConnectionsSourceLayer (src/features/graph/app/store/types.ts)
+- tipo DevicePerformanceProfile (src/features/graph/app/store/types.ts)
+- interfaz EffectiveGraphCaps (src/features/graph/app/store/types.ts)
+- interfaz EffectiveImageBudget (src/features/graph/app/store/types.ts)
+- interfaz ExportJobProgress (src/features/graph/app/store/types.ts)
+- tipo ExportJobStatus (src/features/graph/app/store/types.ts)
+- interfaz ExportSlice (src/features/graph/app/store/types.ts)
+- interfaz GraphCaps (src/features/graph/app/store/types.ts)
+- interfaz GraphLink (src/features/graph/app/store/types.ts)
+- tipo GraphLinkRelation (src/features/graph/app/store/types.ts)
+- interfaz GraphNode (src/features/graph/app/store/types.ts)
+- interfaz GraphNodeProfile (src/features/graph/app/store/types.ts)
+- tipo GraphNodeSource (src/features/graph/app/store/types.ts)
+- interfaz GraphSlice (src/features/graph/app/store/types.ts)
+- tipo ImageQualityMode (src/features/graph/app/store/types.ts)
+- interfaz KeywordLayerState (src/features/graph/app/store/types.ts)
+- tipo KeywordLayerStatus (src/features/graph/app/store/types.ts)
+- interfaz KeywordMatch (src/features/graph/app/store/types.ts)
+- interfaz KeywordSlice (src/features/graph/app/store/types.ts)
+- tipo NodeExpansionPhase (src/features/graph/app/store/types.ts)
+- interfaz NodeExpansionState (src/features/graph/app/store/types.ts)
+- tipo NodeExpansionStatus (src/features/graph/app/store/types.ts)
+- interfaz NodeStructurePreviewState (src/features/graph/app/store/types.ts)
+- tipo PathfindingSelectionMode (src/features/graph/app/store/types.ts)
+- interfaz PathfindingSlice (src/features/graph/app/store/types.ts)
+- interfaz PathfindingState (src/features/graph/app/store/types.ts)
+- tipo PathfindingStatus (src/features/graph/app/store/types.ts)
+- tipo ProfileDataSource (src/features/graph/app/store/types.ts)
+- interfaz RelayHealth (src/features/graph/app/store/types.ts)
+- tipo RelayHealthStatus (src/features/graph/app/store/types.ts)
+- tipo RelayOverrideStatus (src/features/graph/app/store/types.ts)
+- interfaz RelaySlice (src/features/graph/app/store/types.ts)
+- interfaz RenderConfig (src/features/graph/app/store/types.ts)
+- interfaz RootCollectionProgress (src/features/graph/app/store/types.ts)
+- tipo RootCollectionProgressStatus (src/features/graph/app/store/types.ts)
+- interfaz RootLoadState (src/features/graph/app/store/types.ts)
+- tipo RootLoadStatus (src/features/graph/app/store/types.ts)
+- interfaz RootVisibleLinkProgress (src/features/graph/app/store/types.ts)
+- interfaz SavedRootEntry (src/features/graph/app/store/types.ts)
+- interfaz SavedRootProfileSnapshot (src/features/graph/app/store/types.ts)
+- interfaz ToggleDeepUserSelectionResult (src/features/graph/app/store/types.ts)
+- tipo UiLayer (src/features/graph/app/store/types.ts)
+- tipo UiPanel (src/features/graph/app/store/types.ts)
+- interfaz UiSlice (src/features/graph/app/store/types.ts)
+- interfaz UpsertGraphNodesResult (src/features/graph/app/store/types.ts)
+- interfaz ViewportInteractionState (src/features/graph/app/store/types.ts)
+- interfaz ZapLayerEdge (src/features/graph/app/store/types.ts)
+- interfaz ZapLayerState (src/features/graph/app/store/types.ts)
+- tipo ZapLayerStatus (src/features/graph/app/store/types.ts)
+- interfaz ZapSlice (src/features/graph/app/store/types.ts)
+- interfaz AvatarPipelineProbeSnapshot (src/features/graph/components/avatarPipelineProbe.ts)
+- interfaz AvatarPipelineProbeState (src/features/graph/components/avatarPipelineProbe.ts)
+- variable clearAvatarPipelineProbe (src/features/graph/components/avatarPipelineProbe.ts)
+- variable isAvatarPipelineProbeEnabled (src/features/graph/components/avatarPipelineProbe.ts)
+- variable publishAvatarPipelineProbe (src/features/graph/components/avatarPipelineProbe.ts)
+- funcion CoverageRecoveryCard CoverageRecoveryCard({ reason, relaySummary, rootLoadMessage, variant, onChangeRelays, onTrySampleRoot, }: CoverageRecoveryCardProps) (src/features/graph/components/CoverageRecoveryCard.tsx)
+- funcion DeepCaptureSelectionPanel DeepCaptureSelectionPanel() (src/features/graph/components/DeepCaptureSelectionPanel.tsx)
+- variable GraphCanvas (src/features/graph/components/GraphCanvas.tsx)
+- interfaz GraphCanvasDiagnostics (src/features/graph/components/GraphCanvas.tsx)
+- variable GraphControlRail (src/features/graph/components/GraphControlRail.tsx)
+- variable NodeAccessRail (src/features/graph/components/NodeAccessRail.tsx)
+- funcion NodeDetailPanel NodeDetailPanel({ imageRuntime = null, runtime, }: NodeDetailPanelProps) (src/features/graph/components/NodeDetailPanel.tsx)
+- funcion NodeExpansionProgressCard NodeExpansionProgressCard({ className, nodeLabel = null, state, title = 'Expansion en curso', variant = 'panel', }: NodeExpansionProgressCardProps) (src/features/graph/components/NodeExpansionProgressCard.tsx)
+- funcion NpubInput NpubInput({ onValidRoot, onInvalidRoot }: NpubInputProps) (src/features/graph/components/NpubInput.tsx)
+- funcion PathfindingPanel PathfindingPanel({ runtime }: PathfindingPanelProps) (src/features/graph/components/PathfindingPanel.tsx)
+- funcion createPerfCounters createPerfCounters(): PerfCounters (src/features/graph/components/perfCounters.ts)
+- interfaz PerfCounters (src/features/graph/components/perfCounters.ts)
+- variable PerfOverlay (src/features/graph/components/PerfOverlay.tsx)
+- interfaz PerfOverlayProps (src/features/graph/components/PerfOverlay.tsx)
+- funcion RelayConfigPanel RelayConfigPanel({ rootLoader, mode = 'standalone', }: RelayConfigPanelProps) (src/features/graph/components/RelayConfigPanel.tsx)
+- funcion RelayHealthIndicator RelayHealthIndicator({ mode = 'full', }: RelayHealthIndicatorProps) (src/features/graph/components/RelayHealthIndicator.tsx)
+- funcion RenderConfigPanel RenderConfigPanel() (src/features/graph/components/RenderConfigPanel.tsx)
+- variable SavedRootsPanel (src/features/graph/components/SavedRootsPanel.tsx)
+- funcion createNostrGraphDatabase createNostrGraphDatabase(name?: string): NostrGraphDexie (src/features/graph/db/database.ts)
+- variable NOSTR_GRAPH_DB_NAME (src/features/graph/db/database.ts)
+- variable NOSTR_GRAPH_DB_SCHEMA_V1 (src/features/graph/db/database.ts)
+- variable NOSTR_GRAPH_DB_SCHEMA_V2 (src/features/graph/db/database.ts)
+- variable NOSTR_GRAPH_DB_SCHEMA_V3 (src/features/graph/db/database.ts)
+- variable NOSTR_GRAPH_DB_SCHEMA_V4 (src/features/graph/db/database.ts)
+- variable NOSTR_GRAPH_DB_SCHEMA_V5 (src/features/graph/db/database.ts)
+- variable NOSTR_GRAPH_DB_SCHEMA_V6 (src/features/graph/db/database.ts)
+- variable NOSTR_GRAPH_DB_SCHEMA_V7 (src/features/graph/db/database.ts)
+- clase NostrGraphDexie (src/features/graph/db/database.ts)
+- tipo AddressableHeadKey (src/features/graph/db/entities.ts)
+- interfaz AddressableHeadRecord (src/features/graph/db/entities.ts)
+- tipo CaptureScope (src/features/graph/db/entities.ts)
+- interfaz ContactListRecord (src/features/graph/db/entities.ts)
+- interfaz ImageVariantRecord (src/features/graph/db/entities.ts)
+- interfaz InboundFollowerSnapshotRecord (src/features/graph/db/entities.ts)
+- interfaz InboundRefRecord (src/features/graph/db/entities.ts)
+- tipo InboundRelationType (src/features/graph/db/entities.ts)
+- tipo NostrTag (src/features/graph/db/entities.ts)
+- interfaz NoteExtractRecord (src/features/graph/db/entities.ts)
+- interfaz ProfileRecord (src/features/graph/db/entities.ts)
+- interfaz RawEventInput (src/features/graph/db/entities.ts)
+- interfaz RawEventRecord (src/features/graph/db/entities.ts)
+- interfaz RelayDiscoveryStatsRecord (src/features/graph/db/entities.ts)
+- interfaz RelayListRecord (src/features/graph/db/entities.ts)
+- tipo ReplaceableHeadKey (src/features/graph/db/entities.ts)
+- interfaz ReplaceableHeadRecord (src/features/graph/db/entities.ts)
+- interfaz ZapRecord (src/features/graph/db/entities.ts)
+- clase AddressableHeadsRepository (src/features/graph/db/repositories.ts)
+- clase ContactListsRepository (src/features/graph/db/repositories.ts)
+- funcion createRepositories createRepositories(db: NostrGraphDexie): NostrGraphRepositories (src/features/graph/db/repositories.ts)
+- funcion deleteDatabase deleteDatabase(db: NostrGraphDexie): Promise<void> (src/features/graph/db/repositories.ts)
+- interfaz ImageVariantLodSummary (src/features/graph/db/repositories.ts)
+- clase ImageVariantRepository (src/features/graph/db/repositories.ts)
+- interfaz ImageVariantStorageSummary (src/features/graph/db/repositories.ts)
+- clase InboundFollowerSnapshotsRepository (src/features/graph/db/repositories.ts)
+- clase InboundRefsRepository (src/features/graph/db/repositories.ts)
+- interfaz NostrGraphRepositories (src/features/graph/db/repositories.ts)
+- clase NoteExtractsRepository (src/features/graph/db/repositories.ts)
+- clase ProfilesRepository (src/features/graph/db/repositories.ts)
+- clase RawEventsRepository (src/features/graph/db/repositories.ts)
+- interfaz RelayDiscoveryCountInput (src/features/graph/db/repositories.ts)
+- interfaz RelayDiscoveryFetchInput (src/features/graph/db/repositories.ts)
+- clase RelayDiscoveryStatsRepository (src/features/graph/db/repositories.ts)
+- clase RelayListsRepository (src/features/graph/db/repositories.ts)
+- clase ReplaceableHeadsRepository (src/features/graph/db/repositories.ts)
+- clase ZapsRepository (src/features/graph/db/repositories.ts)
+- funcion buildTieBreakKey buildTieBreakKey(createdAt: number, eventId: string): string (src/features/graph/db/utils.ts)
+- funcion compareRawEvents compareRawEvents(left: RawEventRecord, right: RawEventRecord): number (src/features/graph/db/utils.ts)
+- funcion mergeCaptureScope mergeCaptureScope(currentScope: CaptureScope, incomingScope: CaptureScope): CaptureScope (src/features/graph/db/utils.ts)
+- funcion shouldReplaceCanonicalHead shouldReplaceCanonicalHead(current: Pick<ReplaceableHeadRecord, 'createdAt' | 'eventId'>, incoming: Pick<ReplaceableHeadRecord, 'createdAt' | 'eventId'>): boolean (src/features/graph/db/utils.ts)
+- funcion shouldReplaceCanonicalHead shouldReplaceCanonicalHead(current: Pick<AddressableHeadRecord, 'createdAt' | 'eventId'>, incoming: Pick<AddressableHeadRecord, 'createdAt' | 'eventId'>): boolean (src/features/graph/db/utils.ts)
+- funcion shouldReplaceCanonicalHead shouldReplaceCanonicalHead(current: { createdAt: number; eventId: string }, incoming: { createdAt: number; eventId: string }): boolean (src/features/graph/db/utils.ts)
+- funcion shouldReplaceProjection shouldReplaceProjection(current: Pick<ProfileRecord, 'createdAt' | 'eventId'>, incoming: Pick<ProfileRecord, 'createdAt' | 'eventId'>): boolean (src/features/graph/db/utils.ts)
+- funcion shouldReplaceProjection shouldReplaceProjection(current: Pick<ContactListRecord, 'createdAt' | 'eventId'>, incoming: Pick<ContactListRecord, 'createdAt' | 'eventId'>): boolean (src/features/graph/db/utils.ts)
+- funcion shouldReplaceProjection shouldReplaceProjection(current: Pick<RelayListRecord, 'createdAt' | 'eventId'>, incoming: Pick<RelayListRecord, 'createdAt' | 'eventId'>): boolean (src/features/graph/db/utils.ts)
+- funcion shouldReplaceProjection shouldReplaceProjection(current: { createdAt: number; eventId: string }, incoming: { createdAt: number; eventId: string }): boolean (src/features/graph/db/utils.ts)
+- funcion toSortedUniqueStrings toSortedUniqueStrings(values: readonly string[]): string[] (src/features/graph/db/utils.ts)
+- funcion clearSiteCache clearSiteCache(): Promise<ClearSiteCacheSummary> (src/features/graph/dev/clearSiteCache.ts)
+- interfaz ClearSiteCacheSummary (src/features/graph/dev/clearSiteCache.ts)
+- variable clampImageQualityModeForProfile (src/features/graph/devicePerformance.ts)
+- variable DEFAULT_DEVICE_PERFORMANCE_PROFILE (src/features/graph/devicePerformance.ts)
+- variable DEFAULT_EFFECTIVE_GRAPH_CAPS (src/features/graph/devicePerformance.ts)
+- variable DEFAULT_EFFECTIVE_IMAGE_BUDGET (src/features/graph/devicePerformance.ts)
+- variable detectDevicePerformance (src/features/graph/devicePerformance.ts)
+- interfaz DevicePerformanceDetectionInput (src/features/graph/devicePerformance.ts)
+- interfaz DevicePerformanceDetectionResult (src/features/graph/devicePerformance.ts)
+- variable getDefaultImageQualityModeForProfile (src/features/graph/devicePerformance.ts)
+- variable getEffectiveGraphCapsForProfile (src/features/graph/devicePerformance.ts)
+- variable getEffectiveImageBudgetForProfile (src/features/graph/devicePerformance.ts)
+- variable isMobileDevicePerformanceProfile (src/features/graph/devicePerformance.ts)
+- funcion deriveDirectedEvidence deriveDirectedEvidence(input: { links: readonly GraphLink[] inboundLinks: readonly GraphLink[] }): DirectedEvidenceSnapshot (src/features/graph/evidence/directedEvidence.ts)
+- interfaz DirectedEvidenceEdge (src/features/graph/evidence/directedEvidence.ts)
+- interfaz DirectedEvidenceSnapshot (src/features/graph/evidence/directedEvidence.ts)
+- funcion buildFileTree buildFileTree(snapshot: FrozenSnapshot): Promise<FileTree> (src/features/graph/export/archive-builder.ts)
+- funcion buildMultipartArchive buildMultipartArchive(snapshot: FrozenSnapshot, options?: MultipartBuildOptions): Promise<MultipartArchiveResult> (src/features/graph/export/archive-builder.ts)
+- funcion buildSnapshotArchive buildSnapshotArchive(snapshot: FrozenSnapshot): Promise<ArchiveResult> (src/features/graph/export/archive-builder.ts)
+- funcion buildUserFileTree buildUserFileTree(pubkey: string, userData: FrozenUserData, snapshot: FrozenSnapshot): Record<string, Uint8Array<ArrayBuffer>> (src/features/graph/export/archive-builder.ts)
+- funcion estimateUncompressedSize estimateUncompressedSize(files: Record<string, Uint8Array<ArrayBuffer>>): number (src/features/graph/export/archive-builder.ts)
+- interfaz FileTree (src/features/graph/export/archive-builder.ts)
+- interfaz MultipartBuildOptions (src/features/graph/export/archive-builder.ts)
+- funcion zipFileTree zipFileTree(fileTree: FileTree): Blob (src/features/graph/export/archive-builder.ts)
+- funcion canonicalJson canonicalJson(value: unknown): string (src/features/graph/export/canonical.ts)
+- funcion canonicalNdjson canonicalNdjson(records: readonly unknown[]): string (src/features/graph/export/canonical.ts)
+- funcion encodeUtf8 encodeUtf8(text: string): Uint8Array<ArrayBuffer> (src/features/graph/export/canonical.ts)
+- funcion sha256Hex sha256Hex(data: Uint8Array<ArrayBuffer>): Promise<string> (src/features/graph/export/canonical.ts)
+- funcion sortDeep sortDeep(value: unknown): unknown (src/features/graph/export/canonical.ts)
+- funcion downloadBlob downloadBlob(blob: Blob, filename: string): void (src/features/graph/export/download.ts)
+- funcion buildProfilePhotoArchive buildProfilePhotoArchive(snapshot: FrozenSnapshot, options: BuildProfilePhotoArchiveOptions = {}): Promise<ProfilePhotoArchiveResult> (src/features/graph/export/profile-photo-archive.ts)
+- interfaz BuildProfilePhotoArchiveOptions (src/features/graph/export/profile-photo-archive.ts)
+- funcion freezeSnapshot freezeSnapshot(deps: SnapshotFreezerDependencies): Promise<FrozenSnapshot> (src/features/graph/export/snapshot-freezer.ts)
+- interfaz SnapshotFreezerDependencies (src/features/graph/export/snapshot-freezer.ts)
+- interfaz ArchiveResult (src/features/graph/export/types.ts)
+- interfaz ExportManifest (src/features/graph/export/types.ts)
+- interfaz FrozenSnapshot (src/features/graph/export/types.ts)
+- interfaz FrozenUserData (src/features/graph/export/types.ts)
+- interfaz MultipartArchiveResult (src/features/graph/export/types.ts)
+- interfaz ProfilePhotoArchiveEntry (src/features/graph/export/types.ts)
+- tipo ProfilePhotoArchiveEntryStatus (src/features/graph/export/types.ts)
+- interfaz ProfilePhotoArchiveManifest (src/features/graph/export/types.ts)
+- interfaz ProfilePhotoArchiveResult (src/features/graph/export/types.ts)
+- interfaz UserResumen (src/features/graph/export/types.ts)
+- funcion GraphClient GraphClient() (src/features/graph/GraphClient.tsx)
+- funcion createKernelEventEmitter createKernelEventEmitter() (src/features/graph/kernel/events.ts)
+- tipo KernelEvent (src/features/graph/kernel/events.ts)
+- tipo KernelEventListener (src/features/graph/kernel/events.ts)
+- funcion createKernelFacade createKernelFacade(dependencies: AppKernelDependencies) (src/features/graph/kernel/facade.ts)
+- tipo KernelFacade (src/features/graph/kernel/facade.ts)
+- funcion createHeadlessKernel createHeadlessKernel(options: HeadlessKernelOptions): KernelFacade (src/features/graph/kernel/headless.ts)
+- interfaz HeadlessKernelOptions (src/features/graph/kernel/headless.ts)
+- tipo AnalysisModule (src/features/graph/kernel/modules/analysis.ts)
+- funcion createAnalysisModule createAnalysisModule(ctx: KernelContext) (src/features/graph/kernel/modules/analysis.ts)
+- variable COVERAGE_RECOVERY_MESSAGE (src/features/graph/kernel/modules/constants.ts)
+- variable DEFAULT_SESSION_RELAY_URLS (src/features/graph/kernel/modules/constants.ts)
+- variable DISCOVERED_GRAPH_ANALYSIS_LOADING_MESSAGE (src/features/graph/kernel/modules/constants.ts)
+- variable KEYWORD_BATCH_CONCURRENCY (src/features/graph/kernel/modules/constants.ts)
+- variable KEYWORD_BATCH_SIZE (src/features/graph/kernel/modules/constants.ts)
+- variable KEYWORD_EXTRACT_MAX_LENGTH (src/features/graph/kernel/modules/constants.ts)
+- variable KEYWORD_FILTER_LIMIT_FACTOR (src/features/graph/kernel/modules/constants.ts)
+- variable KEYWORD_LAYER_EMPTY_MESSAGE (src/features/graph/kernel/modules/constants.ts)
+- variable KEYWORD_LAYER_LOADING_MESSAGE (src/features/graph/kernel/modules/constants.ts)
+- variable KEYWORD_LOOKBACK_WINDOW_SEC (src/features/graph/kernel/modules/constants.ts)
+- variable KEYWORD_MAX_NOTES_PER_PUBKEY (src/features/graph/kernel/modules/constants.ts)
+- variable MAX_SESSION_RELAYS (src/features/graph/kernel/modules/constants.ts)
+- variable MAX_ZAP_RECEIPTS (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_DETAIL_PREVIEW_CONNECT_TIMEOUT_MS (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_DETAIL_PREVIEW_PAGE_TIMEOUT_MS (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_DETAIL_PREVIEW_RETRY_COUNT (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_DETAIL_PREVIEW_STRAGGLER_GRACE_MS (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_EXPAND_CONNECT_TIMEOUT_MS (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_EXPAND_INBOUND_PARSE_CONCURRENCY (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_EXPAND_INBOUND_QUERY_LIMIT (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_EXPAND_PAGE_TIMEOUT_MS (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_EXPAND_RETRY_COUNT (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_EXPAND_STRAGGLER_GRACE_MS (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_PROFILE_HYDRATION_BATCH_CONCURRENCY (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_PROFILE_HYDRATION_BATCH_SIZE (src/features/graph/kernel/modules/constants.ts)
+- variable NODE_PROFILE_PERSIST_CONCURRENCY (src/features/graph/kernel/modules/constants.ts)
+- variable RELAY_HEALTH_FLUSH_DELAY_MS (src/features/graph/kernel/modules/constants.ts)
+- variable ROOT_LOADING_MESSAGE (src/features/graph/kernel/modules/constants.ts)
+- variable ZAP_LAYER_LOADING_MESSAGE (src/features/graph/kernel/modules/constants.ts)
+- interfaz AppKernelDependencies (src/features/graph/kernel/modules/context.ts)
+- interfaz KernelContext (src/features/graph/kernel/modules/context.ts)
+- tipo RelayAdapterInstance (src/features/graph/kernel/modules/context.ts)
+- funcion createExportModule createExportModule(ctx: KernelContext) (src/features/graph/kernel/modules/export-orch.ts)
+- tipo ExportModule (src/features/graph/kernel/modules/export-orch.ts)
+- funcion createFollowerDiscoveryModule createFollowerDiscoveryModule(ctx: KernelContext, collaborators: { analysis: AnalysisModule persistence: PersistenceModule profileHydration: ProfileHydrationModule }) (src/features/graph/kernel/modules/follower-discovery.ts)
+- tipo FollowerDiscoveryModule (src/features/graph/kernel/modules/follower-discovery.ts)
+- variable ROOT_RELAY_LIST_KIND (src/features/graph/kernel/modules/follower-discovery.ts)
+- funcion buildMutualAdjacency buildMutualAdjacency(state: Pick<AppStore, 'links' | 'inboundLinks' | 'nodes'>): Record<string, string[]> (src/features/graph/kernel/modules/helpers.ts)
+- funcion buildNodeProfileFromNode buildNodeProfileFromNode(node: GraphNode): NodeDetailProfile (src/features/graph/kernel/modules/helpers.ts)
+- funcion buildZapReceiptsFilter buildZapReceiptsFilter(visiblePubkeys: readonly string[]): Filter & { '#p': string[] } (src/features/graph/kernel/modules/helpers.ts)
+- funcion chunkIntoBatches chunkIntoBatches(items: readonly T[], size: number): T[][] (src/features/graph/kernel/modules/helpers.ts)
+- funcion collectInboundFollowerEvidence collectInboundFollowerEvidence(eventsWorker: WorkerClient<EventsWorkerActionMap>, envelopes: readonly RelayEventEnvelope[], targetPubkey: string): Promise<InboundFollowerEvidence> (src/features/graph/kernel/modules/helpers.ts)
+- funcion collectRelayEvents collectRelayEvents(adapter: RelayAdapterInstance, filters: RelayQueryFilter[], options?: RelayCollectionOptions): Promise<RelayCollectionResult> (src/features/graph/kernel/modules/helpers.ts)
+- funcion collectTargetedReciprocalFollowerEvidence collectTargetedReciprocalFollowerEvidence({ adapter, eventsWorker, followPubkeys, targetPubkey, }: { adapter: RelayAdapterInstance eventsWorker: WorkerClient<EventsWorkerActionMap> followPubkeys: readonly string[] targetPubkey: string }): Promise<InboundFollowerEvidence> (src/features/graph/kernel/modules/helpers.ts)
+- funcion createIdleRelayHealthSnapshotMap createIdleRelayHealthSnapshotMap(relayUrls: readonly string[], now: number): Record<string, RelayHealthSnapshot> (src/features/graph/kernel/modules/helpers.ts)
+- funcion createRelayHealthSnapshotFromStore createRelayHealthSnapshotFromStore(relayUrl: string, relayHealth: RelayHealth | undefined, now: number): RelayHealthSnapshot (src/features/graph/kernel/modules/helpers.ts)
+- funcion findDTag findDTag(event: Event): string | null (src/features/graph/kernel/modules/helpers.ts)
+- funcion findEventTagValue findEventTagValue(tags: string[][], tagName: string): string | null (src/features/graph/kernel/modules/helpers.ts)
+- interfaz InboundFollowerEvidence (src/features/graph/kernel/modules/helpers.ts)
+- clase KernelCommandError (src/features/graph/kernel/modules/helpers.ts)
+- tipo KernelCommandErrorCode (src/features/graph/kernel/modules/helpers.ts)
+- funcion mapProfileRecordToNodeProfile mapProfileRecordToNodeProfile(profile: ProfileRecord): NodeDetailProfile (src/features/graph/kernel/modules/helpers.ts)
+- funcion mapRelayHealthStatus mapRelayHealthStatus(status: RelayHealthSnapshot['status']): StoreRelayHealthStatus (src/features/graph/kernel/modules/helpers.ts)
+- funcion mapStoreRelayHealthStatus mapStoreRelayHealthStatus(status: StoreRelayHealthStatus): RelayHealthSnapshot['status'] (src/features/graph/kernel/modules/helpers.ts)
+- funcion mergeBoundedRelayUrlSets mergeBoundedRelayUrlSets(limit: number, ...relayGroups: Array<readonly string[] | undefined>): string[] (src/features/graph/kernel/modules/helpers.ts)
+- interfaz MergedRelayEventEnvelope (src/features/graph/kernel/modules/helpers.ts)
+- funcion mergeInboundFollowerEvidence mergeInboundFollowerEvidence(...evidenceItems: readonly InboundFollowerEvidence[]): InboundFollowerEvidence (src/features/graph/kernel/modules/helpers.ts)
+- funcion mergeRelayEventsById mergeRelayEventsById(events: readonly RelayEventEnvelope[]): MergedRelayEventEnvelope[] (src/features/graph/kernel/modules/helpers.ts)
+- funcion mergeRelayUrlSets mergeRelayUrlSets(...relayGroups: Array<readonly string[] | undefined>): string[] (src/features/graph/kernel/modules/helpers.ts)
+- tipo RelayCollectionOptions (src/features/graph/kernel/modules/helpers.ts)
+- interfaz RelayCollectionProgress (src/features/graph/kernel/modules/helpers.ts)
+- interfaz RelayCollectionResult (src/features/graph/kernel/modules/helpers.ts)
+- tipo RelayOverrideValidationResult (src/features/graph/kernel/modules/helpers.ts)
+- funcion runWithConcurrencyLimit runWithConcurrencyLimit(items: readonly T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> (src/features/graph/kernel/modules/helpers.ts)
+- funcion safeParseProfile safeParseProfile(content: string): { name: string | null about: string | null picture: string | null nip05: string | null lud16: string | null } | null (src/features/graph/kernel/modules/helpers.ts)
+- funcion selectLatestReplaceableEvent selectLatestReplaceableEvent(events: RelayEventEnvelope[]): RelayEventEnvelope | null (src/features/graph/kernel/modules/helpers.ts)
+- funcion selectLatestReplaceableEventsByPubkey selectLatestReplaceableEventsByPubkey(events: RelayEventEnvelope[]): RelayEventEnvelope[] (src/features/graph/kernel/modules/helpers.ts)
+- funcion serializeContactListEvent serializeContactListEvent(event: Event) (src/features/graph/kernel/modules/helpers.ts)
+- funcion serializeZapReceiptEvent serializeZapReceiptEvent(event: Event): ZapReceiptInput (src/features/graph/kernel/modules/helpers.ts)
+- funcion tokenizeKeyword tokenizeKeyword(keyword: string): string[] (src/features/graph/kernel/modules/helpers.ts)
+- funcion validateRelayOverrideInput validateRelayOverrideInput(rawRelayUrls: readonly string[]): RelayOverrideValidationResult (src/features/graph/kernel/modules/helpers.ts)
+- funcion createKeywordLayerModule createKeywordLayerModule(ctx: KernelContext, collaborators: { persistence: PersistenceModule }) (src/features/graph/kernel/modules/keyword-layer.ts)
+- tipo KeywordLayerModule (src/features/graph/kernel/modules/keyword-layer.ts)
+- funcion createNodeDetailModule createNodeDetailModule(ctx: KernelContext, collaborators: { persistence: PersistenceModule profileHydration: ProfileHydrationModule }) (src/features/graph/kernel/modules/node-detail.ts)
+- tipo NodeDetailModule (src/features/graph/kernel/modules/node-detail.ts)
+- funcion createNodeExpansionModule createNodeExpansionModule(ctx: KernelContext, collaborators: { analysis: AnalysisModule persistence: PersistenceModule profileHydration: ProfileHydrationModule rootLoader: RootLoaderModule keywordLayer: KeywordLayerModule zapLayer: ZapLayerModule nodeDetail: NodeDetailModule }) (src/features/graph/kernel/modules/node-expansion.ts)
+- tipo NodeExpansionModule (src/features/graph/kernel/modules/node-expansion.ts)
+- funcion createPersistenceModule createPersistenceModule(ctx: KernelContext, collaborators: { profileHydration: ProfileHydrationModule }) (src/features/graph/kernel/modules/persistence.ts)
+- tipo PersistenceModule (src/features/graph/kernel/modules/persistence.ts)
+- funcion createProfileHydrationModule createProfileHydrationModule(ctx: KernelContext) (src/features/graph/kernel/modules/profile-hydration.ts)
+- tipo ProfileHydrationModule (src/features/graph/kernel/modules/profile-hydration.ts)
+- funcion createRelaySessionModule createRelaySessionModule(ctx: KernelContext) (src/features/graph/kernel/modules/relay-session.ts)
+- tipo RelaySessionModule (src/features/graph/kernel/modules/relay-session.ts)
+- funcion createRootLoaderModule createRootLoaderModule(ctx: KernelContext, collaborators: { analysis: AnalysisModule persistence: PersistenceModule profileHydration: ProfileHydrationModule relaySession: RelaySessionModule keywordLayer: KeywordLayerModule zapLayer: { cancelActiveZapLoad: () => void getZapTargetPubkeys: () => string[] prefetchZapLayer: (targetPubkeys: string[], relayUrls: string[]) => Promise<void> } }) (src/features/graph/kernel/modules/root-loader.ts)
+- tipo RootLoaderModule (src/features/graph/kernel/modules/root-loader.ts)
+- funcion buildContactListPartialMessage buildContactListPartialMessage(options: { discoveredFollowCount: number diagnostics: readonly { code: string }[] rejectedPubkeyCount: number maxGraphNodes?: number loadedFromCache?: boolean acceptedNodesCount?: number }): string | null (src/features/graph/kernel/modules/text-helpers.ts)
+- funcion buildDiscoveredGraphAnalysisMessage buildDiscoveredGraphAnalysisMessage(result: { mode: 'full' | 'heuristic' confidence: 'low' | 'medium' | 'high' communityCount: number analyzedNodeCount: number relayHealth: { healthyRelayCount: number degradedRelayCount: number offlineRelayCount: number } flags: readonly string[] }) (src/features/graph/kernel/modules/text-helpers.ts)
+- funcion buildDiscoveredMessage buildDiscoveredMessage(discoveredFollowCount: number, hasPartialSignals: boolean, loadedFromCache: boolean = false, acceptedNodesCount?: number): string (src/features/graph/kernel/modules/text-helpers.ts)
+- funcion buildExpandedStructureMessage buildExpandedStructureMessage(options: { pubkey: string discoveredFollowCount: number discoveredFollowerCount: number hasPartialSignals: boolean authoredDiagnostics: readonly { code: string }[] rejectedPubkeyCount: number maxGraphNodes: number authoredLoadedFromCache?: boolean acceptedNodesCount: number }): string (src/features/graph/kernel/modules/text-helpers.ts)
+- funcion buildNoteExtractRecordsByPubkey buildNoteExtractRecordsByPubkey(events: readonly MergedRelayEventEnvelope[], requestedPubkeys: readonly string[], maxNotesPerPubkey: number): Map<string, NoteExtractRecord[]> (src/features/graph/kernel/modules/text-helpers.ts)
+- funcion buildZapLayerMessage buildZapLayerMessage({ status, edgeCount, skippedReceipts, loadedFrom, }: { status: 'loading' | 'enabled' | 'unavailable' edgeCount: number skippedReceipts: number loadedFrom: 'cache' | 'live' }): string (src/features/graph/kernel/modules/text-helpers.ts)
+- funcion flattenNoteExtractRecords flattenNoteExtractRecords(recordsByPubkey: Map<string, NoteExtractRecord[]>): NoteExtractRecord[] (src/features/graph/kernel/modules/text-helpers.ts)
+- funcion logKeywordMatchesToConsole logKeywordMatchesToConsole(keyword: string, nodeHits: Record<string, number>, matchesByPubkey: Record<string, KeywordMatch[]>, nodes: Record<string, GraphNode>): void (src/features/graph/kernel/modules/text-helpers.ts)
+- funcion normalizeNoteExtractText normalizeNoteExtractText(content: string): string | null (src/features/graph/kernel/modules/text-helpers.ts)
+- funcion summarizeKeywordCorpus summarizeKeywordCorpus(extracts: readonly NoteExtractRecord[]): { corpusNodeCount: number extractCount: number } (src/features/graph/kernel/modules/text-helpers.ts)
+- funcion createZapLayerModule createZapLayerModule(ctx: KernelContext, collaborators: { analysis: AnalysisModule persistence: PersistenceModule profileHydration: ProfileHydrationModule relaySession: RelaySessionModule rootLoader: { getLoadSequence: () => number isStaleLoad: (loadId: number) => boolean } keywordLayer: KeywordLayerModule }) (src/features/graph/kernel/modules/zap-layer.ts)
+- tipo ZapLayerModule (src/features/graph/kernel/modules/zap-layer.ts)
+- funcion decodeProfilePointer decodeProfilePointer(input: string): ProfilePointerDecodeResult (src/features/graph/kernel/nip19.ts)
+- funcion decodeRootPointer decodeRootPointer(input: string): Exclude<RootPointerDecodeResult, { status: 'validating' }> (src/features/graph/kernel/nip19.ts)
+- tipo ProfilePointerDecodeResult (src/features/graph/kernel/nip19.ts)
+- tipo ProfilePointerKind (src/features/graph/kernel/nip19.ts)
+- tipo RootPointerDecodeResult (src/features/graph/kernel/nip19.ts)
+- tipo RootPointerKind (src/features/graph/kernel/nip19.ts)
+- variable CURATED_SAMPLE_ROOT (src/features/graph/kernel/recovery.ts)
+- funcion runScenario runScenario(kernel: KernelFacade, scenario: ScenarioDefinition, clock: () => number): Promise<ScenarioReport> (src/features/graph/kernel/runner.ts)
+- tipo ScenarioCommand (src/features/graph/kernel/runner.ts)
+- tipo ScenarioCommandResult (src/features/graph/kernel/runner.ts)
+- interfaz ScenarioDefinition (src/features/graph/kernel/runner.ts)
+- interfaz ScenarioGraphSnapshot (src/features/graph/kernel/runner.ts)
+- interfaz ScenarioRelayHealthSnapshot (src/features/graph/kernel/runner.ts)
+- interfaz ScenarioReport (src/features/graph/kernel/runner.ts)
+- interfaz ScenarioStepError (src/features/graph/kernel/runner.ts)
+- interfaz ScenarioStepReport (src/features/graph/kernel/runner.ts)
+- variable browserAppKernel (src/features/graph/kernel/runtime.ts)
+- interfaz ExpandNodeResult (src/features/graph/kernel/runtime.ts)
+- interfaz FindPathResult (src/features/graph/kernel/runtime.ts)
+- interfaz LoadRootOptions (src/features/graph/kernel/runtime.ts)
+- interfaz LoadRootResult (src/features/graph/kernel/runtime.ts)
+- interfaz NodeDetailProfile (src/features/graph/kernel/runtime.ts)
+- interfaz ReconfigureRelaysInput (src/features/graph/kernel/runtime.ts)
+- interfaz ReconfigureRelaysResult (src/features/graph/kernel/runtime.ts)
+- interfaz RootLoader (src/features/graph/kernel/runtime.ts)
+- interfaz SearchKeywordResult (src/features/graph/kernel/runtime.ts)
+- interfaz SelectNodeResult (src/features/graph/kernel/runtime.ts)
+- interfaz ToggleLayerResult (src/features/graph/kernel/runtime.ts)
+- funcion createTranscriptRelayAdapter createTranscriptRelayAdapter(options: TranscriptRelayAdapterOptions) (src/features/graph/kernel/transcript-relay.ts)
+- funcion createTranscriptRelayAdapterFactory createTranscriptRelayAdapterFactory(options: TranscriptRelayAdapterOptions) (src/features/graph/kernel/transcript-relay.ts)
+- interfaz RelayTranscript (src/features/graph/kernel/transcript-relay.ts)
+- interfaz TranscriptEntry (src/features/graph/kernel/transcript-relay.ts)
+- interfaz TranscriptRelayAdapterOptions (src/features/graph/kernel/transcript-relay.ts)
+- funcion transitionExportJob transitionExportJob(current: ExportJobStatus, action: ExportAction): ExportJobStatus | null (src/features/graph/kernel/transitions/export-job.ts)
+- funcion transitionRelayOverride transitionRelayOverride(current: RelayOverrideStatus, action: RelayOverrideAction): RelayOverrideStatus | null (src/features/graph/kernel/transitions/relay-override.ts)
+- funcion transitionRootLoad transitionRootLoad(current: RootLoadStatus, action: RootLoadAction): RootLoadStatus | null (src/features/graph/kernel/transitions/root-load.ts)
+- funcion createRelayAdapterError createRelayAdapterError(input: { code: RelayAdapterErrorCode message: string relayUrl?: string retryable: boolean details?: RelayAdapterErrorDetails }): RelayAdapterError (src/features/graph/nostr/errors.ts)
+- clase RelayAdapterError (src/features/graph/nostr/errors.ts)
+- variable PRIMAL_CACHE_URL (src/features/graph/nostr/primal-cache-client.ts)
+- clase PrimalCacheClient (src/features/graph/nostr/primal-cache-client.ts)
+- funcion createRelayPoolAdapter createRelayPoolAdapter(options: RelayAdapterOptions): RelayPoolAdapter (src/features/graph/nostr/relay-adapter.ts)
+- clase RelayPoolAdapter (src/features/graph/nostr/relay-adapter.ts)
+- clase NostrToolsRelayTransport (src/features/graph/nostr/relay-transport.ts)
+- funcion normalizeRelayUrl normalizeRelayUrl(rawUrl: string, options: RelayUrlValidationOptions = {}): string (src/features/graph/nostr/relay-url.ts)
+- tipo RelayAdapterErrorCode (src/features/graph/nostr/types.ts)
+- interfaz RelayAdapterErrorDetails (src/features/graph/nostr/types.ts)
+- interfaz RelayAdapterOptions (src/features/graph/nostr/types.ts)
+- interfaz RelayClock (src/features/graph/nostr/types.ts)
+- interfaz RelayConnection (src/features/graph/nostr/types.ts)
+- interfaz RelayCountOptions (src/features/graph/nostr/types.ts)
+- interfaz RelayCountRequestOptions (src/features/graph/nostr/types.ts)
+- interfaz RelayCountResult (src/features/graph/nostr/types.ts)
+- interfaz RelayEventEnvelope (src/features/graph/nostr/types.ts)
+- interfaz RelayEventObservable (src/features/graph/nostr/types.ts)
+- interfaz RelayHealthSnapshot (src/features/graph/nostr/types.ts)
+- tipo RelayHealthStatus (src/features/graph/nostr/types.ts)
+- interfaz RelayObserver (src/features/graph/nostr/types.ts)
+- tipo RelayQueryFilter (src/features/graph/nostr/types.ts)
+- interfaz RelaySubscribeHandlers (src/features/graph/nostr/types.ts)
+- interfaz RelaySubscribeOptions (src/features/graph/nostr/types.ts)
+- interfaz RelaySubscriptionHandle (src/features/graph/nostr/types.ts)
+- tipo RelaySubscriptionPriority (src/features/graph/nostr/types.ts)
+- interfaz RelaySubscriptionStats (src/features/graph/nostr/types.ts)
+- interfaz RelaySubscriptionSummary (src/features/graph/nostr/types.ts)
+- interfaz RelayTransport (src/features/graph/nostr/types.ts)
+- interfaz RelayUrlValidationOptions (src/features/graph/nostr/types.ts)
+- tipo RelayVerificationMode (src/features/graph/nostr/types.ts)
+- variable applyImageBucketHysteresis (src/features/graph/render/avatar.ts)
+- variable clampImageBucketForMotion (src/features/graph/render/avatar.ts)
+- variable getAvatarMonogram (src/features/graph/render/avatar.ts)
+- variable IMAGE_LOD_BUCKETS (src/features/graph/render/avatar.ts)
+- tipo ImageLodBucket (src/features/graph/render/avatar.ts)
+- variable isSafeAvatarUrl (src/features/graph/render/avatar.ts)
+- interfaz ResolveAvatarTargetPixelsInput (src/features/graph/render/avatar.ts)
+- variable resolveImageTargetBucket (src/features/graph/render/avatar.ts)
+- tipo AvatarAtlasEntry (src/features/graph/render/avatarAtlasManager.ts)
+- tipo AvatarAtlasLayoutDebugSnapshot (src/features/graph/render/avatarAtlasManager.ts)
+- clase AvatarAtlasManager (src/features/graph/render/avatarAtlasManager.ts)
+- tipo AvatarAtlasPage (src/features/graph/render/avatarAtlasManager.ts)
+- tipo AvatarAtlasSnapshot (src/features/graph/render/avatarAtlasManager.ts)
+- tipo AvatarIconMapping (src/features/graph/render/avatarAtlasManager.ts)
+- variable createAvatarAtlasEntry (src/features/graph/render/avatarAtlasManager.ts)
+- tipo AvatarProxyMode (src/features/graph/render/avatarProxyUrl.ts)
+- variable DEFAULT_AVATAR_PROXY_MODE (src/features/graph/render/avatarProxyUrl.ts)
+- variable resolveAvatarFetchUrl (src/features/graph/render/avatarProxyUrl.ts)
+- tipo AvatarImageQualityMode (src/features/graph/render/avatarQualityGuide.ts)
+- tipo AvatarPromotedQualityTier (src/features/graph/render/avatarQualityGuide.ts)
+- tipo AvatarQualityGuideBlockReason (src/features/graph/render/avatarQualityGuide.ts)
+- interfaz AvatarQualityGuideSnapshot (src/features/graph/render/avatarQualityGuide.ts)
+- tipo AvatarQualityGuideTier (src/features/graph/render/avatarQualityGuide.ts)
+- interfaz AvatarZoomThresholdConfig (src/features/graph/render/avatarQualityGuide.ts)
+- variable BASE_ATLAS_MAX_BUCKET (src/features/graph/render/avatarQualityGuide.ts)
+- variable BASE_ATLAS_MIN_BUCKET (src/features/graph/render/avatarQualityGuide.ts)
+- variable cloneAvatarQualityGuideSnapshot (src/features/graph/render/avatarQualityGuide.ts)
+- variable createEmptyAvatarQualityGuideSnapshot (src/features/graph/render/avatarQualityGuide.ts)
+- variable DEFAULT_AVATAR_FULL_HD_ZOOM_THRESHOLD (src/features/graph/render/avatarQualityGuide.ts)
+- variable DEFAULT_AVATAR_HD_ZOOM_THRESHOLD (src/features/graph/render/avatarQualityGuide.ts)
+- variable finalizeAvatarQualityGuideSnapshot (src/features/graph/render/avatarQualityGuide.ts)
+- variable FULL_HD_MIN_BUCKET (src/features/graph/render/avatarQualityGuide.ts)
+- variable isZoomCloseEnoughForHd (src/features/graph/render/avatarQualityGuide.ts)
+- variable MAX_AVATAR_ZOOM_THRESHOLD (src/features/graph/render/avatarQualityGuide.ts)
+- variable MIN_AVATAR_ZOOM_THRESHOLD (src/features/graph/render/avatarQualityGuide.ts)
+- variable modeSupportsHd (src/features/graph/render/avatarQualityGuide.ts)
+- variable normalizeAvatarZoomThresholds (src/features/graph/render/avatarQualityGuide.ts)
+- variable QUALITY_HD_MIN_BUCKET (src/features/graph/render/avatarQualityGuide.ts)
+- variable resolveAvatarPromotedQualityTier (src/features/graph/render/avatarQualityGuide.ts)
+- variable resolveAvatarQualityGuideBlockReason (src/features/graph/render/avatarQualityGuide.ts)
+- variable resolveHdMinimumBucket (src/features/graph/render/avatarQualityGuide.ts)
+- variable resolveHdMinimumZoom (src/features/graph/render/avatarQualityGuide.ts)
+- variable buildGraphRenderModel (src/features/graph/render/buildGraphRenderModel.ts)
+- variable COMMON_FOLLOW_NODE_COLOR (src/features/graph/render/constants.ts)
+- variable COMMON_FOLLOW_RING_COLOR (src/features/graph/render/constants.ts)
+- variable EXPANDED_NODE_COLOR (src/features/graph/render/constants.ts)
+- variable EXPANDED_RING_COLOR (src/features/graph/render/constants.ts)
+- variable FOLLOW_NODE_COLOR (src/features/graph/render/constants.ts)
+- variable FOLLOW_NODE_RADIUS (src/features/graph/render/constants.ts)
+- variable GRAPH_BRANCH_CHILD_SPAN_FACTOR (src/features/graph/render/constants.ts)
+- variable GRAPH_BRANCH_GAP (src/features/graph/render/constants.ts)
+- variable GRAPH_BRANCH_MAX_SPAN (src/features/graph/render/constants.ts)
+- variable GRAPH_BRANCH_MIN_NODE_SPAN (src/features/graph/render/constants.ts)
+- variable GRAPH_CURVED_EDGE_OFFSET_FACTOR (src/features/graph/render/constants.ts)
+- variable GRAPH_CURVED_EDGE_OFFSET_MAX (src/features/graph/render/constants.ts)
+- variable GRAPH_CURVED_EDGE_OFFSET_MIN (src/features/graph/render/constants.ts)
+- variable GRAPH_CURVED_EDGE_SAMPLE_STEPS (src/features/graph/render/constants.ts)
+- variable GRAPH_EDGE_BUDGET (src/features/graph/render/constants.ts)
+- variable GRAPH_FIT_PADDING_PX (src/features/graph/render/constants.ts)
+- variable GRAPH_LABEL_NODE_BUDGET (src/features/graph/render/constants.ts)
+- variable GRAPH_LABEL_ZOOM_THRESHOLD (src/features/graph/render/constants.ts)
+- variable GRAPH_MAX_ZOOM (src/features/graph/render/constants.ts)
+- variable GRAPH_MIN_SETTLED_ZOOM (src/features/graph/render/constants.ts)
+- variable GRAPH_MIN_ZOOM (src/features/graph/render/constants.ts)
+- variable GRAPH_NODE_ARC_PADDING (src/features/graph/render/constants.ts)
+- variable GRAPH_RING_BASE_RADIUS (src/features/graph/render/constants.ts)
+- variable GRAPH_RING_LANE_GAP (src/features/graph/render/constants.ts)
+- variable GRAPH_RING_STEP (src/features/graph/render/constants.ts)
+- variable HIGHLIGHT_LINK_COLOR (src/features/graph/render/constants.ts)
+- variable HOVER_RING_COLOR (src/features/graph/render/constants.ts)
+- variable LABEL_BACKGROUND_COLOR (src/features/graph/render/constants.ts)
+- variable LABEL_BORDER_COLOR (src/features/graph/render/constants.ts)
+- variable LABEL_TEXT_COLOR (src/features/graph/render/constants.ts)
+- variable LINK_COLOR (src/features/graph/render/constants.ts)
+- variable ROOT_NODE_COLOR (src/features/graph/render/constants.ts)
+- variable ROOT_NODE_RADIUS (src/features/graph/render/constants.ts)
+- variable SELECTED_NODE_COLOR (src/features/graph/render/constants.ts)
+- variable SHARED_NODE_COLOR (src/features/graph/render/constants.ts)
+- variable SHARED_RING_COLOR (src/features/graph/render/constants.ts)
+- variable ZAP_NODE_COLOR (src/features/graph/render/constants.ts)
+- variable ZAP_NODE_RADIUS (src/features/graph/render/constants.ts)
+- variable createEmptyGraphRenderModel (src/features/graph/render/createEmptyGraphRenderModel.ts)
+- variable DeckGraphRenderer (src/features/graph/render/DeckGraphRenderer.tsx)
+- variable resolveGraphUseDevicePixels (src/features/graph/render/devicePixels.ts)
+- interfaz ResolveGraphUseDevicePixelsInput (src/features/graph/render/devicePixels.ts)
+- variable buildGraphSceneGeometry (src/features/graph/render/graphSceneGeometry.ts)
+- variable createGraphSceneGeometrySignature (src/features/graph/render/graphSceneGeometry.ts)
+- tipo GraphEdgeSegment (src/features/graph/render/graphSceneGeometry.ts)
+- clase GraphSceneLayer (src/features/graph/render/GraphSceneLayer.ts)
+- funcion GraphViewport GraphViewport({ width, height, model, viewState, hoveredNodePubkey, hoveredEdgeId, hoveredEdgePubkeys, selectedNodePubkey, visibleLabels, nodeScreenRadii, imageFrame, onAvatarRendererDelivery, onHoverGraph, onSelectNode, onViewStateChange, renderConfig, comparedNodePubkeys, }: GraphViewportProps) (src/features/graph/render/GraphViewport.tsx)
+- variable GraphViewportLazy (src/features/graph/render/GraphViewportLazy.tsx)
+- variable createFittedGraphViewState (src/features/graph/render/graphViewState.ts)
+- variable createGraphFitSignature (src/features/graph/render/graphViewState.ts)
+- interfaz GraphViewState (src/features/graph/render/graphViewState.ts)
+- variable projectGraphPointToScreen (src/features/graph/render/graphViewState.ts)
+- variable sanitizeGraphViewState (src/features/graph/render/graphViewState.ts)
+- variable createEmptyImageRenderPayload (src/features/graph/render/imageRuntime.ts)
+- variable createEmptyImageResidencySnapshot (src/features/graph/render/imageRuntime.ts)
+- tipo ImageDiagnosticHealth (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageDiagnosticsSnapshot (src/features/graph/render/imageRuntime.ts)
+- tipo ImageDiagnosticStage (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageFailuresSnapshot (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageFailureStatusSnapshot (src/features/graph/render/imageRuntime.ts)
+- tipo ImageFrameComputationMode (src/features/graph/render/imageRuntime.ts)
+- tipo ImageFrameSkipReason (src/features/graph/render/imageRuntime.ts)
+- tipo ImageFrameState (src/features/graph/render/imageRuntime.ts)
+- tipo ImageHydrationStage (src/features/graph/render/imageRuntime.ts)
+- interfaz ImagePendingWorkSnapshot (src/features/graph/render/imageRuntime.ts)
+- interfaz ImagePresentationSnapshot (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageRendererDeliverySnapshot (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageRenderPayload (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageResidencySnapshot (src/features/graph/render/imageRuntime.ts)
+- clase ImageRuntime (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageRuntimeConfig (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageRuntimeContextSnapshot (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageSourceHandle (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageTierLodSnapshot (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageTierSnapshot (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageVisibilitySnapshot (src/features/graph/render/imageRuntime.ts)
+- tipo ImageVisibleMissingReason (src/features/graph/render/imageRuntime.ts)
+- interfaz ImageVisibleMissingReasonSnapshot (src/features/graph/render/imageRuntime.ts)
+- interfaz PrepareFrameInput (src/features/graph/render/imageRuntime.ts)
+- interfaz RequestDetailInput (src/features/graph/render/imageRuntime.ts)
+- variable getNodeDisplayLabel (src/features/graph/render/labels.ts)
+- variable selectVisibleGraphLabels (src/features/graph/render/labels.ts)
+- variable shouldShowGraphLabel (src/features/graph/render/labels.ts)
+- variable truncatePubkey (src/features/graph/render/labels.ts)
+- variable getGraphNodeScreenScale (src/features/graph/render/nodeSizing.ts)
+- tipo GraphNodeScreenRadii (src/features/graph/render/nodeSizing.ts)
+- variable resolveGraphNodeScreenRadii (src/features/graph/render/nodeSizing.ts)
+- variable resolveGraphNodeScreenRadiiFast (src/features/graph/render/nodeSizing.ts)
+- variable resolveGraphNodeScreenRadius (src/features/graph/render/nodeSizing.ts)
+- interfaz BuildRenderModelNodeInput (src/features/graph/render/renderModelPayload.ts)
+- interfaz BuildRenderModelRequest (src/features/graph/render/renderModelPayload.ts)
+- variable deserializeBuildGraphRenderModelInput (src/features/graph/render/renderModelPayload.ts)
+- variable serializeBuildGraphRenderModelInput (src/features/graph/render/renderModelPayload.ts)
+- funcion createGraphRenderModelWorkerGateway createGraphRenderModelWorkerGateway(): GraphRenderModelWorkerGateway (src/features/graph/render/renderModelWorker.ts)
+- tipo GraphRenderModelWorkerGateway (src/features/graph/render/renderModelWorker.ts)
+- variable deriveGraphRenderState (src/features/graph/render/status.ts)
+- variable formatGraphRenderStateLabel (src/features/graph/render/status.ts)
+- interfaz AccessibleNodeSummary (src/features/graph/render/types.ts)
+- interfaz BuildGraphRenderModelInput (src/features/graph/render/types.ts)
+- interfaz DeriveGraphRenderStateInput (src/features/graph/render/types.ts)
+- interfaz GraphBounds (src/features/graph/render/types.ts)
+- tipo GraphLabelPolicy (src/features/graph/render/types.ts)
+- interfaz GraphRenderAnalysisLegendItem (src/features/graph/render/types.ts)
+- interfaz GraphRenderAnalysisOverlay (src/features/graph/render/types.ts)
+- tipo GraphRenderDegradedReason (src/features/graph/render/types.ts)
+- interfaz GraphRenderEdge (src/features/graph/render/types.ts)
+- interfaz GraphRenderLabel (src/features/graph/render/types.ts)
+- interfaz GraphRenderLodSummary (src/features/graph/render/types.ts)
+- interfaz GraphRenderModel (src/features/graph/render/types.ts)
+- tipo GraphRenderModelPhase (src/features/graph/render/types.ts)
+- interfaz GraphRenderNode (src/features/graph/render/types.ts)
+- interfaz GraphRenderState (src/features/graph/render/types.ts)
+- tipo GraphRenderStatus (src/features/graph/render/types.ts)
+- funcion createEventsWorkerGateway createEventsWorkerGateway(): WorkerClient<EventsWorkerActionMap> (src/features/graph/workers/browser.ts)
+- funcion createGraphWorkerGateway createGraphWorkerGateway(): WorkerClient<GraphWorkerActionMap> (src/features/graph/workers/browser.ts)
+- interfaz DecodeZapsRequest (src/features/graph/workers/events/contracts.ts)
+- interfaz DecodeZapsResult (src/features/graph/workers/events/contracts.ts)
+- interfaz DiscoveredGraphLink (src/features/graph/workers/events/contracts.ts)
+- interfaz DiscoveredGraphNode (src/features/graph/workers/events/contracts.ts)
+- interfaz EventsWorkerActionMap (src/features/graph/workers/events/contracts.ts)
+- interfaz KeywordExcerptMatch (src/features/graph/workers/events/contracts.ts)
+- interfaz KeywordExtractInput (src/features/graph/workers/events/contracts.ts)
+- interfaz ParseContactListRequest (src/features/graph/workers/events/contracts.ts)
+- interfaz ParseContactListResult (src/features/graph/workers/events/contracts.ts)
+- interfaz SearchKeywordsRequest (src/features/graph/workers/events/contracts.ts)
+- interfaz SearchKeywordsResult (src/features/graph/workers/events/contracts.ts)
+- interfaz SerializedContactListEvent (src/features/graph/workers/events/contracts.ts)
+- interfaz ZapEdge (src/features/graph/workers/events/contracts.ts)
+- interfaz ZapReceiptInput (src/features/graph/workers/events/contracts.ts)
+- funcion createEventsWorkerRegistry createEventsWorkerRegistry(): WorkerHandlerRegistry<EventsWorkerActionMap> (src/features/graph/workers/events/handlers.ts)
+- funcion decodeZaps decodeZaps(request: DecodeZapsRequest): DecodeZapsResult (src/features/graph/workers/events/handlers.ts)
+- funcion parseContactList parseContactList(request: ParseContactListRequest): ParseContactListResult (src/features/graph/workers/events/handlers.ts)
+- funcion searchKeywords searchKeywords(request: SearchKeywordsRequest): SearchKeywordsResult (src/features/graph/workers/events/handlers.ts)
+- funcion createInlineEventsWorkerGateway createInlineEventsWorkerGateway(): TypedWorkerClient<EventsWorkerActionMap> (src/features/graph/workers/gateway.ts)
+- funcion createInlineGraphWorkerGateway createInlineGraphWorkerGateway(): TypedWorkerClient<GraphWorkerActionMap> (src/features/graph/workers/gateway.ts)
+- variable analyzeDiscoveredGraph (src/features/graph/workers/graph/analyzeDiscoveredGraph.ts)
+- interfaz AnalyzeDiscoveredGraphNodeInput (src/features/graph/workers/graph/contracts.ts)
+- interfaz AnalyzeDiscoveredGraphRequest (src/features/graph/workers/graph/contracts.ts)
+- interfaz CalcDegreesRequest (src/features/graph/workers/graph/contracts.ts)
+- interfaz CalcDegreesResult (src/features/graph/workers/graph/contracts.ts)
+- interfaz FindPathRequest (src/features/graph/workers/graph/contracts.ts)
+- interfaz FindPathResult (src/features/graph/workers/graph/contracts.ts)
+- interfaz GraphLinkInput (src/features/graph/workers/graph/contracts.ts)
+- interfaz GraphWorkerActionMap (src/features/graph/workers/graph/contracts.ts)
+- interfaz GraphWorkerJobMetadata (src/features/graph/workers/graph/contracts.ts)
+- interfaz NodeDegree (src/features/graph/workers/graph/contracts.ts)
+- funcion buildRenderModel buildRenderModel(request: BuildRenderModelRequest) (src/features/graph/workers/graph/handlers.ts)
+- funcion calculateDegrees calculateDegrees(request: CalcDegreesRequest): CalcDegreesResult (src/features/graph/workers/graph/handlers.ts)
+- funcion createGraphWorkerRegistry createGraphWorkerRegistry(): WorkerHandlerRegistry<GraphWorkerActionMap> (src/features/graph/workers/graph/handlers.ts)
+- funcion findShortestPath findShortestPath(request: FindPathRequest): FindPathResult (src/features/graph/workers/graph/handlers.ts)
+- funcion isRecord isRecord(value: unknown): value is Record<string, unknown> (src/features/graph/workers/shared/protocol.ts)
+- interfaz NormalizedWorkerError (src/features/graph/workers/shared/protocol.ts)
+- funcion toNormalizedWorkerError toNormalizedWorkerError(error: unknown): NormalizedWorkerError (src/features/graph/workers/shared/protocol.ts)
+- tipo WorkerActionMap (src/features/graph/workers/shared/protocol.ts)
+- tipo WorkerActionName (src/features/graph/workers/shared/protocol.ts)
+- interfaz WorkerDiagnostic (src/features/graph/workers/shared/protocol.ts)
+- interfaz WorkerFailureEnvelope (src/features/graph/workers/shared/protocol.ts)
+- clase WorkerProtocolError (src/features/graph/workers/shared/protocol.ts)
+- interfaz WorkerRequestEnvelope (src/features/graph/workers/shared/protocol.ts)
+- tipo WorkerRequestForMap (src/features/graph/workers/shared/protocol.ts)
+- tipo WorkerResponseEnvelope (src/features/graph/workers/shared/protocol.ts)
+- tipo WorkerResponseForMap (src/features/graph/workers/shared/protocol.ts)
+- interfaz WorkerSuccessEnvelope (src/features/graph/workers/shared/protocol.ts)
+- funcion bindWorkerScope bindWorkerScope(scope: Pick<DedicatedWorkerGlobalScope, 'addEventListener' | 'postMessage'>, registry: WorkerHandlerRegistry<TMap>): void (src/features/graph/workers/shared/runtime.ts)
+- funcion createInlineWorkerLike createInlineWorkerLike(handleMessage: (request: unknown) => Promise<WorkerResponseEnvelope<string, unknown>>): WorkerLike (src/features/graph/workers/shared/runtime.ts)
+- funcion dispatchWorkerRequest dispatchWorkerRequest(registry: WorkerHandlerRegistry<TMap>, request: unknown): Promise<WorkerResponseEnvelope<string, unknown>> (src/features/graph/workers/shared/runtime.ts)
+- clase TypedWorkerClient (src/features/graph/workers/shared/runtime.ts)
+- variable WORKER_PROBE_ACTION (src/features/graph/workers/shared/runtime.ts)
+- interfaz WorkerActionHandler (src/features/graph/workers/shared/runtime.ts)
+- interfaz WorkerClient (src/features/graph/workers/shared/runtime.ts)
+- tipo WorkerHandlerRegistry (src/features/graph/workers/shared/runtime.ts)
+- interfaz WorkerLike (src/features/graph/workers/shared/runtime.ts)
+- funcion expectArray expectArray(value: unknown, path: string): unknown[] (src/features/graph/workers/shared/validation.ts)
+- funcion expectFiniteNumber expectFiniteNumber(value: unknown, path: string): number (src/features/graph/workers/shared/validation.ts)
+- funcion expectOptionalPositiveInteger expectOptionalPositiveInteger(value: unknown, path: string): number | undefined (src/features/graph/workers/shared/validation.ts)
+- funcion expectRecord expectRecord(value: unknown, path: string): Record<string, unknown> (src/features/graph/workers/shared/validation.ts)
+- funcion expectString expectString(value: unknown, path: string): string (src/features/graph/workers/shared/validation.ts)
+- funcion expectStringMatrix expectStringMatrix(value: unknown, path: string): string[][] (src/features/graph/workers/shared/validation.ts)
+- funcion normalizeEventId normalizeEventId(value: unknown, path: string): string (src/features/graph/workers/shared/validation.ts)
+- funcion normalizePubkey normalizePubkey(value: unknown, path: string): string (src/features/graph/workers/shared/validation.ts)
+- variable globalVerifyPool (src/features/graph/workers/verifyWorkerPool.ts)
+- funcion isVerifiedEventAsync isVerifiedEventAsync(event: Event): Promise<boolean> (src/features/graph/workers/verifyWorkerPool.ts)
+- clase VerifyWorkerPool (src/features/graph/workers/verifyWorkerPool.ts)
+
+## Dependencias Entrantes
+- Ninguno.
+
+## Dependencias Salientes
+- external:@/components/AvatarFallback
+- external:@/components/SkeletonImage
+- external:@/features/graph/analysis/analysisKey
+- external:@/features/graph/analysis/types
+- external:@/features/graph/app/store
+- external:@/features/graph/app/store/createAppStore
+- external:@/features/graph/app/store/selectors
+- external:@/features/graph/app/store/slices/analysisSlice
+- external:@/features/graph/app/store/slices/exportSlice
+- external:@/features/graph/app/store/slices/graphSlice
+- external:@/features/graph/app/store/slices/keywordSlice
+- external:@/features/graph/app/store/slices/pathfindingSlice
+- external:@/features/graph/app/store/slices/relaySlice
+- external:@/features/graph/app/store/slices/uiSlice
+- external:@/features/graph/app/store/slices/zapSlice
+- external:@/features/graph/app/store/types
+- external:@/features/graph/components/CoverageRecoveryCard
+- external:@/features/graph/components/DeepCaptureSelectionPanel
+- external:@/features/graph/components/GraphCanvas
+- external:@/features/graph/components/GraphControlRail
+- external:@/features/graph/components/NodeExpansionProgressCard
+- external:@/features/graph/components/NpubInput
+- external:@/features/graph/components/RelayConfigPanel
+- external:@/features/graph/components/RelayHealthIndicator
+- external:@/features/graph/components/RenderConfigPanel
+- external:@/features/graph/components/SavedRootsPanel
+- external:@/features/graph/components/avatarPipelineProbe
+- external:@/features/graph/components/perfCounters
+- external:@/features/graph/db
+- external:@/features/graph/db/database
+- external:@/features/graph/db/entities
+- external:@/features/graph/db/repositories
+- external:@/features/graph/db/utils
+- external:@/features/graph/devicePerformance
+- external:@/features/graph/evidence/directedEvidence
+- external:@/features/graph/export/archive-builder
+- external:@/features/graph/export/canonical
+- external:@/features/graph/export/capture-profile-v1.json
+- external:@/features/graph/export/download
+- external:@/features/graph/export/profile-photo-archive
+- external:@/features/graph/export/snapshot-freezer
+- external:@/features/graph/export/types
+- external:@/features/graph/kernel/events
+- external:@/features/graph/kernel/facade
+- external:@/features/graph/kernel/headless
+- external:@/features/graph/kernel/modules/analysis
+- external:@/features/graph/kernel/modules/constants
+- external:@/features/graph/kernel/modules/context
+- external:@/features/graph/kernel/modules/export-orch
+- external:@/features/graph/kernel/modules/follower-discovery
+- external:@/features/graph/kernel/modules/helpers
+- external:@/features/graph/kernel/modules/keyword-layer
+- external:@/features/graph/kernel/modules/node-detail
+- external:@/features/graph/kernel/modules/node-expansion
+- external:@/features/graph/kernel/modules/persistence
+- external:@/features/graph/kernel/modules/profile-hydration
+- external:@/features/graph/kernel/modules/relay-session
+- external:@/features/graph/kernel/modules/root-loader
+- external:@/features/graph/kernel/modules/text-helpers
+- external:@/features/graph/kernel/modules/zap-layer
+- external:@/features/graph/kernel/nip19
+- external:@/features/graph/kernel/recovery
+- external:@/features/graph/kernel/runner
+- external:@/features/graph/kernel/runtime
+- external:@/features/graph/kernel/transcript-relay
+- external:@/features/graph/kernel/transitions/export-job
+- external:@/features/graph/kernel/transitions/relay-override
+- external:@/features/graph/kernel/transitions/root-load
+- external:@/features/graph/nostr
+- external:@/features/graph/render/DeckGraphRenderer
+- external:@/features/graph/render/GraphSceneLayer
+- external:@/features/graph/render/GraphViewportLazy
+- external:@/features/graph/render/avatar
+- external:@/features/graph/render/avatarAtlasManager
+- external:@/features/graph/render/avatarProxyUrl
+- external:@/features/graph/render/avatarQualityGuide
+- external:@/features/graph/render/buildGraphRenderModel
+- external:@/features/graph/render/constants
+- external:@/features/graph/render/createEmptyGraphRenderModel
+- external:@/features/graph/render/devicePixels
+- external:@/features/graph/render/graphSceneGeometry
+- external:@/features/graph/render/graphViewState
+- external:@/features/graph/render/imageRuntime
+- external:@/features/graph/render/labels
+- external:@/features/graph/render/nodeSizing
+- external:@/features/graph/render/patchLumaCanvasContext
+- external:@/features/graph/render/renderModelPayload
+- external:@/features/graph/render/renderModelWorker
+- external:@/features/graph/render/status
+- external:@/features/graph/render/types
+- external:@/features/graph/workers/browser
+- external:@/features/graph/workers/events/contracts
+- external:@/features/graph/workers/events/handlers
+- external:@/features/graph/workers/gateway
+- external:@/features/graph/workers/graph/analyzeDiscoveredGraph
+- external:@/features/graph/workers/graph/contracts
+- external:@/features/graph/workers/graph/handlers
+- external:@/features/graph/workers/shared/protocol
+- external:@/features/graph/workers/shared/runtime
+- external:@/features/graph/workers/shared/validation
+- external:@/features/graph/workers/verifyWorkerPool
+- external:@/lib/nostr
+- external:@deck.gl/core
+- external:@deck.gl/layers
+- external:@deck.gl/react
+- external:@luma.gl/core
+- external:d3-force
+- external:dexie
+- external:fflate
+- external:next/dynamic
+- external:nostr-tools
+- external:react
+- external:react-dom
+- external:zustand
+- external:zustand/middleware
+- external:zustand/react/shallow
+- external:zustand/vanilla
+
+## Tests Relacionados
+- Ninguno.
+
+## Invariantes
+- Generado desde un escaneo deterministico del codigo fuente y metadatos del parser.
+- Los campos estructurales se actualizan corriendo de nuevo el CLI, no a mano.
+
+## Notas de Confianza
+- Algunos archivos usan metadata fallback basada solo en hash porque no hay parser configurado para esa extension.

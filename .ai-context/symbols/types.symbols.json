@@ -1,0 +1,26 @@
+[
+  {
+    "exported": false,
+    "filePath": "src/types/nostr.d.ts",
+    "kind": "interface",
+    "lastSourceHashUsed": "265d39c93b58578f0420323c7dcefb139c2bf9c15789aa5cadf0c26ee7507e6f",
+    "name": "Nip04",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "src/types/nostr.d.ts",
+    "kind": "interface",
+    "lastSourceHashUsed": "265d39c93b58578f0420323c7dcefb139c2bf9c15789aa5cadf0c26ee7507e6f",
+    "name": "NostrEvent",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "src/types/nostr.d.ts",
+    "kind": "interface",
+    "lastSourceHashUsed": "265d39c93b58578f0420323c7dcefb139c2bf9c15789aa5cadf0c26ee7507e6f",
+    "name": "NostrWindow",
+    "references": []
+  }
+]

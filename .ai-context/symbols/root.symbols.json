@@ -1,0 +1,26 @@
+[
+  {
+    "exported": false,
+    "filePath": "eslint.config.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "94fce984ee9912a12021145e5285cb0bbc34c363d3c40b8ee0a3c2df7d497d67",
+    "name": "eslintConfig",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "next.config.ts",
+    "kind": "variable",
+    "lastSourceHashUsed": "a972c4f0ffa6dd714e7909b02d1ac19d2f2fe3d01f191efd2c5054bd6f142ec1",
+    "name": "nextConfig",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "postcss.config.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "7b299d3d3b16699ddda397c0b2373b3af4f25f8fc9ccc9b3d9e64ef083bc1c21",
+    "name": "config",
+    "references": []
+  }
+]

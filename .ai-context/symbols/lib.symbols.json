@@ -1,0 +1,245 @@
+[
+  {
+    "exported": false,
+    "filePath": "src/lib/media.ts",
+    "kind": "variable",
+    "lastSourceHashUsed": "bdd34b112de479b366d3c369150a31d02021bb1c3d1ef01024d7c02fc358cf10",
+    "name": "buildIpfsGatewayUrl",
+    "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/media.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "bdd34b112de479b366d3c369150a31d02021bb1c3d1ef01024d7c02fc358cf10",
+    "name": "getInitials",
+    "references": [],
+    "signature": "getInitials(value: string | undefined, fallback = 'N'): string"
+  },
+  {
+    "exported": false,
+    "filePath": "src/lib/media.ts",
+    "kind": "variable",
+    "lastSourceHashUsed": "bdd34b112de479b366d3c369150a31d02021bb1c3d1ef01024d7c02fc358cf10",
+    "name": "IPFS_GATEWAY_ORIGIN",
+    "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/media.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "bdd34b112de479b366d3c369150a31d02021bb1c3d1ef01024d7c02fc358cf10",
+    "name": "normalizeMediaUrl",
+    "references": [],
+    "signature": "normalizeMediaUrl(value: unknown): string | undefined"
+  },
+  {
+    "exported": false,
+    "filePath": "src/lib/media.ts",
+    "kind": "variable",
+    "lastSourceHashUsed": "bdd34b112de479b366d3c369150a31d02021bb1c3d1ef01024d7c02fc358cf10",
+    "name": "trimString",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "addUserRelays",
+    "references": [],
+    "signature": "addUserRelays(pubkey: string): Promise<void>"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "connectNDK",
+    "references": [],
+    "signature": "connectNDK(): Promise<NDK>"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "createNostrConnectSession",
+    "references": [],
+    "signature": "createNostrConnectSession(relay?: string): Promise<NostrConnectSession>"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "fetchFollowers",
+    "references": [],
+    "signature": "fetchFollowers(pubkey: string): Promise<string[]>"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "fetchFollowing",
+    "references": [],
+    "signature": "fetchFollowing(pubkey: string): Promise<string[]>"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "fetchProfileByPubkey",
+    "references": [],
+    "signature": "fetchProfileByPubkey(pubkey: string): Promise<NostrProfile>"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "fetchUserNotes",
+    "references": [],
+    "signature": "fetchUserNotes(pubkey: string, limit = 20): Promise<NDKEvent[]>"
+  },
+  {
+    "exported": false,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "fetchUserProfileWithTimeout",
+    "references": [],
+    "signature": "fetchUserProfileWithTimeout(user: NDKUser, warningMessage: string): Promise<void>"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "formatPubkey",
+    "references": [],
+    "signature": "formatPubkey(pubkey: string): string"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "formatTimestamp",
+    "references": [],
+    "signature": "formatTimestamp(timestamp: number): string"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "getNDK",
+    "references": [],
+    "signature": "getNDK(): NDK"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "type",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "LoginMethod",
+    "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "loginWithBunker",
+    "references": [],
+    "signature": "loginWithBunker(bunkerUrl: string): Promise<NDKUser | null>"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "loginWithExtension",
+    "references": [],
+    "signature": "loginWithExtension(): Promise<NDKUser | null>"
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "loginWithNsec",
+    "references": [],
+    "signature": "loginWithNsec(nsec: string): Promise<NDKUser | null>"
+  },
+  {
+    "exported": false,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "variable",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "ndkInstance",
+    "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "interface",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "NostrConnectSession",
+    "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "interface",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "NostrProfile",
+    "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "parseProfile",
+    "references": [],
+    "signature": "parseProfile(user: NDKUser): NostrProfile"
+  },
+  {
+    "exported": false,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "variable",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "POPULAR_RELAYS",
+    "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "resetUserRelays",
+    "references": [],
+    "signature": "resetUserRelays(): void"
+  },
+  {
+    "exported": false,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "variable",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "userRelaysAdded",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "src/lib/nostr.ts",
+    "kind": "function",
+    "lastSourceHashUsed": "5652305f936ec36dadccd115c9c90c6441c852124fd073d4568f3af9a4eccbd6",
+    "name": "withTimeout",
+    "references": [],
+    "signature": "withTimeout(promise: Promise<T>, ms: number): Promise<T>"
+  }
+]

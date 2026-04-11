@@ -1,6 +1,7 @@
 import type { Event, Filter } from 'nostr-tools'
 
 import type {
+  RelayCountResult,
   RelayAdapterOptions,
   RelayEventObservable,
   RelayHealthSnapshot,
@@ -109,6 +110,31 @@ export function createTranscriptRelayAdapter(options: TranscriptRelayAdapterOpti
           return () => {}
         },
       }
+    },
+
+    async count(filters: Filter[]): Promise<RelayCountResult[]> {
+      const startedAtMs = clock
+      const results = transcripts.map((transcript) => {
+        const eventIds = new Set<string>()
+        for (const entry of transcript.entries) {
+          const matches = filters.some((f) => filterMatches(entry.filter, f))
+          if (!matches || entry.error) continue
+
+          for (const event of entry.events) {
+            eventIds.add(event.id)
+          }
+        }
+
+        return {
+          relayUrl: transcript.relayUrl,
+          count: eventIds.size,
+          supported: true,
+          elapsedMs: clock + 100 - startedAtMs,
+          errorMessage: null,
+        } satisfies RelayCountResult
+      })
+
+      return results
     },
 
     getRelayHealth(): Record<string, RelayHealthSnapshot> {

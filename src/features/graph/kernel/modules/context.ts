@@ -8,7 +8,7 @@ import type { WorkerClient } from '@/features/graph/workers/shared/runtime'
 
 export type RelayAdapterInstance = Pick<
   ReturnType<typeof createRelayPoolAdapter>,
-  'subscribe' | 'getRelayHealth' | 'subscribeToRelayHealth' | 'close'
+  'subscribe' | 'count' | 'getRelayHealth' | 'subscribeToRelayHealth' | 'close'
 >
 
 export interface AppKernelDependencies {

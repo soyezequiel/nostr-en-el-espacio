@@ -1,0 +1,54 @@
+[
+  {
+    "exported": true,
+    "filePath": "src/app/badges/page.tsx",
+    "kind": "function",
+    "lastSourceHashUsed": "92bd1c8597d4365d375ce11daf3132b559c3612f8df7676d63412548696df1b7",
+    "name": "BadgesPage",
+    "references": [],
+    "signature": "BadgesPage()"
+  },
+  {
+    "exported": false,
+    "filePath": "src/app/layout.tsx",
+    "kind": "variable",
+    "lastSourceHashUsed": "c3beeae2bcc5eaa99a6e59af0eb68dc73f25c03c41867c01e028ae803f2036b3",
+    "name": "inter",
+    "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/app/layout.tsx",
+    "kind": "variable",
+    "lastSourceHashUsed": "c3beeae2bcc5eaa99a6e59af0eb68dc73f25c03c41867c01e028ae803f2036b3",
+    "name": "metadata",
+    "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/app/layout.tsx",
+    "kind": "function",
+    "lastSourceHashUsed": "c3beeae2bcc5eaa99a6e59af0eb68dc73f25c03c41867c01e028ae803f2036b3",
+    "name": "RootLayout",
+    "references": [],
+    "signature": "RootLayout({ children, }: { children: React.ReactNode; })"
+  },
+  {
+    "exported": true,
+    "filePath": "src/app/page.tsx",
+    "kind": "function",
+    "lastSourceHashUsed": "5be6461e401d1a525cd9763548dc336fbed7dfd46c64e3f4da02b0e1cc783905",
+    "name": "Home",
+    "references": [],
+    "signature": "Home()"
+  },
+  {
+    "exported": true,
+    "filePath": "src/app/profile/page.tsx",
+    "kind": "function",
+    "lastSourceHashUsed": "9cd5a1bf5d39d9d01bf63b2bd8cf618bfb2b75c35a09198721c63f93c2d45c7c",
+    "name": "ProfilePage",
+    "references": [],
+    "signature": "ProfilePage()"
+  }
+]

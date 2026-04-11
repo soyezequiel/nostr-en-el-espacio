@@ -73,7 +73,6 @@ const selectGraphAppState = (state: AppStore) => ({
   activeLayer: state.activeLayer,
   currentKeyword: state.currentKeyword,
   rootLoadStatus: state.rootLoad.status,
-  rootLoadMessage: state.rootLoad.message,
   rootLoadSource: state.rootLoad.loadedFrom,
   selectedDeepUserCount: state.selectedDeepUserPubkeys.length,
   maxSelectedDeepUsers: state.maxSelectedDeepUsers,
@@ -257,7 +256,6 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     activeLayer,
     currentKeyword,
     rootLoadStatus,
-    rootLoadMessage,
     rootLoadSource,
     selectedDeepUserCount,
     maxSelectedDeepUsers,
@@ -474,23 +472,24 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
   }, [currentRootNode, rootPubkey, setSavedRootProfile])
 
   const relayCount = relayUrls.length
-  const isRootEntryInline = rootPubkey === null
+  const isInitialRootLoading = rootPubkey === null && rootLoadStatus === 'loading'
+  const isRootEntryInline = rootPubkey === null && !isInitialRootLoading
   const shouldShowRootEntry = isRootEntryInline || isRootEntryOpen
   const hasSavedRoots = savedRoots.length > 0
   const shouldShowSavedRootsSection = !savedRootsHydrated || hasSavedRoots
-  const rootEntryTitle = isRootEntryInline
+  const rootEntryTitle = rootPubkey === null
     ? shouldShowSavedRootsSection
       ? 'Identidades guardadas'
       : 'Ingresa una npub o nprofile'
     : shouldShowSavedRootsSection
       ? 'Cambiar identidad'
       : 'Cambiar root'
-  const rootEntryEyebrow = isRootEntryInline
+  const rootEntryEyebrow = rootPubkey === null
     ? shouldShowSavedRootsSection
       ? 'Guardadas'
       : 'Root'
     : 'Root'
-  const rootEntryButtonLabel = isRootEntryInline
+  const rootEntryButtonLabel = rootPubkey === null
     ? 'Entrada de root activa'
     : 'Abrir selector de root'
   const primaryTabs = SETTINGS_TABS.filter((tab) => tab.id !== 'internal')
@@ -1101,11 +1100,6 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
                 />
               </div>
             </div>
-            {rootLoadMessage ? (
-              <p className="root-entry-sheet__status" role="status">
-                {rootLoadMessage}
-              </p>
-            ) : null}
             <p className="root-entry-sheet__fineprint">
               {shouldShowSavedRootsSection
                 ? 'Solo se guardan npub publicas en este navegador.'

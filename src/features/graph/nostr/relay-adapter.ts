@@ -8,6 +8,8 @@ import type {
   RelayAdapterOptions,
   RelayClock,
   RelayConnection,
+  RelayCountOptions,
+  RelayCountResult,
   RelayEventEnvelope,
   RelayEventObservable,
   RelayHealthSnapshot,
@@ -111,6 +113,23 @@ export class RelayPoolAdapter {
     }
   }
 
+  async count(
+    filters: Filter[],
+    options: RelayCountOptions = {},
+  ): Promise<RelayCountResult[]> {
+    const normalizedFilters = batchFilters(filters, this.maxAuthorsPerFilter)
+    const activeRelayUrls = this.selectRelayUrls(options.relayUrls)
+
+    return Promise.all(
+      activeRelayUrls.map((url, index) =>
+        this.countRelay(url, normalizedFilters, {
+          timeoutMs: options.timeoutMs ?? this.pageTimeoutMs,
+          id: `${options.idPrefix ?? 'count'}:${index + 1}`,
+        }),
+      ),
+    )
+  }
+
   getRelayHealth(): Record<string, RelayHealthSnapshot> {
     return this.snapshotRelayHealth()
   }
@@ -147,6 +166,97 @@ export class RelayPoolAdapter {
     }
   }
 
+  private async countRelay(
+    url: string,
+    filters: Filter[],
+    options: { timeoutMs: number; id: string },
+  ): Promise<RelayCountResult> {
+    const startedAtMs = this.clock.now()
+    let connection: RelayConnection
+
+    try {
+      this.updateRelayHealth(url, (current) => ({
+        ...current,
+        status: current.status === 'degraded' ? 'degraded' : 'connecting',
+      }))
+      connection = await this.withTimeout(
+        this.getOrCreateConnection(url),
+        this.connectTimeoutMs,
+        () =>
+          createRelayAdapterError({
+            code: 'RELAY_CONNECT_TIMEOUT',
+            message: 'Timed out while connecting to relay for COUNT.',
+            relayUrl: url,
+            retryable: true,
+          }),
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'COUNT connect failed.'
+      this.updateRelayHealth(url, (current) => ({
+        ...current,
+        status: 'offline',
+        consecutiveFailures: current.consecutiveFailures + 1,
+        lastCloseReason: message,
+        lastErrorCode: 'RELAY_CONNECT_FAILED',
+      }))
+
+      return {
+        relayUrl: url,
+        count: null,
+        supported: false,
+        elapsedMs: this.clock.now() - startedAtMs,
+        errorMessage: message,
+      }
+    }
+
+    try {
+      const count = await this.withTimeout(
+        connection.count(filters, { id: options.id }),
+        options.timeoutMs,
+        () =>
+          createRelayAdapterError({
+            code: 'RELAY_PAGE_TIMEOUT',
+            message: 'Timed out while waiting for relay COUNT.',
+            relayUrl: url,
+            retryable: true,
+          }),
+      )
+      this.updateRelayHealth(url, (current) => ({
+        ...current,
+        status: 'healthy',
+        consecutiveFailures: 0,
+        lastErrorCode: undefined,
+        lastEventMs: this.clock.now(),
+      }))
+
+      return {
+        relayUrl: url,
+        count: Number.isFinite(count) ? Math.max(0, Math.floor(count)) : null,
+        supported: Number.isFinite(count),
+        elapsedMs: this.clock.now() - startedAtMs,
+        errorMessage: null,
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'COUNT failed.'
+      this.updateRelayHealth(url, (current) => ({
+        ...current,
+        status: current.lastEventMs ? 'degraded' : 'offline',
+        consecutiveFailures: current.consecutiveFailures + 1,
+        lastCloseReason: message,
+        lastErrorCode: 'RELAY_PAGE_TIMEOUT',
+      }))
+      this.evictConnection(url)
+
+      return {
+        relayUrl: url,
+        count: null,
+        supported: false,
+        elapsedMs: this.clock.now() - startedAtMs,
+        errorMessage: message,
+      }
+    }
+  }
+
   private runSubscription(
     filters: Filter[],
     observer: RelayObserver,
@@ -159,6 +269,7 @@ export class RelayPoolAdapter {
     }
     const startedAtMs = this.clock.now()
     const activeAttempts = new Map<string, ActiveRelayAttempt>()
+    const activeRelayUrls = this.selectRelayUrls(options.relayUrls)
     const priority: RelaySubscriptionPriority =
       options.priority ?? 'interactive'
     const verificationMode: RelayVerificationMode =
@@ -185,7 +296,7 @@ export class RelayPoolAdapter {
 
     let cancelled = false
     let completed = false
-    let pendingRelays = this.relayUrls.length
+    let pendingRelays = activeRelayUrls.length
 
     const flushPendingEvents = () => {
       if (flushHandle !== null) {
@@ -546,7 +657,7 @@ export class RelayPoolAdapter {
       }, this.pageTimeoutMs)
     }
 
-    if (this.relayUrls.length === 0) {
+    if (activeRelayUrls.length === 0) {
       observer.complete?.({
         filters,
         startedAtMs,
@@ -557,7 +668,7 @@ export class RelayPoolAdapter {
       return () => {}
     }
 
-    for (const url of this.relayUrls) {
+    for (const url of activeRelayUrls) {
       void startRelay(url, 1)
     }
 
@@ -620,6 +731,27 @@ export class RelayPoolAdapter {
     this.connections.set(url, connectionEntry)
 
     return promise
+  }
+
+  private selectRelayUrls(requestedRelayUrls?: readonly string[]): string[] {
+    if (requestedRelayUrls === undefined) {
+      return this.relayUrls
+    }
+
+    if (requestedRelayUrls.length === 0) {
+      return []
+    }
+
+    const requested = new Set<string>()
+    for (const relayUrl of requestedRelayUrls) {
+      try {
+        requested.add(normalizeRelayUrl(relayUrl))
+      } catch {
+        continue
+      }
+    }
+
+    return this.relayUrls.filter((relayUrl) => requested.has(relayUrl))
   }
 
   private evictConnection(url: string): void {

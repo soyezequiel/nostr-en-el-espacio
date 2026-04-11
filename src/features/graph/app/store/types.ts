@@ -218,12 +218,27 @@ export interface ExportJobProgress {
   errorMessage: string | null
 }
 
+export type RootCollectionProgressStatus =
+  | 'idle'
+  | 'loading'
+  | 'partial'
+  | 'complete'
+
+export interface RootCollectionProgress {
+  status: RootCollectionProgressStatus
+  loadedCount: number
+  totalCount: number | null
+  isTotalKnown: boolean
+}
+
 export interface RootVisibleLinkProgress {
   visibleLinkCount: number | null
   contactListEventCount: number
   inboundCandidateEventCount: number
   lastRelayUrl: string | null
   updatedAt: number | null
+  following: RootCollectionProgress
+  followers: RootCollectionProgress
 }
 
 export interface RootLoadState {

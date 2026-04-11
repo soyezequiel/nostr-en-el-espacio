@@ -70,6 +70,43 @@ export interface ContactListRecord {
   relayHints: string[]
 }
 
+export interface InboundFollowerSnapshotRecord {
+  rootPubkey: string
+  followerPubkeys: string[]
+  relayUrls: string[]
+  eventIds: string[]
+  fetchedAt: number
+  finalizedAt: number
+  completeness: 'partial' | 'final'
+}
+
+export interface RelayListRecord {
+  pubkey: string
+  eventId: string
+  createdAt: number
+  fetchedAt: number
+  readRelays: string[]
+  writeRelays: string[]
+  relays: string[]
+}
+
+export interface RelayDiscoveryStatsRecord {
+  relayUrl: string
+  updatedAt: number
+  countAttempts: number
+  countSuccesses: number
+  countUnsupporteds: number
+  countFailures: number
+  lastCount: number | null
+  lastCountLatencyMs: number | null
+  fetchAttempts: number
+  fetchSuccesses: number
+  lastInboundEventCount: number
+  totalInboundEventCount: number
+  usefulRootCount: number
+  lastUsefulForRootPubkey: string | null
+}
+
 export interface NoteExtractRecord {
   noteId: string
   pubkey: string

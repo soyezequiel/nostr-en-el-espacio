@@ -6,11 +6,14 @@ import type {
   AddressableHeadRecord,
   ContactListRecord,
   ImageVariantRecord,
+  InboundFollowerSnapshotRecord,
   InboundRefRecord,
   NoteExtractRecord,
   ProfileRecord,
   RawEventInput,
   RawEventRecord,
+  RelayDiscoveryStatsRecord,
+  RelayListRecord,
   ReplaceableHeadKey,
   ReplaceableHeadRecord,
   ZapRecord,
@@ -195,6 +198,188 @@ export class ContactListsRepository {
 
   public async get(pubkey: string): Promise<ContactListRecord | undefined> {
     return this.db.contactLists.get(pubkey)
+  }
+}
+
+export class InboundFollowerSnapshotsRepository {
+  private readonly db: NostrGraphDexie
+
+  public constructor(db: NostrGraphDexie) {
+    this.db = db
+  }
+
+  public async upsert(
+    record: InboundFollowerSnapshotRecord,
+  ): Promise<InboundFollowerSnapshotRecord> {
+    const normalizedRecord: InboundFollowerSnapshotRecord = {
+      ...record,
+      followerPubkeys: toSortedUniqueStrings(record.followerPubkeys),
+      relayUrls: toSortedUniqueStrings(record.relayUrls),
+      eventIds: toSortedUniqueStrings(record.eventIds),
+    }
+
+    await this.db.inboundFollowerSnapshots.put(normalizedRecord)
+    return normalizedRecord
+  }
+
+  public async get(
+    rootPubkey: string,
+  ): Promise<InboundFollowerSnapshotRecord | undefined> {
+    return this.db.inboundFollowerSnapshots.get(rootPubkey)
+  }
+}
+
+export class RelayListsRepository {
+  private readonly db: NostrGraphDexie
+
+  public constructor(db: NostrGraphDexie) {
+    this.db = db
+  }
+
+  public async upsert(record: RelayListRecord): Promise<RelayListRecord> {
+    const existing = await this.db.relayLists.get(record.pubkey)
+    const normalizedRecord: RelayListRecord = {
+      ...record,
+      readRelays: toSortedUniqueStrings(record.readRelays),
+      writeRelays: toSortedUniqueStrings(record.writeRelays),
+      relays: toSortedUniqueStrings(record.relays),
+    }
+
+    if (!existing || shouldReplaceProjection(existing, normalizedRecord)) {
+      await this.db.relayLists.put(normalizedRecord)
+      return normalizedRecord
+    }
+
+    return existing
+  }
+
+  public async get(pubkey: string): Promise<RelayListRecord | undefined> {
+    return this.db.relayLists.get(pubkey)
+  }
+}
+
+export interface RelayDiscoveryCountInput {
+  relayUrl: string
+  count: number | null
+  supported: boolean
+  elapsedMs: number
+  errorMessage: string | null
+}
+
+export interface RelayDiscoveryFetchInput {
+  relayUrl: string
+  eventId: string
+}
+
+export class RelayDiscoveryStatsRepository {
+  private readonly db: NostrGraphDexie
+
+  public constructor(db: NostrGraphDexie) {
+    this.db = db
+  }
+
+  public async getMany(
+    relayUrls: readonly string[],
+  ): Promise<(RelayDiscoveryStatsRecord | undefined)[]> {
+    return this.db.relayDiscoveryStats.bulkGet(
+      toSortedUniqueStrings(relayUrls),
+    )
+  }
+
+  public async recordCountResults(
+    results: readonly RelayDiscoveryCountInput[],
+    updatedAt: number,
+  ): Promise<void> {
+    const relayUrls = toSortedUniqueStrings(results.map((result) => result.relayUrl))
+
+    if (relayUrls.length === 0) {
+      return
+    }
+
+    const resultByRelayUrl = new Map(
+      results.map((result) => [result.relayUrl, result]),
+    )
+    const existingRecords = await this.db.relayDiscoveryStats.bulkGet(relayUrls)
+    const records = relayUrls.map((relayUrl, index) => {
+      const result = resultByRelayUrl.get(relayUrl)
+      const existing = existingRecords[index]
+      const record = createRelayDiscoveryStatsRecord(relayUrl, existing)
+
+      if (!result) {
+        return record
+      }
+
+      const countSucceeded =
+        result.supported && result.errorMessage === null && result.count !== null
+
+      return {
+        ...record,
+        updatedAt,
+        countAttempts: record.countAttempts + 1,
+        countSuccesses: record.countSuccesses + (countSucceeded ? 1 : 0),
+        countUnsupporteds: record.countUnsupporteds + (!result.supported ? 1 : 0),
+        countFailures:
+          record.countFailures +
+          (result.supported && result.errorMessage !== null ? 1 : 0),
+        lastCount: result.count,
+        lastCountLatencyMs: result.elapsedMs,
+      } satisfies RelayDiscoveryStatsRecord
+    })
+
+    await this.db.relayDiscoveryStats.bulkPut(records)
+  }
+
+  public async recordInboundFetch(
+    rootPubkey: string,
+    relayUrls: readonly string[],
+    sourceEnvelopes: readonly RelayDiscoveryFetchInput[],
+    updatedAt: number,
+  ): Promise<void> {
+    const eventIdsByRelayUrl = new Map<string, Set<string>>()
+    for (const envelope of sourceEnvelopes) {
+      const eventIds =
+        eventIdsByRelayUrl.get(envelope.relayUrl) ?? new Set<string>()
+      eventIds.add(envelope.eventId)
+      eventIdsByRelayUrl.set(envelope.relayUrl, eventIds)
+    }
+
+    const normalizedRelayUrls = toSortedUniqueStrings([
+      ...relayUrls,
+      ...Array.from(eventIdsByRelayUrl.keys()),
+    ])
+
+    if (normalizedRelayUrls.length === 0) {
+      return
+    }
+
+    const existingRecords =
+      await this.db.relayDiscoveryStats.bulkGet(normalizedRelayUrls)
+    const records = normalizedRelayUrls.map((relayUrl, index) => {
+      const existing = existingRecords[index]
+      const record = createRelayDiscoveryStatsRecord(relayUrl, existing)
+      const inboundEventCount = eventIdsByRelayUrl.get(relayUrl)?.size ?? 0
+
+      return {
+        ...record,
+        updatedAt,
+        fetchAttempts: record.fetchAttempts + 1,
+        fetchSuccesses: record.fetchSuccesses + (inboundEventCount > 0 ? 1 : 0),
+        lastInboundEventCount: inboundEventCount,
+        totalInboundEventCount:
+          record.totalInboundEventCount + inboundEventCount,
+        usefulRootCount:
+          record.usefulRootCount +
+          (inboundEventCount > 0 && record.lastUsefulForRootPubkey !== rootPubkey
+            ? 1
+            : 0),
+        lastUsefulForRootPubkey:
+          inboundEventCount > 0
+            ? rootPubkey
+            : record.lastUsefulForRootPubkey,
+      } satisfies RelayDiscoveryStatsRecord
+    })
+
+    await this.db.relayDiscoveryStats.bulkPut(records)
   }
 }
 
@@ -560,12 +745,37 @@ export interface ImageVariantStorageSummary {
   lodBuckets: ImageVariantLodSummary[]
 }
 
+function createRelayDiscoveryStatsRecord(
+  relayUrl: string,
+  existing: RelayDiscoveryStatsRecord | undefined,
+): RelayDiscoveryStatsRecord {
+  return existing ?? {
+    relayUrl,
+    updatedAt: 0,
+    countAttempts: 0,
+    countSuccesses: 0,
+    countUnsupporteds: 0,
+    countFailures: 0,
+    lastCount: null,
+    lastCountLatencyMs: null,
+    fetchAttempts: 0,
+    fetchSuccesses: 0,
+    lastInboundEventCount: 0,
+    totalInboundEventCount: 0,
+    usefulRootCount: 0,
+    lastUsefulForRootPubkey: null,
+  }
+}
+
 export interface NostrGraphRepositories {
   rawEvents: RawEventsRepository
   replaceableHeads: ReplaceableHeadsRepository
   addressableHeads: AddressableHeadsRepository
   profiles: ProfilesRepository
   contactLists: ContactListsRepository
+  inboundFollowerSnapshots: InboundFollowerSnapshotsRepository
+  relayLists: RelayListsRepository
+  relayDiscoveryStats: RelayDiscoveryStatsRepository
   noteExtracts: NoteExtractsRepository
   inboundRefs: InboundRefsRepository
   zaps: ZapsRepository
@@ -579,6 +789,9 @@ export function createRepositories(db: NostrGraphDexie): NostrGraphRepositories 
     addressableHeads: new AddressableHeadsRepository(db),
     profiles: new ProfilesRepository(db),
     contactLists: new ContactListsRepository(db),
+    inboundFollowerSnapshots: new InboundFollowerSnapshotsRepository(db),
+    relayLists: new RelayListsRepository(db),
+    relayDiscoveryStats: new RelayDiscoveryStatsRepository(db),
     noteExtracts: new NoteExtractsRepository(db),
     inboundRefs: new InboundRefsRepository(db),
     zaps: new ZapsRepository(db),

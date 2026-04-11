@@ -76,9 +76,24 @@ export interface RelayEventObservable {
   subscribe: (observer: RelayObserver) => () => void
 }
 
+export interface RelayCountResult {
+  relayUrl: string
+  count: number | null
+  supported: boolean
+  elapsedMs: number
+  errorMessage: string | null
+}
+
+export interface RelayCountOptions {
+  timeoutMs?: number
+  idPrefix?: string
+  relayUrls?: string[]
+}
+
 export interface RelaySubscribeOptions {
   priority?: RelaySubscriptionPriority
   verificationMode?: RelayVerificationMode
+  relayUrls?: string[]
 }
 
 export interface RelayClock {
@@ -89,6 +104,10 @@ export interface RelayClock {
 
 export interface RelaySubscriptionHandle {
   close: (reason?: string) => void
+}
+
+export interface RelayCountRequestOptions {
+  id?: string
 }
 
 export interface RelaySubscribeHandlers {
@@ -103,6 +122,10 @@ export interface RelayConnection {
     filters: Filter[],
     handlers: RelaySubscribeHandlers,
   ) => RelaySubscriptionHandle
+  count: (
+    filters: Filter[],
+    options?: RelayCountRequestOptions,
+  ) => Promise<number>
   onNotice: (listener: (message: string) => void) => () => void
   onClose: (listener: () => void) => () => void
   isOpen: () => boolean

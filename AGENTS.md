@@ -1,209 +1,54 @@
-# AGENTS.md - Nostr Explorer for Identity Hackathon
+# AGENTS.md
 
-You are helping a participant of La Crypta's IDENTITY Hackathon (April 2026).
-Your goal: help them ship a polished Nostr identity project on top of this repo's current codebase, not the original starter assumptions.
+## Purpose
 
-## Reality Check
+Help ship the Nostr Explorer identity product for La Crypta IDENTITY Hackathon 2026. The app is now graph-first; do not follow old starter-kit assumptions.
 
-This repository started from the La Crypta Nostr starter, but the current app is now graph-first:
+Main product priorities:
+- `/` is the identity graph explorer and primary demo surface.
+- `/profile` is the classic connected-account profile view.
+- `/badges` is the NIP-58 badge view.
+- Preserve relay-aware discovery, partial-state UX, and auditable export behavior.
 
-- `/` renders the identity graph explorer
-- `/profile` renders the classic profile view
-- `/badges` renders the NIP-58 badge view
+## Repo map
 
-Do not assume the old `store/nav.ts` or "single-page section switcher" flow still exists. It does not match the current code.
+- `src/app/` - Next.js routes and `globals.css`.
+- `src/app/page.tsx` - home route; loads the graph client.
+- `src/app/profile/page.tsx`, `src/app/badges/page.tsx` - classic routes.
+- `src/components/` - shared navbar, login, profile, badges, image fallback UI.
+- `src/lib/nostr.ts` - shared NDK/auth/profile/badge helpers.
+- `src/lib/media.ts` - shared media normalization.
+- `src/store/auth.ts` - shared auth state.
+- `src/features/graph/` - graph application slice.
+- `src/features/graph/GraphApp.tsx` - graph shell and panel orchestration.
+- `src/features/graph/app/store/` - graph Zustand store and slices.
+- `src/features/graph/components/` - graph UI, canvas, panels, controls.
+- `src/features/graph/kernel/` - runtime, root loading, relay/export orchestration.
+- `src/features/graph/nostr/` - graph-specific relay/protocol transport.
+- `src/features/graph/analysis/` - graph analysis types/helpers.
+- `src/features/graph/workers/` - expensive event, graph, render, verification work.
+- `src/features/graph/render/` - deck.gl model, viewport, avatar/image pipeline.
+- `src/features/graph/db/` - Dexie persistence and repositories.
+- `src/features/graph/export/` - deterministic snapshot/ZIP evidence packaging.
+- `docs/current-codebase.md` - current architecture notes.
+- `docs/avatar-pipeline-*.md` - avatar pipeline validation/troubleshooting.
 
-## What Judges Still Care About
+## How to work in this repo
 
-1. Identity innovation
-2. Working demo
-3. UX polish
-4. Protocol understanding
-5. Completeness
+- Prefer extending the graph explorer over adding profile-page features unless the request is clearly profile-centric.
+- For account/profile/badge fetches, use `src/lib/nostr.ts`.
+- For graph-specific relay/session behavior, use `src/features/graph/nostr/` or `src/features/graph/kernel/`.
+- Keep async Nostr fetches bounded by existing timeout patterns.
+- Preserve stale, partial, timeout, and relay-failure states as user-visible UX.
+- Put graph UI state in the graph store, not local component state, when it affects panels, layers, selection, export, relays, or runtime behavior.
+- Keep expensive processing out of React render paths; use `workers/`, `analysis/`, `render/`, or `kernel/` as appropriate.
+- If adding a top-level route, update both `src/app/<route>/page.tsx` and `src/components/Navbar.tsx`.
+- If adding graph controls/panels, wire through `GraphApp.tsx` and the relevant store slice.
+- If touching export, keep output deterministic, auditable, and routed through `src/features/graph/export/`.
 
-For this repo, the strongest angle is identity graph exploration, trust signals, relay-aware discovery, and exportable evidence.
+## Commands to run
 
-## Current Stack
-
-- Next.js 16 + React 19 + TypeScript + Tailwind CSS v4
-- NDK v3 for auth, profile, badges, and relay-aware fetches
-- nostr-tools for low-level NIP-19 helpers and protocol utilities
-- Zustand for auth state and the graph app store
-- deck.gl for graph rendering
-- d3-force for graph layout work
-- Dexie for client-side persistence in the graph feature
-- Web Workers for graph analysis, render prep, and event verification
-- qrcode.react for NIP-46 bunker login
-- fflate for auditable export packaging
-
-## Current Route Map
-
-- `src/app/page.tsx`
-  Home route. Loads the graph explorer client.
-- `src/app/profile/page.tsx`
-  Profile route. Uses the shared `Navbar` and `Profile` component.
-- `src/app/badges/page.tsx`
-  Badges route. Uses the shared `Navbar` and `Badges` component.
-
-## Actual Project Structure
-
-```text
-src/
-|-- app/
-|   |-- layout.tsx
-|   |-- page.tsx
-|   |-- badges/page.tsx
-|   |-- profile/page.tsx
-|   `-- globals.css
-|-- components/
-|   |-- Navbar.tsx
-|   |-- LoginModal.tsx
-|   |-- Profile.tsx
-|   |-- Badges.tsx
-|   `-- SkeletonImage.tsx
-|-- features/
-|   `-- graph/
-|       |-- GraphApp.tsx
-|       |-- GraphClient.tsx
-|       |-- analysis/
-|       |-- app/store/
-|       |-- components/
-|       |-- db/
-|       |-- export/
-|       |-- kernel/
-|       |-- nostr/
-|       |-- render/
-|       `-- workers/
-|-- lib/
-|   |-- media.ts
-|   `-- nostr.ts
-|-- store/
-|   `-- auth.ts
-`-- types/
-    `-- nostr.d.ts
-```
-
-## What's Already Built
-
-- 3 auth methods: NIP-07, `nsec`, NIP-46 bunker, plus bunker QR flow
-- Profile route with skeleton loading, social stats, notes timeline, and media normalization
-- Badge route for NIP-58 award display
-- Graph route with:
-  - root input via `npub` or `nprofile`
-  - relay health and reversible relay override controls
-  - node detail hydration plus structural node expansion
-  - discovered graph analysis for communities, leaders, and bridges
-  - compare selection inside the graph canvas
-  - zap-aware graph layer support
-  - export flow with auditable snapshot packaging
-  - layered rendering, image pipeline controls, and internal diagnostics
-  - worker-backed event processing and graph analysis
-
-## Important Product Boundaries
-
-- Treat the graph route as the main product, not a side feature.
-- Treat `/profile` and `/badges` as classic surfaces for connected-account views.
-- Treat relay failure, partial coverage, and stale graph state as first-class UX states.
-- Treat export as evidence packaging, not just a convenience download.
-
-## Current Graph State Model
-
-The graph app store already models:
-
-- nodes, links, adjacency, root state
-- relay URLs, relay health, override status, stale-state tracking
-- selected node, active panel, compare selection, render config
-- discovered graph analysis
-- zap layer state
-- export selection and job progress
-
-Current graph layers represented in store/render contracts:
-
-- `graph`
-- `mutuals`
-- `keywords`
-- `zaps`
-- `pathfinding`
-
-Important caution:
-
-- `pathfinding` should be treated as partial infrastructure until there is a complete UI workflow around it. Do not document or demo it as a finished feature unless you actually finish the user-facing flow.
-
-## Working Rules for This Repo
-
-### General
-
-- Prefer adapting the graph explorer over bolting identity features onto the legacy profile page unless the feature is clearly profile-centric.
-- Keep the La Crypta visual language already present in `globals.css` and `src/features/graph/graph.css`.
-- Preserve loading, timeout, and partial-state behavior. This codebase already treats relay/network uncertainty as a first-class concern.
-
-### Nostr and Data Fetching
-
-- For auth, profile, badges, and generic user fetches, use `src/lib/nostr.ts`.
-- Keep fetches bounded by timeouts. Reuse the existing timeout pattern rather than introducing unbounded requests.
-- Reuse relay-aware behavior instead of hardcoding one relay.
-
-### Graph Feature
-
-- Treat `src/features/graph` as its own application slice.
-- UI state belongs in the graph Zustand store under `src/features/graph/app/store`.
-- Expensive processing belongs in `workers/` or `analysis/`, not inside React render paths.
-- Persistence belongs in `db/`.
-- Rendering-specific code belongs in `render/`.
-- Nostr transport or relay behavior specific to the graph belongs in `nostr/` or `kernel/`.
-- Export logic belongs in `export/`.
-
-### Navigation and Routes
-
-- If you add a new top-level route, update `src/components/Navbar.tsx` and add an app route in `src/app/`.
-- If you add a new graph-side panel or control, wire it through the graph store and `GraphApp.tsx`.
-- Do not follow the old instruction to add sections via `store/nav.ts`; that file is not part of the current app.
-
-## Best Feature Directions for This Codebase
-
-These fit the current implementation better than generic starter-kit ideas:
-
-1. NIP-05 trust overlay on graph nodes
-2. Web-of-trust scoring and explanation panel
-3. Identity card export from selected nodes
-4. Badge and zap signals integrated into graph analysis
-5. Compare two identities in the node detail workflow
-6. Relay reliability insights tied to discovery confidence
-7. External identity attestation surfaced on node detail
-8. Follow pathfinding between identities, but only if you finish the end-user UI around the existing partial infrastructure
-
-## File-Level Guidance
-
-- `src/lib/nostr.ts`
-  Shared auth and classic profile/badge data helpers.
-- `src/store/auth.ts`
-  Shared authenticated user state used by navbar/profile/badges.
-- `src/features/graph/GraphApp.tsx`
-  Main graph shell and panel orchestration.
-- `src/features/graph/components/`
-  UI controls, graph canvas, node detail, relay config, render config.
-- `src/features/graph/app/store/slices/`
-  Graph app state organization.
-- `src/features/graph/db/`
-  Dexie persistence and graph repositories.
-- `src/features/graph/kernel/`
-  App runtime, root loading, relay orchestration, export orchestration.
-- `src/features/graph/workers/`
-  Background processing for graph, event, and verification workloads.
-- `src/features/graph/render/`
-  deck.gl model building, viewport logic, avatar/image pipeline.
-- `src/features/graph/export/`
-  Snapshot and ZIP export pipeline.
-
-## Practical Advice
-
-- If the user wants a fast hackathon win, build on the graph route.
-- If the user wants a simpler feature, use `/profile` or `/badges`.
-- If a feature needs both, keep auth/profile in `lib/nostr.ts` and integrate derived identity insights into `features/graph`.
-- If the feature touches relay behavior, make sure stale-state and partial-state UX still make sense.
-- If the feature touches export, keep the output auditable and deterministic.
-
-## Commands
+Use npm; `package-lock.json` is present.
 
 ```bash
 npm install
@@ -212,7 +57,76 @@ npm run build
 npm run lint
 ```
 
-## Extra Repo Docs
+Useful targeted commands:
 
-- `README.md` gives the current product overview
-- `docs/current-codebase.md` explains the real architecture and where to extend it
+```bash
+npm run workers:build
+npm run avatar:validate -- --output tmp/avatar-current.json
+npm run avatar:compare -- tmp/avatar-before.json tmp/avatar-after.json
+```
+
+Notes:
+- `npm run dev`, `npm run build`, and `npm run start` rebuild graph workers via pre-scripts.
+- For avatar pipeline validation, install Chromium once if needed: `npx playwright install chromium`.
+
+## Coding conventions
+
+- Stack: Next.js 16, React 19, TypeScript strict mode, Tailwind CSS v4, NDK v3, nostr-tools, Zustand, deck.gl, d3-force, Dexie, Web Workers, fflate.
+- Use the `@/*` import alias for `src/*` when it improves clarity.
+- Match existing component, store slice, kernel module, and worker patterns.
+- Keep La Crypta visual language in `src/app/globals.css` and `src/features/graph/graph.css`.
+- Keep protocol helpers typed and close to their owning layer.
+- Prefer deterministic transforms for export and evidence code.
+- Use existing media/avatar pipeline helpers instead of adding parallel image caches.
+
+## Validation / done criteria
+
+Run the smallest checks that cover your change; explain any skipped check.
+
+Default checks before finishing:
+
+```bash
+npm run lint
+npm run build
+```
+
+Add targeted validation when relevant:
+- Worker/runtime changes: `npm run workers:build` plus `npm run build`.
+- Avatar/image pipeline changes: follow `docs/avatar-pipeline-validation.md`.
+- Export changes: verify deterministic manifest/file output and ZIP contents.
+- Relay/Nostr changes: verify timeout, stale-state, and partial-coverage behavior.
+- UI changes: run the app and check `/`; also check `/profile` or `/badges` if touched.
+
+Done means:
+- The requested behavior is implemented.
+- Existing graph-first flows still work.
+- Relay failures and partial data do not collapse the UI.
+- Relevant docs are updated when architecture, commands, validation, or user-visible workflow changes.
+
+## Constraints / do-not rules
+
+- Do not reintroduce the old `store/nav.ts` or single-page section switcher model.
+- Do not hardcode one relay when relay-aware behavior exists.
+- Do not add unbounded Nostr/network fetches.
+- Do not put heavy graph analysis, event parsing, or render prep in React render paths.
+- Do not treat export as a cosmetic download; it is evidence packaging.
+- Do not document or demo `pathfinding` as complete unless the end-user UI workflow is verified end to end.
+- Do not overwrite unrelated user changes.
+- Do not modify generated or cache outputs such as `.next/`, `node_modules/`, `tsconfig.tsbuildinfo`, or temporary screenshots unless explicitly asked.
+
+## Planning rules
+
+- For small fixes, inspect the relevant files and implement directly.
+- For multi-file or risky changes, state a short plan before editing.
+- When uncertain, prefer repo docs and current code over starter assumptions.
+- Choose feature directions that strengthen identity graph exploration, trust signals, relay reliability, comparison, badges/zaps in analysis, and exportable evidence.
+- Ask only when the missing decision changes product behavior or risks data/protocol correctness.
+
+## Documentation update rules
+
+Update docs only when the change makes existing docs wrong or incomplete.
+
+- Update `README.md` for user-facing setup, route, demo, or feature changes.
+- Update `docs/current-codebase.md` for architecture, directory ownership, or workflow changes.
+- Update avatar pipeline docs when image runtime, avatar cache, probe counters, or validation workflow changes.
+- Update `AGENTS.md` / `CLAUDE.md` when agent instructions, commands, or repo conventions change.

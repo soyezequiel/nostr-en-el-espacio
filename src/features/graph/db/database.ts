@@ -5,10 +5,13 @@ import type {
   AddressableHeadRecord,
   ContactListRecord,
   ImageVariantRecord,
+  InboundFollowerSnapshotRecord,
   InboundRefRecord,
   NoteExtractRecord,
   ProfileRecord,
   RawEventRecord,
+  RelayDiscoveryStatsRecord,
+  RelayListRecord,
   ReplaceableHeadKey,
   ReplaceableHeadRecord,
   ZapRecord,
@@ -51,12 +54,27 @@ export const NOSTR_GRAPH_DB_SCHEMA_V5 = {
   noteExtracts: 'noteId, pubkey, createdAt, fetchedAt, [pubkey+createdAt]',
 } as const
 
+export const NOSTR_GRAPH_DB_SCHEMA_V6 = {
+  ...NOSTR_GRAPH_DB_SCHEMA_V5,
+  inboundFollowerSnapshots: 'rootPubkey, fetchedAt, finalizedAt, completeness',
+  relayLists: 'pubkey, eventId, createdAt, fetchedAt',
+} as const
+
+export const NOSTR_GRAPH_DB_SCHEMA_V7 = {
+  ...NOSTR_GRAPH_DB_SCHEMA_V6,
+  relayDiscoveryStats:
+    'relayUrl, updatedAt, lastCount, totalInboundEventCount, lastUsefulForRootPubkey',
+} as const
+
 export class NostrGraphDexie extends Dexie {
   rawEvents!: Table<RawEventRecord, string>
   replaceableHeads!: Table<ReplaceableHeadRecord, ReplaceableHeadKey>
   addressableHeads!: Table<AddressableHeadRecord, AddressableHeadKey>
   profiles!: Table<ProfileRecord, string>
   contactLists!: Table<ContactListRecord, string>
+  inboundFollowerSnapshots!: Table<InboundFollowerSnapshotRecord, string>
+  relayLists!: Table<RelayListRecord, string>
+  relayDiscoveryStats!: Table<RelayDiscoveryStatsRecord, string>
   noteExtracts!: Table<NoteExtractRecord, string>
   inboundRefs!: Table<InboundRefRecord, string>
   zaps!: Table<ZapRecord, string>
@@ -74,6 +92,8 @@ export class NostrGraphDexie extends Dexie {
       .stores(NOSTR_GRAPH_DB_SCHEMA_V4)
       .upgrade((tx) => tx.table('imageVariants').clear())
     this.version(5).stores(NOSTR_GRAPH_DB_SCHEMA_V5)
+    this.version(6).stores(NOSTR_GRAPH_DB_SCHEMA_V6)
+    this.version(7).stores(NOSTR_GRAPH_DB_SCHEMA_V7)
   }
 }
 

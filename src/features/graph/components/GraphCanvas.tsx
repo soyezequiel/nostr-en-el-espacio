@@ -21,14 +21,17 @@ import {
   selectRelayHealthData,
   useAppStore,
 } from '@/features/graph/app/store'
-import type { AppStore } from '@/features/graph/app/store/types'
+import type {
+  AppStore,
+  NodeExpansionState,
+  RootCollectionProgress,
+} from '@/features/graph/app/store/types'
 import {
   clearAvatarPipelineProbe,
   publishAvatarPipelineProbe,
 } from '@/features/graph/components/avatarPipelineProbe'
 import { CoverageRecoveryCard } from '@/features/graph/components/CoverageRecoveryCard'
 import { GraphControlRail } from '@/features/graph/components/GraphControlRail'
-import { NodeExpansionProgressCard } from '@/features/graph/components/NodeExpansionProgressCard'
 import { createPerfCounters } from '@/features/graph/components/perfCounters'
 import type { RootLoader } from '@/features/graph/kernel/runtime'
 import { createEmptyGraphRenderModel } from '@/features/graph/render/createEmptyGraphRenderModel'
@@ -156,6 +159,20 @@ export interface GraphCanvasDiagnostics {
   }
 }
 
+type ProgressMetricTone = 'discovery' | 'inbound' | 'images'
+
+interface ProgressMetric {
+  id: string
+  label: string
+  summary: string
+  detail: string | null
+  tone: ProgressMetricTone
+  determinate: boolean
+  current: number | null
+  total: number | null
+  value: number | null
+}
+
 interface GraphCanvasProps {
   runtime: RootLoader
   onTrySampleRoot: () => void
@@ -213,6 +230,21 @@ const getRelationshipToggleState = (activeLayer: AppStore['activeLayer']) => ({
     activeLayer === 'nonreciprocal-followers',
 })
 
+const formatNodeExpansionPhaseLabel = (phase: NodeExpansionState['phase']) => {
+  switch (phase) {
+    case 'preparing':
+      return 'preparando'
+    case 'fetching-structure':
+      return 'consultando relays'
+    case 'correlating-followers':
+      return 'correlacionando evidencia'
+    case 'merging':
+      return 'actualizando grafo'
+    case 'idle':
+      return 'esperando'
+  }
+}
+
 const equalStringLists = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&
   left.every((value, index) => value === right[index])
@@ -248,6 +280,15 @@ const applyImageFrameDiagnostics = ({
 
 const createSortedCollectionSignature = (values?: ReadonlySet<string>) =>
   values ? Array.from(values).sort().join(',') : ''
+
+const clampProgressValue = (value: number) => Math.max(0, Math.min(1, value))
+
+const getDisplayProgressTotal = (
+  progress: Pick<RootCollectionProgress, 'loadedCount' | 'totalCount'>,
+) =>
+  progress.totalCount === null
+    ? null
+    : Math.max(progress.totalCount, progress.loadedCount)
 
 const createPathfindingSignature = (
   pathfinding?: Pick<AppStore['pathfinding'], 'status' | 'path'>,
@@ -444,6 +485,57 @@ const getRenderModelErrorMessage = (error: unknown) => {
   return 'No se pudo preparar el render 2D.'
 }
 
+interface GraphProgressMetricRowProps {
+  metric: ProgressMetric
+}
+
+const GraphProgressMetricRow = memo(function GraphProgressMetricRow({
+  metric,
+}: GraphProgressMetricRowProps) {
+  const ariaValueNow =
+    metric.determinate && metric.total === 0 ? 1 : metric.current
+  const ariaValueMax =
+    metric.determinate && metric.total === 0 ? 1 : metric.total
+  const valueText =
+    metric.determinate && metric.current !== null && metric.total !== null
+      ? `${metric.label}: ${metric.current} de ${metric.total}. ${metric.summary}`
+      : `${metric.label}: ${metric.summary}`
+
+  return (
+    <div className="graph-panel__progress-row">
+      <span className="graph-panel__progress-label">{metric.label}</span>
+      <span className="graph-panel__progress-summary">{metric.summary}</span>
+      <div
+        aria-label={metric.label}
+        aria-valuemax={metric.determinate ? ariaValueMax ?? 100 : undefined}
+        aria-valuemin={metric.determinate ? 0 : undefined}
+        aria-valuenow={metric.determinate ? ariaValueNow ?? 0 : undefined}
+        aria-valuetext={valueText}
+        className="graph-panel__progress-track"
+        role="progressbar"
+      >
+        <span
+          className={`graph-panel__progress-fill graph-panel__progress-fill--${metric.tone}${
+            metric.determinate
+              ? ''
+              : ' graph-panel__progress-fill--indeterminate'
+          }`}
+          style={
+            metric.determinate
+              ? {
+                  transform: `scaleX(${clampProgressValue(metric.value ?? 0)})`,
+                }
+              : undefined
+          }
+        />
+      </div>
+      {metric.detail ? (
+        <span className="graph-panel__progress-detail">{metric.detail}</span>
+      ) : null}
+    </div>
+  )
+})
+
 const emptyStateCopy = (
   status: ReturnType<typeof deriveGraphRenderState>,
   activeLayer: AppStore['activeLayer'],
@@ -511,7 +603,6 @@ const emptyStateCopy = (
 }
 
 interface GraphCanvasRecoveryChromeProps {
-  activeNodeExpansions: readonly ActiveNodeExpansion[]
   browserOnline: boolean
   links: AppStore['links']
   rootLoadMessage: string | null
@@ -522,7 +613,6 @@ interface GraphCanvasRecoveryChromeProps {
 }
 
 const GraphCanvasRecoveryChrome = memo(function GraphCanvasRecoveryChrome({
-  activeNodeExpansions,
   browserOnline,
   links,
   rootLoadMessage,
@@ -548,24 +638,12 @@ const GraphCanvasRecoveryChrome = memo(function GraphCanvasRecoveryChrome({
   )
   const shouldShowRecoveryOverlay =
     shouldMountRenderer && coverageRecovery.shouldOfferRecovery
-  const shouldShowOverlayStack =
-    shouldShowRecoveryOverlay || activeNodeExpansions.length > 0
 
   return (
     <>
-      {shouldShowOverlayStack ? (
+      {shouldShowRecoveryOverlay ? (
         <div className="graph-panel__overlay-stack">
-          {activeNodeExpansions.map((expansion) => (
-            <NodeExpansionProgressCard
-              key={expansion.pubkey}
-              nodeLabel={expansion.nodeLabel}
-              state={expansion.state}
-              title="Expandiendo nodo"
-              variant="overlay"
-            />
-          ))}
-
-          {shouldShowRecoveryOverlay && coverageRecovery.reason ? (
+          {coverageRecovery.reason ? (
             <CoverageRecoveryCard
               onChangeRelays={() => {
                 appStore.getState().setOpenPanel('relay-config')
@@ -2076,7 +2154,8 @@ export const GraphCanvas = memo(function GraphCanvas({
   const shouldShowEmptyState =
     !shouldMountRenderer &&
     rootNodePubkey !== null &&
-    rootLoadStatus !== 'loading'
+    rootLoadStatus !== 'loading' &&
+    renderState.status !== 'rendering'
   const rootDiscoveryStatusCopy =
     rootVisibleLinkProgress === null
       ? null
@@ -2090,10 +2169,194 @@ export const GraphCanvas = memo(function GraphCanvas({
               rootVisibleLinkProgress.inboundCandidateEventCount
             } eventos recibidos`
           : 'Buscando links visibles'
+  const rootDiscoveryProgressDetail =
+    rootVisibleLinkProgress === null
+      ? null
+      : [
+          `${rootVisibleLinkProgress.contactListEventCount} contact lists`,
+          `${rootVisibleLinkProgress.inboundCandidateEventCount} candidatos inbound`,
+          rootVisibleLinkProgress.lastRelayUrl
+            ? `ultimo relay ${rootVisibleLinkProgress.lastRelayUrl}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' / ')
+  const rootFollowCount = useMemo(
+    () =>
+      rootNodePubkey === null
+        ? 0
+        : links.filter(
+            (link) =>
+              link.source === rootNodePubkey && link.relation === 'follow',
+          ).length,
+    [links, rootNodePubkey],
+  )
+  const rootInboundCount = useMemo(
+    () =>
+      rootNodePubkey === null
+        ? 0
+        : new Set(
+            inboundLinks
+              .filter(
+                (link) =>
+                  link.target === rootNodePubkey && link.relation === 'inbound',
+              )
+              .map((link) => link.source),
+          ).size,
+    [inboundLinks, rootNodePubkey],
+  )
+  const progressMetrics = useMemo<ProgressMetric[]>(() => {
+    const hasRoot = rootNodePubkey !== null
+    const followingProgress: RootCollectionProgress = rootVisibleLinkProgress?.following ?? {
+      status:
+        hasRoot &&
+        (rootLoadStatus === 'ready' ||
+          rootLoadStatus === 'partial' ||
+          rootLoadStatus === 'empty' ||
+          rootLoadStatus === 'error')
+          ? 'complete'
+          : hasRoot
+            ? 'loading'
+            : 'idle',
+      loadedCount: rootFollowCount,
+      totalCount:
+        hasRoot && (rootLoadStatus === 'ready' || rootLoadStatus === 'empty')
+          ? rootFollowCount
+          : null,
+      isTotalKnown:
+        hasRoot && (rootLoadStatus === 'ready' || rootLoadStatus === 'empty'),
+    }
+    const followersProgress: RootCollectionProgress = rootVisibleLinkProgress?.followers ?? {
+      status:
+        hasRoot &&
+        (rootLoadStatus === 'ready' ||
+          rootLoadStatus === 'partial' ||
+          rootLoadStatus === 'empty' ||
+          rootLoadStatus === 'error')
+          ? 'complete'
+          : hasRoot
+            ? 'loading'
+            : 'idle',
+      loadedCount: rootInboundCount,
+      totalCount:
+        hasRoot && rootLoadStatus === 'ready' ? rootInboundCount : null,
+      isTotalKnown: hasRoot && rootLoadStatus === 'ready',
+    }
+    const followingDisplayTotal = getDisplayProgressTotal(followingProgress)
+    const followersDisplayTotal = getDisplayProgressTotal(followersProgress)
+    const followingMetric: ProgressMetric = {
+      id: 'following',
+      label: 'Following',
+      summary:
+        followingDisplayTotal !== null
+          ? `${followingProgress.loadedCount}/${followingDisplayTotal}${
+              followingProgress.isTotalKnown ? '' : ' aprox.'
+            }`
+          : `${followingProgress.loadedCount} cargados`,
+      detail:
+        followingDisplayTotal !== null
+          ? followingProgress.isTotalKnown
+            ? 'Total tomado de la contact list kind:3 del root.'
+            : 'Total provisional; se ajusta cuando llega una contact list mejor.'
+          : hasRoot
+            ? 'Esperando contact list parseada para fijar el total de following.'
+            : 'Carga una identidad para iniciar el descubrimiento.',
+      tone: 'discovery',
+      determinate: followingDisplayTotal !== null,
+      current:
+        followingDisplayTotal !== null ? followingProgress.loadedCount : null,
+      total: followingDisplayTotal,
+      value:
+        followingDisplayTotal !== null
+          ? followingDisplayTotal === 0
+            ? 1
+            : clampProgressValue(
+                followingProgress.loadedCount /
+                  Math.max(1, followingDisplayTotal),
+              )
+          : null,
+    }
+
+    const followersMetric: ProgressMetric = {
+      id: 'followers',
+      label: 'Followers',
+      summary:
+        followersDisplayTotal !== null
+          ? `${followersProgress.loadedCount}/${followersDisplayTotal}${
+              followersProgress.isTotalKnown ? '' : ' aprox.'
+            }`
+          : `${followersProgress.loadedCount} cargados`,
+      detail:
+        followersDisplayTotal !== null
+          ? followersProgress.isTotalKnown
+            ? 'Total confirmado tras la correlacion final de followers inbound.'
+            : 'Total estimado desde COUNT; cambia si aparece una mejor cobertura.'
+          : hasRoot
+            ? 'Sin total usable todavia; mostrando carga progresiva de followers.'
+            : 'El total de followers aparece cuando se resuelve un root.',
+      tone: 'inbound',
+      determinate: followersDisplayTotal !== null,
+      current:
+        followersDisplayTotal !== null ? followersProgress.loadedCount : null,
+      total: followersDisplayTotal,
+      value:
+        followersDisplayTotal !== null
+          ? followersDisplayTotal === 0
+            ? 1
+            : clampProgressValue(
+                followersProgress.loadedCount /
+                  Math.max(1, followersDisplayTotal),
+              )
+          : null,
+    }
+
+    const visibleScreenNodes = imageDiagnosticsSnapshot.visibility.visibleScreenNodes
+    const paintedVisibleNodes =
+      imageDiagnosticsSnapshot.presentation.paintedVisibleNodes
+    const visibleImagePending =
+      imageDiagnosticsSnapshot.pendingWork.queuedVisibleBaseRequests +
+      imageDiagnosticsSnapshot.pendingWork.queuedVisibleHdRequests +
+      imageDiagnosticsSnapshot.pendingWork.inFlightVisibleBaseRequests +
+      imageDiagnosticsSnapshot.pendingWork.inFlightVisibleHdRequests
+    const imageMetric: ProgressMetric = {
+      id: 'image-loading',
+      label: 'Imagenes',
+      summary:
+        visibleScreenNodes > 0
+          ? `${paintedVisibleNodes}/${visibleScreenNodes} visibles`
+          : imageDiagnosticsSnapshot.pendingWork.totalRequests > 0
+            ? 'precargando avatars'
+            : 'sin nodos visibles',
+      detail:
+        visibleScreenNodes > 0
+          ? `${visibleImagePending} solicitudes visibles / ${imageDiagnosticsSnapshot.presentation.iconLayerPendingVisibleNodes} pendientes en icon layer`
+          : imageDiagnosticsSnapshot.diagnostics.secondarySummary ??
+            imageDiagnosticsSnapshot.diagnostics.primarySummary,
+      tone: 'images',
+      determinate: visibleScreenNodes > 0,
+      current: visibleScreenNodes > 0 ? paintedVisibleNodes : null,
+      total: visibleScreenNodes > 0 ? visibleScreenNodes : null,
+      value:
+        visibleScreenNodes > 0
+          ? clampProgressValue(paintedVisibleNodes / visibleScreenNodes)
+          : null,
+    }
+
+    return [followingMetric, followersMetric, imageMetric]
+  }, [
+    imageDiagnosticsSnapshot,
+    rootFollowCount,
+    rootInboundCount,
+    rootLoadStatus,
+    rootNodePubkey,
+    rootVisibleLinkProgress,
+  ])
   const isRootDiscoveryProgressActive =
     rootDiscoveryStatusCopy !== null &&
     activeLayer === 'graph' &&
-    (rootLoadStatus === 'loading' || rootLoadStatus === 'partial')
+    (rootLoadStatus === 'loading' ||
+      rootVisibleLinkProgress?.following.status !== 'complete' ||
+      rootVisibleLinkProgress?.followers.status !== 'complete')
   const statusCopy = capReached
     ? `Cap ${maxNodes} alcanzado`
     : isRootDiscoveryProgressActive
@@ -2178,17 +2441,29 @@ export const GraphCanvas = memo(function GraphCanvas({
                 ? 'Sin follows'
                 : 'Esperando root'
   const streamMeta = primaryActiveExpansion
-    ? primaryActiveExpansion.state.message ??
-      `Trabajando sobre ${primaryActiveExpansion.nodeLabel}`
+    ? [
+        `Paso ${primaryActiveExpansion.state.step ?? '-'} de ${
+          primaryActiveExpansion.state.totalSteps ?? '-'
+        }`,
+        activeNodeExpansions.length > 1
+          ? `+${activeNodeExpansions.length - 1} expansiones`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' / ')
     : statusCopy
   const streamDetail = primaryActiveExpansion
-    ? `Paso ${primaryActiveExpansion.state.step ?? '-'} de ${
-        primaryActiveExpansion.state.totalSteps ?? '-'
-      }. El grafo visible se mantiene usable mientras se integra el nodo.`
+    ? `${
+        primaryActiveExpansion.state.message ??
+        `Trabajando sobre ${primaryActiveExpansion.nodeLabel}`
+      } Fase: ${formatNodeExpansionPhaseLabel(
+        primaryActiveExpansion.state.phase,
+      )}. El grafo visible se mantiene usable mientras se integra el nodo.`
     : pathfinding.status === 'computing'
       ? pathfinding.message ?? 'Recorriendo el grafo mutuo descubierto.'
       : isRootDiscoveryProgressActive || rootLoadStatus === 'loading'
         ? rootLoadMessage ??
+          rootDiscoveryProgressDetail ??
           'Consultando relays, cache local y contact list kind:3 del root.'
       : rootLoadStatus === 'partial' ||
           rootLoadStatus === 'empty' ||
@@ -2305,7 +2580,6 @@ export const GraphCanvas = memo(function GraphCanvas({
           }}
         >
           <GraphCanvasRecoveryChrome
-            activeNodeExpansions={activeNodeExpansions}
             browserOnline={isBrowserOnline}
             links={links}
             onTrySampleRoot={onTrySampleRoot}
@@ -2363,6 +2637,11 @@ export const GraphCanvas = memo(function GraphCanvas({
             <span className="graph-panel__stream-eyebrow">Progreso</span>
             <span className="graph-panel__stream-label">{streamLabel}</span>
             <span className="graph-panel__stream-meta">{streamMeta}</span>
+            <div className="graph-panel__progress-grid">
+              {progressMetrics.map((metric) => (
+                <GraphProgressMetricRow key={metric.id} metric={metric} />
+              ))}
+            </div>
             <span className="graph-panel__stream-detail">{streamDetail}</span>
           </div>
 

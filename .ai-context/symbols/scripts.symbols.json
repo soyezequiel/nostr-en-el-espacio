@@ -1,0 +1,350 @@
+[
+  {
+    "exported": false,
+    "filePath": "scripts/build-graph-workers.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "22b21ea4276c89b75935ceac8b9128781d69087f1e59b1e2144bea4096ec3b09",
+    "name": "outdir",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/build-graph-workers.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "22b21ea4276c89b75935ceac8b9128781d69087f1e59b1e2144bea4096ec3b09",
+    "name": "repoRoot",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/build-graph-workers.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "22b21ea4276c89b75935ceac8b9128781d69087f1e59b1e2144bea4096ec3b09",
+    "name": "scriptDir",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/compare-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "ae922b19869d93777d434e5a4ba6f490bc63472d663f1eb1ba62168eede4a4e0",
+    "name": "formatDelta",
+    "references": [],
+    "signature": "formatDelta(before, after)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/compare-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "ae922b19869d93777d434e5a4ba6f490bc63472d663f1eb1ba62168eede4a4e0",
+    "name": "formatValue",
+    "references": [],
+    "signature": "formatValue(value)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/compare-avatar-pipeline.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "ae922b19869d93777d434e5a4ba6f490bc63472d663f1eb1ba62168eede4a4e0",
+    "name": "LARGER_IS_BETTER",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/compare-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "ae922b19869d93777d434e5a4ba6f490bc63472d663f1eb1ba62168eede4a4e0",
+    "name": "main",
+    "references": [],
+    "signature": "main()"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/compare-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "ae922b19869d93777d434e5a4ba6f490bc63472d663f1eb1ba62168eede4a4e0",
+    "name": "parseMaybeNumber",
+    "references": [],
+    "signature": "parseMaybeNumber(value)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/compare-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "ae922b19869d93777d434e5a4ba6f490bc63472d663f1eb1ba62168eede4a4e0",
+    "name": "readJson",
+    "references": [],
+    "signature": "readJson(filePath)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/compare-avatar-pipeline.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "ae922b19869d93777d434e5a4ba6f490bc63472d663f1eb1ba62168eede4a4e0",
+    "name": "SMALLER_IS_BETTER",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/compare-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "ae922b19869d93777d434e5a4ba6f490bc63472d663f1eb1ba62168eede4a4e0",
+    "name": "verdict",
+    "references": [],
+    "signature": "verdict(metric, before, after)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/dev-preview.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "ae640ff7790a239ab1f59052986b4f09daaa6f49b9b94398cff87188b91a33ac",
+    "name": "args",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/dev-preview.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "ae640ff7790a239ab1f59052986b4f09daaa6f49b9b94398cff87188b91a33ac",
+    "name": "benignStderrPatterns",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/dev-preview.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "ae640ff7790a239ab1f59052986b4f09daaa6f49b9b94398cff87188b91a33ac",
+    "name": "child",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/dev-preview.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "ae640ff7790a239ab1f59052986b4f09daaa6f49b9b94398cff87188b91a33ac",
+    "name": "forwardSignal",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/dev-preview.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "ae640ff7790a239ab1f59052986b4f09daaa6f49b9b94398cff87188b91a33ac",
+    "name": "isWin",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/dev-preview.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "ae640ff7790a239ab1f59052986b4f09daaa6f49b9b94398cff87188b91a33ac",
+    "name": "npmBin",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/dev-preview.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "ae640ff7790a239ab1f59052986b4f09daaa6f49b9b94398cff87188b91a33ac",
+    "name": "PORT",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/dev-preview.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "ae640ff7790a239ab1f59052986b4f09daaa6f49b9b94398cff87188b91a33ac",
+    "name": "shouldSuppressStderrLine",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/dev-preview.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "ae640ff7790a239ab1f59052986b4f09daaa6f49b9b94398cff87188b91a33ac",
+    "name": "stderrBuffer",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "DEFAULT_PORT",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "DEFAULT_ROOT",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "DEFAULT_SAMPLE_INTERVAL_MS",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "DEFAULT_SETTLE_MS",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "DEFAULT_TIMEOUT_MS",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "DEFAULT_VIEWPORT",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "findFirstOffset",
+    "references": [],
+    "signature": "findFirstOffset(samples, measurementStartedAt, predicate)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "hasAvatarPipelineActivity",
+    "references": [],
+    "signature": "hasAvatarPipelineActivity(snapshot)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "isSettledSnapshot",
+    "references": [],
+    "signature": "isSettledSnapshot(snapshot)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "main",
+    "references": [],
+    "signature": "main()"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "parseArgs",
+    "references": [],
+    "signature": "parseArgs(argv)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "printSummary",
+    "references": [],
+    "signature": "printSummary(result)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "variable",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "PROBE_WINDOW_KEY",
+    "references": []
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "resolveNpmCommand",
+    "references": [],
+    "signature": "resolveNpmCommand()"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "roundMs",
+    "references": [],
+    "signature": "roundMs(value)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "roundRatio",
+    "references": [],
+    "signature": "roundRatio(value)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "spawnCommand",
+    "references": [],
+    "signature": "spawnCommand(command, args, { cwd, label })"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "spawnWithFallback",
+    "references": [],
+    "signature": "spawnWithFallback(command, args, options)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "summariseRun",
+    "references": [],
+    "signature": "summariseRun({ measurementStartedAt, samples, settledAt, timeoutHit, })"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "waitForServerReady",
+    "references": [],
+    "signature": "waitForServerReady(baseUrl, timeoutMs, managedServerProcess)"
+  },
+  {
+    "exported": false,
+    "filePath": "scripts/validate-avatar-pipeline.mjs",
+    "kind": "function",
+    "lastSourceHashUsed": "574e3e8cb052f2f4d84a240d76a19a11d9f8ccfea033501435b1827bd666e526",
+    "name": "writeOutput",
+    "references": [],
+    "signature": "writeOutput(outputPath, result)"
+  }
+]

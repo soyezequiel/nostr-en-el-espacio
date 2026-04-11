@@ -4,6 +4,7 @@ import type {
   ContactListRecord,
   ProfileRecord,
   RawEventRecord,
+  RelayListRecord,
   ReplaceableHeadRecord,
 } from '@/features/graph/db/entities'
 
@@ -54,6 +55,10 @@ export function shouldReplaceProjection(
 export function shouldReplaceProjection(
   current: Pick<ContactListRecord, 'createdAt' | 'eventId'>,
   incoming: Pick<ContactListRecord, 'createdAt' | 'eventId'>,
+): boolean
+export function shouldReplaceProjection(
+  current: Pick<RelayListRecord, 'createdAt' | 'eventId'>,
+  incoming: Pick<RelayListRecord, 'createdAt' | 'eventId'>,
 ): boolean
 export function shouldReplaceProjection(
   current: { createdAt: number; eventId: string },

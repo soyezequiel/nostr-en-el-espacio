@@ -26,6 +26,7 @@ const TRANSITIONS: Record<
   partial: {
     'live-ready': 'ready',
     'live-partial': 'partial',
+    'live-empty': 'empty',
     error: 'error',
     cancel: 'partial',
     start: 'loading',

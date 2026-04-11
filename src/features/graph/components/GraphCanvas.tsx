@@ -173,10 +173,20 @@ interface ProgressMetric {
   value: number | null
 }
 
+export interface GraphProgressSnapshot {
+  label: string
+  meta: string
+  detail: string
+  metrics: ProgressMetric[]
+  isBusy: boolean
+  activeLayer: AppStore['activeLayer']
+}
+
 interface GraphCanvasProps {
   runtime: RootLoader
   onTrySampleRoot: () => void
   onDiagnosticsChange?: (snapshot: GraphCanvasDiagnostics | null) => void
+  onProgressChange?: (snapshot: GraphProgressSnapshot | null) => void
 }
 // naranja esta aqui
 const EMPTY_IMAGE_FRAME = createEmptyImageRenderPayload()
@@ -769,10 +779,27 @@ const GraphCanvasKeywordSearch = memo(function GraphCanvasKeywordSearch({
   )
 })
 
+export function GraphProgressBody({ snapshot }: { snapshot: GraphProgressSnapshot }) {
+  return (
+    <>
+      <span className="graph-panel__stream-eyebrow">Progreso</span>
+      <span className="graph-panel__stream-label">{snapshot.label}</span>
+      <span className="graph-panel__stream-meta">{snapshot.meta}</span>
+      <div className="graph-panel__progress-grid">
+        {snapshot.metrics.map((metric) => (
+          <GraphProgressMetricRow key={metric.id} metric={metric} />
+        ))}
+      </div>
+      <span className="graph-panel__stream-detail">{snapshot.detail}</span>
+    </>
+  )
+}
+
 export const GraphCanvas = memo(function GraphCanvas({
   runtime,
   onTrySampleRoot,
   onDiagnosticsChange,
+  onProgressChange,
 }: GraphCanvasProps) {
   const {
     nodes,
@@ -2482,6 +2509,35 @@ export const GraphCanvas = memo(function GraphCanvas({
         ? 'Exploracion completa del vecindario descubierto. Selecciona nodos, cambia capas o exporta evidencia.'
       : 'Carga una npub o nprofile para iniciar descubrimiento relay-aware.'
 
+  const isBusy =
+    pathfinding.status === 'computing' ||
+    primaryActiveExpansion !== null ||
+    isRootDiscoveryProgressActive ||
+    rootLoadStatus === 'loading'
+
+  const progressSnapshot = useMemo<GraphProgressSnapshot>(
+    () => ({
+      label: streamLabel,
+      meta: streamMeta,
+      detail: streamDetail,
+      metrics: progressMetrics,
+      isBusy,
+      activeLayer,
+    }),
+    [streamLabel, streamMeta, streamDetail, progressMetrics, isBusy, activeLayer],
+  )
+
+  useEffect(() => {
+    onProgressChange?.(progressSnapshot)
+  }, [progressSnapshot, onProgressChange])
+
+  useEffect(
+    () => () => {
+      onProgressChange?.(null)
+    },
+    [onProgressChange],
+  )
+
   const diagnostics = useMemo<GraphCanvasDiagnostics | null>(
     () => {
       if (!shouldCollectDiagnostics) {
@@ -2627,23 +2683,6 @@ export const GraphCanvas = memo(function GraphCanvas({
               ) : null}
             </div>
           ) : null}
-
-          <div
-            aria-atomic="false"
-            aria-live="polite"
-            className="graph-panel__stream-status"
-            role="status"
-          >
-            <span className="graph-panel__stream-eyebrow">Progreso</span>
-            <span className="graph-panel__stream-label">{streamLabel}</span>
-            <span className="graph-panel__stream-meta">{streamMeta}</span>
-            <div className="graph-panel__progress-grid">
-              {progressMetrics.map((metric) => (
-                <GraphProgressMetricRow key={metric.id} metric={metric} />
-              ))}
-            </div>
-            <span className="graph-panel__stream-detail">{streamDetail}</span>
-          </div>
 
           <GraphControlRail
             activeLayer={activeLayer}

@@ -21,7 +21,9 @@ import {
 } from '@/features/graph/devicePerformance'
 import {
   GraphCanvas,
+  GraphProgressBody,
   type GraphCanvasDiagnostics,
+  type GraphProgressSnapshot,
 } from '@/features/graph/components/GraphCanvas'
 import { DeepCaptureSelectionPanel } from '@/features/graph/components/DeepCaptureSelectionPanel'
 import { NpubInput } from '@/features/graph/components/NpubInput'
@@ -240,6 +242,9 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isRootEntryOpen, setIsRootEntryOpen] = useState(false)
+  const [isProgressOpen, setIsProgressOpen] = useState(false)
+  const [progressSnapshot, setProgressSnapshot] =
+    useState<GraphProgressSnapshot | null>(null)
   const [graphDiagnostics, setGraphDiagnostics] =
     useState<GraphCanvasDiagnostics | null>(null)
   const {
@@ -330,6 +335,11 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (isProgressOpen) {
+          setIsProgressOpen(false)
+          return
+        }
+
         if (isRootEntryOpen) {
           setIsRootEntryOpen(false)
           return
@@ -366,6 +376,7 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
   }, [
     isNodeDetailOpen,
     isPathfindingOpen,
+    isProgressOpen,
     isRootEntryOpen,
     isSettingsOpen,
     openPanel,
@@ -503,6 +514,16 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
       value: `${relayCount} ${isGraphStale ? 'stale' : 'live'}`,
     },
   ]
+
+  const handleProgressChange = useCallback(
+    (snapshot: GraphProgressSnapshot | null) => {
+      setProgressSnapshot(snapshot)
+      if (snapshot === null) {
+        setIsProgressOpen(false)
+      }
+    },
+    [],
+  )
 
   const handleDiagnosticsChange = useCallback(
     (snapshot: GraphCanvasDiagnostics | null) => {
@@ -983,10 +1004,41 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
           onDiagnosticsChange={
             shouldCollectDiagnostics ? handleDiagnosticsChange : undefined
           }
+          onProgressChange={handleProgressChange}
           runtime={rootLoader}
         />
 
         <header className="workspace-topbar">
+          {progressSnapshot ? (
+            <button
+              aria-expanded={isProgressOpen}
+              aria-label="Estado del grafo"
+              className={`workspace-progress-chip${
+                isProgressOpen ? ' workspace-progress-chip--open' : ''
+              }${progressSnapshot.isBusy ? ' workspace-progress-chip--busy' : ''}`}
+              onClick={() => setIsProgressOpen((prev) => !prev)}
+              type="button"
+            >
+              <span className="workspace-progress-chip__label">
+                {progressSnapshot.label}
+              </span>
+              {progressSnapshot.isBusy && (
+                <span aria-hidden="true" className="workspace-progress-chip__dot" />
+              )}
+            </button>
+          ) : null}
+
+          {activeLayer !== 'graph' ? (
+            <button
+              aria-label="Volver al grafo"
+              className="workspace-back-btn"
+              onClick={() => rootLoader.toggleLayer('graph')}
+              type="button"
+            >
+              ← Volver al grafo
+            </button>
+          ) : null}
+
           <div className="workspace-topbar__actions">
             <button
               aria-expanded={isPathfindingOpen}
@@ -1035,6 +1087,16 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
             </button>
           </div>
         </header>
+
+        {isProgressOpen && progressSnapshot ? (
+          <div
+            aria-label="Detalle de progreso del grafo"
+            className="workspace-progress-panel"
+            role="region"
+          >
+            <GraphProgressBody snapshot={progressSnapshot} />
+          </div>
+        ) : null}
 
         {(isSettingsOpen || (isRootEntryOpen && !isRootEntryInline)) && (
           <button

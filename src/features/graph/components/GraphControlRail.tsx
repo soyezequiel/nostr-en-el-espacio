@@ -1,4 +1,5 @@
-import { memo } from 'react'
+/* eslint-disable react-hooks/set-state-in-effect */
+import { memo, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import type { AppStore } from '@/features/graph/app/store/types'
@@ -7,13 +8,6 @@ interface RelationshipToggleState {
   following: boolean
   followers: boolean
   onlyNonReciprocal: boolean
-}
-
-interface ControlFeedback {
-  label: string
-  value: string
-  detail: string
-  tone: 'neutral' | 'mint' | 'amber' | 'blue'
 }
 
 interface GraphControlRailProps {
@@ -29,74 +23,16 @@ interface GraphControlRailProps {
   keywordSearch?: ReactNode
 }
 
-const resolveControlFeedback = (
-  activeLayer: AppStore['activeLayer'],
-): ControlFeedback => {
-  switch (activeLayer) {
-    case 'connections':
-      return {
-        label: 'Viendo',
-        value: 'Conexiones internas',
-        detail: 'Solo enlaces internos entre los nodos visibles de la vista actual.',
-        tone: 'blue',
-      }
-    case 'following':
-      return {
-        label: 'Viendo',
-        value: 'Solo sigo',
-        detail: 'Muestra solo las cuentas que sigue el root.',
-        tone: 'mint',
-      }
-    case 'following-non-followers':
-      return {
-        label: 'Viendo',
-        value: 'Sigo sin reciprocidad',
-        detail: 'Cuentas que sigue el root y que no le siguen de vuelta.',
-        tone: 'amber',
-      }
-    case 'followers':
-      return {
-        label: 'Viendo',
-        value: 'Solo me siguen',
-        detail: 'Muestra solo las cuentas que siguen al root.',
-        tone: 'mint',
-      }
-    case 'nonreciprocal-followers':
-      return {
-        label: 'Viendo',
-        value: 'Me siguen sin reciprocidad',
-        detail: 'Cuentas que siguen al root y que el root no sigue.',
-        tone: 'amber',
-      }
-    case 'mutuals':
-      return {
-        label: 'Viendo',
-        value: 'Mutuos',
-        detail: 'Relaciones reciprocas detectadas para el root.',
-        tone: 'mint',
-      }
-    case 'keywords':
-      return {
-        label: 'Viendo',
-        value: 'Palabras',
-        detail: 'Filtra el grafo por coincidencias de texto.',
-        tone: 'blue',
-      }
-    case 'zaps':
-      return {
-        label: 'Viendo',
-        value: 'Zaps',
-        detail: 'Superpone actividad de zaps sobre el grafo.',
-        tone: 'amber',
-      }
-    default:
-      return {
-        label: 'Viendo',
-        value: 'Grafo',
-        detail: 'Exploracion completa del vecindario descubierto.',
-        tone: 'neutral',
-      }
-  }
+function useIsCompact() {
+  const [isCompact, setIsCompact] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)')
+    setIsCompact(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsCompact(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return isCompact
 }
 
 export const GraphControlRail = memo(function GraphControlRail({
@@ -111,147 +47,212 @@ export const GraphControlRail = memo(function GraphControlRail({
   onToggleOnlyNonReciprocal,
   keywordSearch,
 }: GraphControlRailProps) {
-  const controlFeedback = resolveControlFeedback(activeLayer)
+  const [isMoreOpen, setIsMoreOpen] = useState(false)
+  const isCompact = useIsCompact()
+  const moreRef = useRef<HTMLDivElement>(null)
+
   const isNonReciprocalAvailable =
     canToggleOnlyNonReciprocal && onlyOneRelationshipSideActive
   const isNonReciprocalActive =
     isNonReciprocalAvailable && relationshipToggleState.onlyNonReciprocal
 
+  // "Más" is active when the current layer/filter lives inside its menu
+  const isMoreActive =
+    activeLayer === 'keywords' ||
+    activeLayer === 'zaps' ||
+    isNonReciprocalActive ||
+    (isCompact && activeLayer === 'connections')
+
+  // Auto-open Más on compact when keywords is active so search is reachable
+  useEffect(() => {
+    if (isCompact && activeLayer === 'keywords') {
+      setIsMoreOpen(true)
+    }
+  }, [isCompact, activeLayer])
+
+  // Close Más on outside pointer
+  useEffect(() => {
+    if (!isMoreOpen) return
+    const handlePointerDown = (e: PointerEvent) => {
+      if (!(e.target instanceof Node)) return
+      if (!moreRef.current?.contains(e.target)) {
+        setIsMoreOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [isMoreOpen])
+
+  // Close Más on Escape
+  useEffect(() => {
+    if (!isMoreOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMoreOpen(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isMoreOpen])
+
+  const handleToggleMore = () => setIsMoreOpen((prev) => !prev)
+
+  const handleMenuItemClick = (action: () => void, keepOpen = false) => {
+    action()
+    if (!keepOpen) setIsMoreOpen(false)
+  }
+
   return (
     <div className="graph-panel__control-bar">
-      <div
-        className="graph-panel__control-summary"
-        data-tone={controlFeedback.tone}
-      >
-        <span className="graph-panel__control-summary-label">
-          {controlFeedback.label}
-        </span>
-        <strong className="graph-panel__control-summary-value">
-          {controlFeedback.value}
-        </strong>
-        <p className="graph-panel__control-summary-copy">
-          {controlFeedback.detail}
-        </p>
-      </div>
-
       <div className="graph-panel__control-actions">
-        <div
-          className="graph-panel__control-group graph-panel__control-group--primary"
-          role="group"
-          aria-label="Vista principal del grafo"
+        {/* Conexiones — desktop only (hidden at compact via CSS) */}
+        <button
+          aria-pressed={activeLayer === 'connections'}
+          className={`graph-panel__control-btn graph-panel__control-btn--desktop${
+            activeLayer === 'connections' ? ' graph-panel__control-btn--primary' : ''
+          }`}
+          data-control-tone="connections"
+          onClick={() => onToggleLayer('connections')}
+          type="button"
         >
-          <button
-            aria-pressed={activeLayer === 'graph'}
-            className={`graph-panel__control-btn${
-              activeLayer === 'graph' ? ' graph-panel__control-btn--primary' : ''
-            }`}
-            data-control-tone="neutral"
-            onClick={() => onToggleLayer('graph')}
-            type="button"
-          >
-            Grafo
-          </button>
-          <button
-            aria-pressed={activeLayer === 'connections'}
-            className={`graph-panel__control-btn${
-              activeLayer === 'connections'
-                ? ' graph-panel__control-btn--primary'
-                : ''
-            }`}
-            data-control-tone="connections"
-            onClick={() => onToggleLayer('connections')}
-            type="button"
-          >
-            Conexiones
-          </button>
-          <button
-            aria-pressed={relationshipToggleState.following}
-            className={`graph-panel__control-btn${
-              relationshipToggleState.following
-                ? ' graph-panel__control-btn--primary'
-                : ''
-            }`}
-            data-control-tone="relationship"
-            onClick={() => onToggleRelationship('following')}
-            type="button"
-          >
-            Sigo
-          </button>
-          <button
-            aria-pressed={relationshipToggleState.followers}
-            className={`graph-panel__control-btn${
-              relationshipToggleState.followers
-                ? ' graph-panel__control-btn--primary'
-                : ''
-            }`}
-            data-control-tone="relationship"
-            onClick={() => onToggleRelationship('followers')}
-            type="button"
-          >
-            Me siguen
-          </button>
-        </div>
+          Conexiones
+        </button>
 
-        <div
-          aria-hidden={!isNonReciprocalAvailable}
-          className="graph-panel__control-group graph-panel__control-group--aux"
-          data-available={isNonReciprocalAvailable ? 'true' : 'false'}
-          role="group"
-          aria-label="Filtro de reciprocidad"
+        {/* Sigo — always visible */}
+        <button
+          aria-pressed={relationshipToggleState.following}
+          className={`graph-panel__control-btn${
+            relationshipToggleState.following
+              ? ' graph-panel__control-btn--primary'
+              : ''
+          }`}
+          data-control-tone="relationship"
+          onClick={() => onToggleRelationship('following')}
+          type="button"
         >
-          <button
-            aria-pressed={isNonReciprocalActive}
-            className={`graph-panel__control-btn graph-panel__control-btn--aux${
-              isNonReciprocalActive ? ' graph-panel__control-btn--primary' : ''
-            }`}
-            data-control-tone="relationship"
-            disabled={!isNonReciprocalAvailable}
-            onClick={onToggleOnlyNonReciprocal}
-            tabIndex={isNonReciprocalAvailable ? 0 : -1}
-            type="button"
-          >
-            Sin reciprocidad
-          </button>
-        </div>
+          Sigo
+        </button>
 
-        <div
-          className="graph-panel__control-group graph-panel__control-group--secondary"
-          role="group"
-          aria-label="Capas complementarias"
+        {/* Me siguen — always visible */}
+        <button
+          aria-pressed={relationshipToggleState.followers}
+          className={`graph-panel__control-btn${
+            relationshipToggleState.followers
+              ? ' graph-panel__control-btn--primary'
+              : ''
+          }`}
+          data-control-tone="relationship"
+          onClick={() => onToggleRelationship('followers')}
+          type="button"
         >
+          Me siguen
+        </button>
+
+        {/* Más — always visible, contains secondary utilities */}
+        <div className="graph-panel__more-container" ref={moreRef}>
           <button
-            aria-pressed={activeLayer === 'keywords'}
-            className={`graph-panel__control-btn${
-              activeLayer === 'keywords' ? ' graph-panel__control-btn--primary' : ''
+            aria-expanded={isMoreOpen}
+            aria-haspopup="true"
+            className={`graph-panel__control-btn graph-panel__more-btn${
+              isMoreActive ? ' graph-panel__control-btn--primary' : ''
             }`}
-            data-control-tone="keywords"
-            onClick={() => onToggleLayer('keywords')}
-            title={keywordLayerDisabledReason || undefined}
+            data-control-tone={isMoreActive ? 'more-active' : 'neutral'}
+            onClick={handleToggleMore}
             type="button"
           >
-            Palabras
+            Más
           </button>
-          <button
-            aria-pressed={activeLayer === 'zaps'}
-            className={`graph-panel__control-btn${
-              activeLayer === 'zaps' ? ' graph-panel__control-btn--primary' : ''
-            }`}
-            data-control-tone="zaps"
-            disabled={zapLayerStatus !== 'enabled'}
-            onClick={() => onToggleLayer('zaps')}
-            title={
-              zapLayerStatus !== 'enabled'
-                ? 'La capa de zaps depende de recibos disponibles.'
-                : undefined
-            }
-            type="button"
-          >
-            Zaps
-          </button>
+
+          {isMoreOpen && (
+            <div
+              className={`graph-panel__more-menu${
+                isCompact ? ' graph-panel__more-menu--sheet' : ''
+              }`}
+              role="group"
+            >
+              {/* Conexiones — compact only */}
+              {isCompact && (
+                <button
+                  aria-pressed={activeLayer === 'connections'}
+                  className={`graph-panel__control-btn${
+                    activeLayer === 'connections'
+                      ? ' graph-panel__control-btn--primary'
+                      : ''
+                  }`}
+                  data-control-tone="connections"
+                  onClick={() =>
+                    handleMenuItemClick(() => onToggleLayer('connections'))
+                  }
+                  type="button"
+                >
+                  Conexiones
+                </button>
+              )}
+
+              {/* Sin reciprocidad — when available */}
+              {isNonReciprocalAvailable && (
+                <button
+                  aria-pressed={isNonReciprocalActive}
+                  className={`graph-panel__control-btn graph-panel__control-btn--aux${
+                    isNonReciprocalActive ? ' graph-panel__control-btn--primary' : ''
+                  }`}
+                  data-control-tone="relationship"
+                  onClick={() =>
+                    handleMenuItemClick(onToggleOnlyNonReciprocal)
+                  }
+                  type="button"
+                >
+                  Sin reciprocidad
+                </button>
+              )}
+
+              {/* Palabras */}
+              <button
+                aria-pressed={activeLayer === 'keywords'}
+                className={`graph-panel__control-btn${
+                  activeLayer === 'keywords' ? ' graph-panel__control-btn--primary' : ''
+                }`}
+                data-control-tone="keywords"
+                onClick={() =>
+                  handleMenuItemClick(
+                    () => onToggleLayer('keywords'),
+                    isCompact, // keep Más open on compact so search stays visible
+                  )
+                }
+                title={keywordLayerDisabledReason || undefined}
+                type="button"
+              >
+                Palabras
+              </button>
+
+              {/* Zaps */}
+              <button
+                aria-pressed={activeLayer === 'zaps'}
+                className={`graph-panel__control-btn${
+                  activeLayer === 'zaps' ? ' graph-panel__control-btn--primary' : ''
+                }`}
+                data-control-tone="zaps"
+                disabled={zapLayerStatus !== 'enabled'}
+                onClick={() => handleMenuItemClick(() => onToggleLayer('zaps'))}
+                title={
+                  zapLayerStatus !== 'enabled'
+                    ? 'La capa de zaps depende de recibos disponibles.'
+                    : undefined
+                }
+                type="button"
+              >
+                Zaps
+              </button>
+
+              {/* Keyword search — compact only, when keywords active */}
+              {isCompact && keywordSearch ? (
+                <div className="graph-panel__more-menu-search">{keywordSearch}</div>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
 
-      {keywordSearch ? (
+      {/* Keyword search slot — desktop only */}
+      {!isCompact && keywordSearch ? (
         <div className="graph-panel__control-search-slot">{keywordSearch}</div>
       ) : null}
     </div>

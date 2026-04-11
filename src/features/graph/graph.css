@@ -7030,3 +7030,316 @@ main {
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── Progress chip (topbar) ─────────────────────────────────────────────── */
+
+.workspace-progress-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.48rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(7, 12, 24, 0.72);
+  color: rgba(248, 250, 252, 0.88);
+  cursor: pointer;
+  backdrop-filter: blur(16px);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+  max-width: min(18rem, 40vw);
+  overflow: hidden;
+}
+
+.workspace-progress-chip:hover,
+.workspace-progress-chip--open {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.workspace-progress-chip__label {
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.workspace-progress-chip__dot {
+  flex: 0 0 auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: rgba(180, 249, 83, 0.9);
+  animation: progress-chip-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes progress-chip-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+/* ─── Progress panel (dropdown from topbar) ──────────────────────────────── */
+
+.workspace-progress-panel {
+  position: absolute;
+  top: calc(var(--graph-top-offset, 1.25rem) + 3.6rem);
+  left: var(--graph-gutter, 1.25rem);
+  z-index: 24;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.2rem 0.7rem;
+  width: min(28rem, calc(100vw - 2.5rem));
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 1.1rem;
+  background: linear-gradient(180deg, rgba(10, 16, 30, 0.94), rgba(6, 11, 23, 0.88));
+  box-shadow:
+    0 16px 40px rgba(2, 6, 23, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  pointer-events: auto;
+}
+
+/* reuse existing progress component styles inside the panel */
+.workspace-progress-panel .graph-panel__stream-eyebrow {
+  grid-column: 1 / -1;
+}
+
+.workspace-progress-panel .graph-panel__progress-grid {
+  grid-column: 1 / -1;
+}
+
+.workspace-progress-panel .graph-panel__stream-detail {
+  grid-column: 1 / -1;
+}
+
+/* ─── Back-to-graph button ───────────────────────────────────────────────── */
+
+.workspace-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.48rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(7, 12, 24, 0.72);
+  color: rgba(226, 232, 240, 0.84);
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  backdrop-filter: blur(16px);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+  white-space: nowrap;
+}
+
+.workspace-back-btn:hover {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #f8fafc;
+}
+
+/* ─── Rail: hide Conexiones on compact, show Más ─────────────────────────── */
+
+/* Conexiones is always rendered but hidden below 1024px */
+@media (max-width: 1023px) {
+  .graph-panel__control-btn--desktop {
+    display: none;
+  }
+}
+
+/* ─── Más container (positioning context) ────────────────────────────────── */
+
+.graph-panel__more-container {
+  position: relative;
+}
+
+/* ─── Más popover (desktop) ──────────────────────────────────────────────── */
+
+.graph-panel__more-menu {
+  position: absolute;
+  bottom: calc(100% + 0.6rem);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 11rem;
+  padding: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  background: rgba(10, 16, 30, 0.96);
+  box-shadow:
+    0 12px 32px rgba(2, 6, 23, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px);
+}
+
+.graph-panel__more-menu .graph-panel__control-btn {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.graph-panel__more-menu-search {
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* ─── Más bottom sheet (compact / mobile) ────────────────────────────────── */
+
+.graph-panel__more-menu--sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  top: auto;
+  z-index: 50;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem calc(0.85rem + env(safe-area-inset-bottom));
+  border-radius: 1.2rem 1.2rem 0 0;
+  border-bottom: none;
+  min-width: auto;
+}
+
+.graph-panel__more-menu--sheet .graph-panel__control-btn {
+  flex: 1 1 auto;
+  min-width: calc(50% - 0.25rem);
+  justify-content: center;
+}
+
+.graph-panel__more-menu--sheet .graph-panel__more-menu-search {
+  width: 100%;
+  padding-top: 0.5rem;
+}
+
+/* ─── Topbar: flex layout accommodates chip + back + actions ─────────────── */
+
+.workspace-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+/* chip and back btn stay on the left side of the topbar */
+.workspace-topbar .workspace-progress-chip,
+.workspace-topbar .workspace-back-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* actions stay right-aligned */
+.workspace-topbar .workspace-topbar__actions {
+  margin-left: auto;
+}
+
+/* ─── Compact topbar adjustments ─────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .workspace-progress-chip {
+    max-width: min(12rem, 35vw);
+  }
+
+  .workspace-progress-chip__label {
+    font-size: 0.72rem;
+  }
+
+  .workspace-back-btn {
+    font-size: 0.72rem;
+    padding: 0.4rem 0.72rem;
+  }
+
+  .workspace-progress-panel {
+    top: calc(var(--graph-top-offset, 0.75rem) + 3.2rem);
+    left: 0.75rem;
+    right: 0.75rem;
+    width: auto;
+  }
+}
+
+/* ─── Suppress legacy stream-status card (progress now lives in topbar) ──── */
+
+.graph-panel__stream-status {
+  display: none !important;
+}
+
+/* ─── Control bar: compact inline pill (summary removed, flex replaces grid) */
+
+.graph-panel__control-bar {
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  width: auto !important;
+  max-width: min(calc(100% - (var(--graph-gutter, 1.25rem) * 2)), 52rem) !important;
+  padding: 0.5rem 0.6rem !important;
+  gap: 0.45rem !important;
+  grid-template-columns: none !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  bottom: var(--graph-bottom-offset, 1.25rem) !important;
+  border-radius: 1.1rem !important;
+}
+
+.graph-panel__control-actions {
+  display: inline-flex !important;
+  flex-wrap: nowrap !important;
+  gap: 0.4rem !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  grid-template-columns: none !important;
+}
+
+.graph-panel__control-btn {
+  min-width: 0 !important;
+  min-height: 2.35rem !important;
+  padding: 0 0.85rem !important;
+  font-size: 0.78rem !important;
+  white-space: nowrap !important;
+}
+
+/* keyword search slot stays full-width below the button row */
+.graph-panel__control-search-slot {
+  grid-column: auto !important;
+  width: 100% !important;
+}
+
+/* compact adjustments at tablet */
+@media (max-width: 900px) {
+  .graph-panel__control-bar {
+    max-width: calc(100% - (var(--graph-gutter, 1rem) * 2)) !important;
+  }
+  .graph-panel__control-actions {
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+  }
+}
+
+/* at mobile keep bar edge-to-edge and let buttons fill the row */
+@media (max-width: 560px) {
+  .graph-panel__control-bar {
+    left: var(--graph-gutter, 0.75rem) !important;
+    right: var(--graph-gutter, 0.75rem) !important;
+    transform: none !important;
+    max-width: none !important;
+    width: auto !important;
+  }
+  .graph-panel__control-actions {
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+    justify-content: stretch !important;
+  }
+  .graph-panel__control-actions .graph-panel__control-btn {
+    flex: 1 1 0 !important;
+    justify-content: center !important;
+  }
+}

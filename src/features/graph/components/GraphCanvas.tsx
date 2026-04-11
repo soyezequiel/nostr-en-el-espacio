@@ -87,6 +87,7 @@ const selectGraphCanvasRenderState = (state: AppStore) => ({
   pathfinding: state.pathfinding,
   rootLoadStatus: state.rootLoad.status,
   rootLoadMessage: state.rootLoad.message,
+  rootVisibleLinkProgress: state.rootLoad.visibleLinkProgress,
   activeLayer: state.activeLayer,
   connectionsSourceLayer: state.connectionsSourceLayer,
   capReached: state.graphCaps.capReached,
@@ -705,6 +706,7 @@ export function GraphCanvas({
     pathfinding,
     rootLoadStatus,
     rootLoadMessage,
+    rootVisibleLinkProgress,
     activeLayer,
     connectionsSourceLayer,
     capReached,
@@ -1973,8 +1975,27 @@ export function GraphCanvas({
     !shouldMountRenderer &&
     rootNodePubkey !== null &&
     rootLoadStatus !== 'loading'
+  const rootDiscoveryStatusCopy =
+    rootVisibleLinkProgress === null
+      ? null
+      : rootVisibleLinkProgress.visibleLinkCount !== null
+        ? `${rootVisibleLinkProgress.visibleLinkCount} links descubiertos`
+        : rootVisibleLinkProgress.contactListEventCount +
+              rootVisibleLinkProgress.inboundCandidateEventCount >
+            0
+          ? `${
+              rootVisibleLinkProgress.contactListEventCount +
+              rootVisibleLinkProgress.inboundCandidateEventCount
+            } eventos recibidos`
+          : 'Buscando links visibles'
+  const isRootDiscoveryProgressActive =
+    rootDiscoveryStatusCopy !== null &&
+    activeLayer === 'graph' &&
+    (rootLoadStatus === 'loading' || rootLoadStatus === 'partial')
   const statusCopy = capReached
     ? `Cap ${maxNodes} alcanzado`
+    : isRootDiscoveryProgressActive
+      ? rootDiscoveryStatusCopy ?? 'Buscando links visibles'
     : activeLayer === 'connections'
       ? `${model.edges.length} conexiones internas`
     : activeLayer === 'following'
@@ -2043,7 +2064,7 @@ export function GraphCanvas({
       ? 'Calculando camino'
       : primaryActiveExpansion
         ? 'Expandiendo nodo'
-      : rootLoadStatus === 'loading'
+      : isRootDiscoveryProgressActive || rootLoadStatus === 'loading'
         ? 'Descubriendo'
         : rootLoadStatus === 'partial'
           ? 'Evidencia parcial'
@@ -2064,7 +2085,7 @@ export function GraphCanvas({
       }. El grafo visible se mantiene usable mientras se integra el nodo.`
     : pathfinding.status === 'computing'
       ? pathfinding.message ?? 'Recorriendo el grafo mutuo descubierto.'
-      : rootLoadStatus === 'loading'
+      : isRootDiscoveryProgressActive || rootLoadStatus === 'loading'
         ? rootLoadMessage ??
           'Consultando relays, cache local y contact list kind:3 del root.'
       : rootLoadStatus === 'partial' ||
@@ -2218,7 +2239,12 @@ export function GraphCanvas({
             </div>
           ) : null}
 
-          <div className="graph-panel__stream-status" role="status">
+          <div
+            aria-atomic="false"
+            aria-live="polite"
+            className="graph-panel__stream-status"
+            role="status"
+          >
             <span className="graph-panel__stream-eyebrow">Progreso</span>
             <span className="graph-panel__stream-label">{streamLabel}</span>
             <span className="graph-panel__stream-meta">{streamMeta}</span>

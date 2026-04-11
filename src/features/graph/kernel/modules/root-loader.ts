@@ -1,6 +1,6 @@
 import type { Filter } from 'nostr-tools'
-import type { GraphLink, GraphNode } from '@/features/graph/app/store'
-import type { RelayHealthSnapshot } from '@/features/graph/nostr'
+import type { GraphLink, GraphNode, RootLoadState } from '@/features/graph/app/store'
+import type { RelayEventEnvelope, RelayHealthSnapshot } from '@/features/graph/nostr'
 import type {
   LoadRootOptions,
   LoadRootResult,
@@ -87,10 +87,7 @@ export function createRootLoaderModule(
       | 'live-empty'
       | 'error'
       | 'cancel',
-    patch: {
-      message?: string | null
-      loadedFrom?: 'none' | 'cache' | 'live'
-    } = {},
+    patch: Partial<RootLoadState> = {},
   ): void {
     const state = ctx.store.getState()
     const nextStatus = transitionRootLoad(state.rootLoad.status, action)
@@ -124,7 +121,7 @@ export function createRootLoaderModule(
     options: LoadRootOptions = {},
   ): Promise<LoadRootResult> {
     if (activeLoadSession !== null) {
-      setRootLoadState('cancel')
+      setRootLoadState('cancel', { visibleLinkProgress: null })
     }
     cancelActiveLoad()
     collaborators.zapLayer.cancelActiveZapLoad()
@@ -159,6 +156,15 @@ export function createRootLoaderModule(
         ? 'Reintentando la carga con el nuevo set de relays sin borrar el grafo visible...'
         : ROOT_LOADING_MESSAGE,
       loadedFrom: 'none',
+      visibleLinkProgress: {
+        visibleLinkCount: preserveExistingGraph
+          ? countVisibleFollowsFromRoot(rootPubkey)
+          : null,
+        contactListEventCount: 0,
+        inboundCandidateEventCount: 0,
+        lastRelayUrl: null,
+        updatedAt: ctx.now(),
+      },
     })
     const cachedSnapshot = preserveExistingGraph
       ? { rootLabel: null, rootProfile: null, followPubkeys: [], relayHints: [] }
@@ -210,24 +216,118 @@ export function createRootLoaderModule(
       detachRelayHealth,
     }
     try {
+      let contactListEventCount = 0
+      let inboundCandidateEventCount = 0
+      let visibleLinkCount =
+        cachedSnapshot.followPubkeys.length > 0
+          ? cachedSnapshot.followPubkeys.length
+          : preserveExistingGraph
+            ? countVisibleFollowsFromRoot(rootPubkey)
+            : null
+      let lastRelayUrl: string | null = null
+      let lastProgressMessageAt = 0
+      let latestProgressContactListEventId: string | null = null
+      let contactListProgressParseSequence = 0
+      let discoveryProgressActive = true
+      const publishVisibleLinkProgress = (force = false) => {
+        if (isStaleLoad(loadId) || !discoveryProgressActive) {
+          return
+        }
+
+        const now = ctx.now()
+        if (!force && now - lastProgressMessageAt < 350) {
+          return
+        }
+
+        lastProgressMessageAt = now
+        const visibleCopy =
+          visibleLinkCount === null
+            ? 'todavia sin contact list parseada'
+            : `${visibleLinkCount} follows visibles detectados`
+        const relayCopy = lastRelayUrl
+          ? ` Ultimo lote desde ${formatRelayProgressUrl(lastRelayUrl)}.`
+          : ''
+
+        ctx.store.getState().setRootLoadState({
+          message: `Descubriendo links visibles: ${visibleCopy}. Contact lists recibidas: ${contactListEventCount}; candidatos inbound: ${inboundCandidateEventCount}.${relayCopy}`,
+          visibleLinkProgress: {
+            visibleLinkCount,
+            contactListEventCount,
+            inboundCandidateEventCount,
+            lastRelayUrl,
+            updatedAt: now,
+          },
+        })
+      }
+      const scheduleContactListProgressParse = (
+        envelopes: readonly RelayEventEnvelope[],
+      ) => {
+        const latestEnvelope = selectLatestReplaceableEvent(Array.from(envelopes))
+        if (
+          !latestEnvelope ||
+          latestEnvelope.event.id === latestProgressContactListEventId
+        ) {
+          return
+        }
+
+        latestProgressContactListEventId = latestEnvelope.event.id
+        const parseSequence = contactListProgressParseSequence + 1
+        contactListProgressParseSequence = parseSequence
+
+        void ctx.eventsWorker
+          .invoke('PARSE_CONTACT_LIST', {
+            event: serializeContactListEvent(latestEnvelope.event),
+          })
+          .then((parsedContactList) => {
+            if (
+              isStaleLoad(loadId) ||
+              !discoveryProgressActive ||
+              parseSequence !== contactListProgressParseSequence
+            ) {
+              return
+            }
+
+            visibleLinkCount = parsedContactList.followPubkeys.length
+            publishVisibleLinkProgress(true)
+          })
+          .catch(() => {
+            publishVisibleLinkProgress(true)
+          })
+      }
+
       ctx.store.getState().setRootLoadState({
         message: `Consultando contact list kind:3 y followers inbound en ${relayUrls.length} relays activos...`,
       })
+      publishVisibleLinkProgress(true)
       const [contactListResult, inboundFollowerResult] = await Promise.all([
         collectRelayEvents(adapter, [
           {
             authors: [rootPubkey],
             kinds: [3],
           } satisfies Filter,
-        ]),
+        ], {
+          onProgress: (progress) => {
+            contactListEventCount = progress.eventCount
+            lastRelayUrl = progress.latestEnvelope?.relayUrl ?? lastRelayUrl
+            scheduleContactListProgressParse(progress.envelopes)
+            publishVisibleLinkProgress()
+          },
+        }),
         collectRelayEvents(adapter, [
           {
             kinds: [3],
             '#p': [rootPubkey],
             limit: NODE_EXPAND_INBOUND_QUERY_LIMIT,
           } satisfies Filter & { '#p': string[] },
-        ]),
+        ], {
+          onProgress: (progress) => {
+            inboundCandidateEventCount = progress.eventCount
+            lastRelayUrl = progress.latestEnvelope?.relayUrl ?? lastRelayUrl
+            publishVisibleLinkProgress()
+          },
+        }),
       ])
+      discoveryProgressActive = false
       if (isStaleLoad(loadId)) {
         return finalize(rootPubkey, createCancelledResult(relayUrls))
       }
@@ -264,6 +364,7 @@ export function createRootLoaderModule(
           setRootLoadState(action, {
             message: fallbackResult.message,
             loadedFrom: fallbackResult.loadedFrom,
+            visibleLinkProgress: null,
           })
         }
           if (!preserveExistingGraph) {
@@ -422,6 +523,7 @@ export function createRootLoaderModule(
         {
           message,
           loadedFrom: 'live',
+          visibleLinkProgress: null,
         },
       )
       return finalize(rootPubkey, {
@@ -733,6 +835,13 @@ export function createRootLoaderModule(
       .links.filter(
         (link) => link.source === rootPubkey && link.relation === 'follow',
       ).length
+  }
+  function formatRelayProgressUrl(relayUrl: string): string {
+    try {
+      return new URL(relayUrl).host || relayUrl
+    } catch {
+      return relayUrl
+    }
   }
   function createCancelledResult(relayUrls: string[]): LoadRootResult {
     const relayHealth =

@@ -2187,7 +2187,14 @@ export class ImageRuntime {
     options: { cacheOnly?: boolean } = {},
   ) {
     const seen = new Set<string>()
-    const keysToFetch: Array<{ sourceUrl: string; bucket: ImageLodBucket }> = []
+    const keysToFetch: Array<{
+      sourceUrl: string
+      bucket: ImageLodBucket
+      priorityScore: number
+      critical: boolean
+      visible: boolean
+      lane: 'base' | 'hd'
+    }> = []
 
     for (const request of requests) {
       for (const bucket of [request.provisionalBucket, request.targetBucket]) {
@@ -2203,7 +2210,14 @@ export class ImageRuntime {
         ) {
           continue
         }
-        keysToFetch.push({ sourceUrl: request.sourceUrl, bucket })
+        keysToFetch.push({
+          sourceUrl: request.sourceUrl,
+          bucket,
+          priorityScore: request.score,
+          critical: request.critical,
+          visible: request.visible,
+          lane: request.lane,
+        })
       }
     }
 
@@ -2218,9 +2232,14 @@ export class ImageRuntime {
       this.scheduleNotify()
     }
 
-    void this.repositories.imageVariants
-      .getManyFresh(keysToFetch, frameNow)
-      .then((records) => {
+    void (async () => {
+      let networkFallbackRequests: typeof keysToFetch = []
+
+      try {
+        const records = await this.repositories.imageVariants.getManyFresh(
+          keysToFetch,
+          frameNow,
+        )
         let loaded = 0
         for (let i = 0; i < keysToFetch.length; i++) {
           const record = records[i]
@@ -2229,6 +2248,8 @@ export class ImageRuntime {
           if (!record) {
             if (options.cacheOnly) {
               this.cacheOnlyPersistentMisses.add(requestKey)
+            } else {
+              networkFallbackRequests.push(request)
             }
             continue
           }
@@ -2243,8 +2264,12 @@ export class ImageRuntime {
           this.refreshMemoryTierSnapshots()
           this.scheduleNotify()
         }
-      })
-      .finally(() => {
+      } catch (error) {
+        console.warn(error)
+        if (!options.cacheOnly) {
+          networkFallbackRequests = keysToFetch
+        }
+      } finally {
         for (const request of keysToFetch) {
           this.pendingPersistentLookups.delete(
             buildVariantKey(request.sourceUrl, request.bucket),
@@ -2253,8 +2278,12 @@ export class ImageRuntime {
         if (this.syncPersistentHydrationState()) {
           this.scheduleNotify()
         }
-      })
-      .catch(console.warn)
+      }
+
+      for (const request of networkFallbackRequests) {
+        this.scheduleEnsureVariant(request)
+      }
+    })()
   }
 
   private scheduleEnsureVariant({

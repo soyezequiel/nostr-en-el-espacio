@@ -198,10 +198,19 @@ export interface ExportJobProgress {
   errorMessage: string | null
 }
 
+export interface RootVisibleLinkProgress {
+  visibleLinkCount: number | null
+  contactListEventCount: number
+  inboundCandidateEventCount: number
+  lastRelayUrl: string | null
+  updatedAt: number | null
+}
+
 export interface RootLoadState {
   status: RootLoadStatus
   message: string | null
   loadedFrom: 'none' | 'cache' | 'live'
+  visibleLinkProgress: RootVisibleLinkProgress | null
 }
 
 export interface UpsertGraphNodesResult {

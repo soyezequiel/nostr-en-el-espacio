@@ -77,6 +77,7 @@ export const createInitialUiSliceState = (): Pick<
     status: 'idle',
     message: null,
     loadedFrom: 'none',
+    visibleLinkProgress: null,
   },
   renderConfig: {
     edgeThickness: 1,

@@ -46,6 +46,17 @@ export interface RelayCollectionResult {
   error: Error | null
 }
 
+export interface RelayCollectionProgress {
+  eventCount: number
+  latestBatchCount: number
+  latestEnvelope: RelayEventEnvelope | null
+  envelopes: readonly RelayEventEnvelope[]
+}
+
+export type RelayCollectionOptions = RelaySubscribeOptions & {
+  onProgress?: (progress: RelayCollectionProgress) => void
+}
+
 export interface InboundFollowerEvidence {
   followerPubkeys: string[]
   partial: boolean
@@ -265,12 +276,26 @@ export function mapStoreRelayHealthStatus(
 export async function collectRelayEvents(
   adapter: RelayAdapterInstance,
   filters: RelayQueryFilter[],
-  options?: RelaySubscribeOptions,
+  options?: RelayCollectionOptions,
 ): Promise<RelayCollectionResult> {
   return new Promise<RelayCollectionResult>((resolve) => {
     const events: RelayEventEnvelope[] = []
+    const { onProgress, ...subscribeOptions } = options ?? {}
     let settled = false
     let cancel = () => {}
+
+    const reportProgress = (latestBatch: readonly RelayEventEnvelope[]) => {
+      if (!onProgress || latestBatch.length === 0) {
+        return
+      }
+
+      onProgress({
+        eventCount: events.length,
+        latestBatchCount: latestBatch.length,
+        latestEnvelope: latestBatch[latestBatch.length - 1] ?? null,
+        envelopes: events,
+      })
+    }
 
     const finalize = (result: RelayCollectionResult) => {
       if (settled) {
@@ -282,12 +307,14 @@ export async function collectRelayEvents(
       resolve(result)
     }
 
-    cancel = adapter.subscribe(filters, options).subscribe({
+    cancel = adapter.subscribe(filters, subscribeOptions).subscribe({
       next: (value) => {
         events.push(value)
+        reportProgress([value])
       },
       nextBatch: (values) => {
         events.push(...values)
+        reportProgress(values)
       },
       error: (error) => {
         finalize({

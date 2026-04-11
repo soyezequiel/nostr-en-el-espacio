@@ -3,7 +3,7 @@
     "exported": true,
     "filePath": "src/app/badges/page.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "92bd1c8597d4365d375ce11daf3132b559c3612f8df7676d63412548696df1b7",
+    "lastSourceHashUsed": "618bd05e6f1332ee188b2193e67b5d177e2a926239cce158625c7cb352262cef",
     "name": "BadgesPage",
     "references": [],
     "signature": "BadgesPage()"
@@ -46,7 +46,7 @@
     "exported": true,
     "filePath": "src/app/profile/page.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "9cd5a1bf5d39d9d01bf63b2bd8cf618bfb2b75c35a09198721c63f93c2d45c7c",
+    "lastSourceHashUsed": "27ff85bb6e40c7546802cf5bacbf53a4a30e6d0bd6d93d70cffa2d0040e45dc6",
     "name": "ProfilePage",
     "references": [],
     "signature": "ProfilePage()"

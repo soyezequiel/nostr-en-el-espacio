@@ -16,11 +16,11 @@ Agrupa el contexto deterministico de components para archivos bajo src/component
 
 ## Hashes Fuente
 - src/components/AvatarFallback.tsx: 4f9f5682f240
-- src/components/Badges.tsx: d98e021f5d72
+- src/components/Badges.tsx: 6e60bef5a7d2
 - src/components/DevCacheButton.tsx: 9e9d6e99e802
-- src/components/LoginModal.tsx: 1b3b60a152fd
-- src/components/Navbar.tsx: 0969d29fcced
-- src/components/Profile.tsx: e9f9fe4325fa
+- src/components/LoginModal.tsx: 2edccc26540d
+- src/components/Navbar.tsx: be434127f287
+- src/components/Profile.tsx: 6dd59eedf897
 - src/components/SkeletonImage.tsx: 7930698d3230
 
 ## Simbolos Exportados

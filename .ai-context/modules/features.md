@@ -141,12 +141,12 @@ Agrupa el contexto deterministico de features para archivos bajo src/features.
 - src/features/graph/app/store/slices/relaySlice.ts: b442ca93b9a9
 - src/features/graph/app/store/slices/uiSlice.ts: b18819c36673
 - src/features/graph/app/store/slices/zapSlice.ts: c8f0e3b74d17
-- src/features/graph/app/store/types.ts: b3a3aa7eb13e
+- src/features/graph/app/store/types.ts: 2324eab97153
 - src/features/graph/components/avatarPipelineProbe.ts: cb60447c28ec
 - src/features/graph/components/CoverageRecoveryCard.tsx: 9791e1322cfa
 - src/features/graph/components/DeepCaptureSelectionPanel.tsx: f680d644ae7b
-- src/features/graph/components/GraphCanvas.tsx: cbf9ef5bdcb3
-- src/features/graph/components/GraphControlRail.tsx: 413d79643402
+- src/features/graph/components/GraphCanvas.tsx: b48125bac9af
+- src/features/graph/components/GraphControlRail.tsx: 6691ddad06c0
 - src/features/graph/components/NodeAccessRail.tsx: f0ca626b3ebb
 - src/features/graph/components/NodeDetailPanel.tsx: 7710257acc89
 - src/features/graph/components/NodeExpansionProgressCard.tsx: a004c883a773
@@ -158,11 +158,11 @@ Agrupa el contexto deterministico de features para archivos bajo src/features.
 - src/features/graph/components/RelayHealthIndicator.tsx: b618bcc6589d
 - src/features/graph/components/RenderConfigPanel.tsx: c8b51c63aa91
 - src/features/graph/components/SavedRootsPanel.tsx: 25cf0d8f73af
-- src/features/graph/db/database.ts: 59a577913a3a
-- src/features/graph/db/entities.ts: 5d36b3f4ed7e
+- src/features/graph/db/database.ts: e7163dcc6f22
+- src/features/graph/db/entities.ts: acc7b342c9c0
 - src/features/graph/db/index.ts: 276cd1cfcfa6
-- src/features/graph/db/repositories.ts: d1e9ea1e9d12
-- src/features/graph/db/utils.ts: 87c044047406
+- src/features/graph/db/repositories.ts: dd997967db42
+- src/features/graph/db/utils.ts: b9b535cf4859
 - src/features/graph/dev/clearSiteCache.ts: b409de670337
 - src/features/graph/devicePerformance.ts: afad53c58784
 - src/features/graph/evidence/directedEvidence.ts: 68945f781ec6
@@ -174,7 +174,7 @@ Agrupa el contexto deterministico de features para archivos bajo src/features.
 - src/features/graph/export/profile-photo-archive.ts: 940176cf5a43
 - src/features/graph/export/snapshot-freezer.ts: b084dfd84ec8
 - src/features/graph/export/types.ts: 39304c700e85
-- src/features/graph/GraphApp.tsx: 29c6f7417df3
+- src/features/graph/GraphApp.tsx: d2468200173c
 - src/features/graph/GraphClient.tsx: daa360261a3f
 - src/features/graph/kernel/events.ts: 03cba343e2d6
 - src/features/graph/kernel/facade.ts: b261643c9d46
@@ -182,9 +182,9 @@ Agrupa el contexto deterministico de features para archivos bajo src/features.
 - src/features/graph/kernel/index.ts: b2fd76eb6d88
 - src/features/graph/kernel/modules/analysis.ts: 57addf45f373
 - src/features/graph/kernel/modules/constants.ts: 3796f12d1bb9
-- src/features/graph/kernel/modules/context.ts: 637942dc3fc8
+- src/features/graph/kernel/modules/context.ts: b6fcd02bdef2
 - src/features/graph/kernel/modules/export-orch.ts: 6e03d147e7e3
-- src/features/graph/kernel/modules/follower-discovery.ts: b9ed9fa00b05
+- src/features/graph/kernel/modules/follower-discovery.ts: 4693b8cfd959
 - src/features/graph/kernel/modules/helpers.ts: 3d5f144aab72
 - src/features/graph/kernel/modules/keyword-layer.ts: dc2271880d8c
 - src/features/graph/kernel/modules/node-detail.ts: d4a79ed9c062
@@ -192,24 +192,24 @@ Agrupa el contexto deterministico de features para archivos bajo src/features.
 - src/features/graph/kernel/modules/persistence.ts: 399c4538c050
 - src/features/graph/kernel/modules/profile-hydration.ts: efa5089f588e
 - src/features/graph/kernel/modules/relay-session.ts: 1e625a7bb79a
-- src/features/graph/kernel/modules/root-loader.ts: 494f57a8f2e6
+- src/features/graph/kernel/modules/root-loader.ts: 4350b32b0849
 - src/features/graph/kernel/modules/text-helpers.ts: 6bea7420c40d
 - src/features/graph/kernel/modules/zap-layer.ts: b3e9599ab794
 - src/features/graph/kernel/nip19.ts: 752875acfb13
 - src/features/graph/kernel/recovery.ts: bc5d043443ac
 - src/features/graph/kernel/runner.ts: feda78ea968a
 - src/features/graph/kernel/runtime.ts: 78b6375b0f72
-- src/features/graph/kernel/transcript-relay.ts: eb8091f2f983
+- src/features/graph/kernel/transcript-relay.ts: 306a4de71400
 - src/features/graph/kernel/transitions/export-job.ts: dde000211965
 - src/features/graph/kernel/transitions/relay-override.ts: caf281023db5
-- src/features/graph/kernel/transitions/root-load.ts: aa8bf9bd7fd8
+- src/features/graph/kernel/transitions/root-load.ts: 8cb3a97ae457
 - src/features/graph/nostr/errors.ts: 683a87c85a23
 - src/features/graph/nostr/index.ts: 4b18e244ae8f
 - src/features/graph/nostr/primal-cache-client.ts: d1c7394babae
-- src/features/graph/nostr/relay-adapter.ts: 7870cefb81f1
-- src/features/graph/nostr/relay-transport.ts: 48a0483b4375
+- src/features/graph/nostr/relay-adapter.ts: 915d83a84f08
+- src/features/graph/nostr/relay-transport.ts: 76a4482fced0
 - src/features/graph/nostr/relay-url.ts: 0bc0bb7c3086
-- src/features/graph/nostr/types.ts: 572e22e0ca20
+- src/features/graph/nostr/types.ts: 685daf4fefb1
 - src/features/graph/render/avatar.ts: 95c71a07eeb1
 - src/features/graph/render/avatarAtlasManager.ts: 3f42622a840b
 - src/features/graph/render/avatarProxyUrl.ts: d0bdc8c6401a
@@ -222,11 +222,11 @@ Agrupa el contexto deterministico de features para archivos bajo src/features.
 - src/features/graph/render/devicePixels.ts: 359b731d9812
 - src/features/graph/render/graphSceneGeometry.ts: 115f18b34499
 - src/features/graph/render/GraphSceneLayer.ts: 92e9b95193f7
-- src/features/graph/render/GraphViewport.tsx: e7029c17974f
-- src/features/graph/render/GraphViewportLazy.tsx: eafc1c02736f
+- src/features/graph/render/GraphViewport.tsx: 621d113af00d
+- src/features/graph/render/GraphViewportLazy.tsx: d0e7d311408b
 - src/features/graph/render/graphViewState.ts: cc1f6a3c61ff
 - src/features/graph/render/imageRuntime.ts: b525f4c89ceb
-- src/features/graph/render/index.ts: 200cef92848b
+- src/features/graph/render/index.ts: d5c4ac2ff2a6
 - src/features/graph/render/labels.ts: 8235aa00b88a
 - src/features/graph/render/nodeSizing.ts: 60219aa710c4
 - src/features/graph/render/patchLumaCanvasContext.ts: d0e5d5bd4e22
@@ -362,6 +362,8 @@ Agrupa el contexto deterministico de features para archivos bajo src/features.
 - funcion DeepCaptureSelectionPanel DeepCaptureSelectionPanel() (src/features/graph/components/DeepCaptureSelectionPanel.tsx)
 - variable GraphCanvas (src/features/graph/components/GraphCanvas.tsx)
 - interfaz GraphCanvasDiagnostics (src/features/graph/components/GraphCanvas.tsx)
+- funcion GraphProgressBody GraphProgressBody({ snapshot }: { snapshot: GraphProgressSnapshot }) (src/features/graph/components/GraphCanvas.tsx)
+- interfaz GraphProgressSnapshot (src/features/graph/components/GraphCanvas.tsx)
 - variable GraphControlRail (src/features/graph/components/GraphControlRail.tsx)
 - variable NodeAccessRail (src/features/graph/components/NodeAccessRail.tsx)
 - funcion NodeDetailPanel NodeDetailPanel({ imageRuntime = null, runtime, }: NodeDetailPanelProps) (src/features/graph/components/NodeDetailPanel.tsx)

@@ -12,10 +12,10 @@ Agrupa el contexto deterministico de app para archivos bajo src/app.
 - src/app/profile/page.tsx
 
 ## Hashes Fuente
-- src/app/badges/page.tsx: 92bd1c8597d4
+- src/app/badges/page.tsx: 618bd05e6f13
 - src/app/layout.tsx: c3beeae2bcc5
 - src/app/page.tsx: 5be6461e401d
-- src/app/profile/page.tsx: 9cd5a1bf5d39
+- src/app/profile/page.tsx: 27ff85bb6e40
 
 ## Simbolos Exportados
 - funcion BadgesPage BadgesPage() (src/app/badges/page.tsx)

@@ -1,12 +1,22 @@
 {
   "artifactDependencies": {
     "changes/impact-report.md": [
+      ".claude/launch.json",
+      ".next/_events_21052.json",
+      ".next/_events_22572.json",
+      ".next/_events_26772.json",
+      ".next/_events_28108.json",
+      ".next/_events_33876.json",
+      ".next/_events_35612.json",
       ".next/build-manifest.json",
       ".next/dev/prerender-manifest.json",
-      ".next/dev/server/app/page/react-loadable-manifest.json",
+      ".next/dev/server/chunks/ssr/[root-of-the-server]__09h8in1._.js",
+      ".next/dev/server/chunks/ssr/[root-of-the-server]__0u4e96o._.js",
+      ".next/dev/server/chunks/ssr/[root-of-the-server]__0xlmxgi._.js",
+      ".next/dev/server/chunks/ssr/[root-of-the-server]__0xo239y._.js",
+      ".next/dev/static/chunks/src_0fmup2r._.js",
       ".next/dev/static/chunks/src_0izbcuf._.js",
-      ".next/dev/static/chunks/src_features_graph_GraphApp_tsx_0y-zs-f._.js",
-      ".next/dev/static/chunks/src_features_graph_GraphApp_tsx_0~uy~jx._.js",
+      ".next/dev/static/chunks/src_0sw1_wl._.js",
       ".next/diagnostics/route-bundle-stats.json",
       ".next/fallback-build-manifest.json",
       ".next/server/app/_not-found/page_client-reference-manifest.js",
@@ -14,25 +24,56 @@
       ".next/server/app/page/react-loadable-manifest.json",
       ".next/server/app/page_client-reference-manifest.js",
       ".next/server/app/profile/page_client-reference-manifest.js",
+      ".next/server/chunks/ssr/[root-of-the-server]__0bh4_.n._.js",
+      ".next/server/chunks/ssr/[root-of-the-server]__0eu04-u._.js",
+      ".next/server/chunks/ssr/[root-of-the-server]__0gkf33d._.js",
+      ".next/server/chunks/ssr/[root-of-the-server]__13_89qx._.js",
+      ".next/server/chunks/ssr/_13orez4._.js",
       ".next/server/middleware-build-manifest.js",
-      ".next/static/chunks/0.b.fm010r592.js",
-      ".next/static/chunks/023lx-2d.dfj9.js",
-      ".next/static/chunks/0c4wlpn2p7j26.js",
+      ".next/static/chunks/003tnyqo5-gn6.js",
+      ".next/static/chunks/003x6qy96txck.js",
+      ".next/static/chunks/0_k0tvv~jeio1.js",
+      ".next/static/chunks/0_v5dxcc386qr.js",
       ".next/static/chunks/0fj2fbuj5~re7.js",
       ".next/static/chunks/0gy2_uxxnof28.js",
-      ".next/static/chunks/0rv7mtijs17t5.js",
-      ".next/static/chunks/0uwvba05_050g.js",
-      ".next/static/chunks/10amof-9t.vgi.js",
+      ".next/static/chunks/0qvraivts7u~9.js",
+      ".next/static/chunks/0vdw853nzh__b.js",
+      ".next/static/chunks/0wgp6zy-d30a4.js",
+      ".next/static/chunks/1286m6cge2wak.js",
       ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
       ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
       ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
-      ".next/static/i08sLLjM4O0fABs_aMWsE/_buildManifest.js",
-      ".next/static/i08sLLjM4O0fABs_aMWsE/_clientMiddlewareManifest.js",
-      ".next/static/i08sLLjM4O0fABs_aMWsE/_ssgManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
+      "AGENTS.md",
+      "CLAUDE.md",
+      "next-env.d.ts",
+      "src/app/badges/page.tsx",
+      "src/app/profile/page.tsx",
+      "src/components/Badges.tsx",
+      "src/components/LoginModal.tsx",
+      "src/components/Navbar.tsx",
+      "src/components/Profile.tsx",
       "src/features/graph/GraphApp.tsx",
       "src/features/graph/app/store/types.ts",
       "src/features/graph/components/GraphCanvas.tsx",
-      "src/features/graph/kernel/modules/root-loader.ts"
+      "src/features/graph/components/GraphControlRail.tsx",
+      "src/features/graph/db/database.ts",
+      "src/features/graph/db/entities.ts",
+      "src/features/graph/db/repositories.ts",
+      "src/features/graph/db/utils.ts",
+      "src/features/graph/kernel/modules/context.ts",
+      "src/features/graph/kernel/modules/follower-discovery.ts",
+      "src/features/graph/kernel/modules/root-loader.ts",
+      "src/features/graph/kernel/transcript-relay.ts",
+      "src/features/graph/kernel/transitions/root-load.ts",
+      "src/features/graph/nostr/relay-adapter.ts",
+      "src/features/graph/nostr/relay-transport.ts",
+      "src/features/graph/nostr/types.ts",
+      "src/features/graph/render/GraphViewport.tsx",
+      "src/features/graph/render/GraphViewportLazy.tsx",
+      "src/features/graph/render/index.ts"
     ],
     "changes/stale-artifacts.md": [
       "changes/impact-report.md",
@@ -68,6 +109,12 @@
     ],
     "decisions/architecture.md": [
       ".claude/launch.json",
+      ".next/_events_21052.json",
+      ".next/_events_22572.json",
+      ".next/_events_26772.json",
+      ".next/_events_28108.json",
+      ".next/_events_33876.json",
+      ".next/_events_35612.json",
       ".next/app-path-routes-manifest.json",
       ".next/build-manifest.json",
       ".next/dev/build-manifest.json",
@@ -484,10 +531,10 @@
       ".next/server/prefetch-hints.json",
       ".next/server/server-reference-manifest.js",
       ".next/server/server-reference-manifest.json",
-      ".next/static/chunks/0_k0tvv~jeio1.js",
-      ".next/static/chunks/0_v5dxcc386qr.js",
       ".next/static/chunks/0.b.fm010r592.js",
       ".next/static/chunks/0~ix03.10bxac.js",
+      ".next/static/chunks/003tnyqo5-gn6.js",
+      ".next/static/chunks/003x6qy96txck.js",
       ".next/static/chunks/00fn.~c8g8fss.js",
       ".next/static/chunks/01xlw8hd842-c.js",
       ".next/static/chunks/03~yq9q893hmn.js",
@@ -496,26 +543,26 @@
       ".next/static/chunks/085yunpvj_8~f.js",
       ".next/static/chunks/0bpdsmnouv.qk.js",
       ".next/static/chunks/0dlu-~aw404x8.js",
-      ".next/static/chunks/0fj2fbuj5~re7.js",
-      ".next/static/chunks/0gy2_uxxnof28.js",
       ".next/static/chunks/0qlfceh.7zxcr.js",
-      ".next/static/chunks/0qvraivts7u~9.js",
       ".next/static/chunks/0r7m44~cm1a3r.js",
       ".next/static/chunks/0sh.6aqimy6c9.js",
       ".next/static/chunks/0teu~jqxhek-u.js",
       ".next/static/chunks/0txile777fon~.js",
       ".next/static/chunks/0uzs23o2h.cb0.js",
+      ".next/static/chunks/0vdw853nzh__b.js",
+      ".next/static/chunks/0wgp6zy-d30a4.js",
       ".next/static/chunks/0yk0r342jlaw9.js",
       ".next/static/chunks/10amof-9t.vgi.js",
       ".next/static/chunks/10ngpgjgny8vk.js",
+      ".next/static/chunks/1286m6cge2wak.js",
       ".next/static/chunks/12oyou_q1vc72.js",
       ".next/static/chunks/1502ji2lci~2n.js",
       ".next/static/chunks/16~ii_busx8br.js",
       ".next/static/chunks/16zdo34txr_6z.js",
       ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
       ".next/types/cache-life.d.ts",
       ".next/types/routes.d.ts",
       ".next/types/validator.ts",
@@ -678,6 +725,12 @@
     ],
     "decisions/invariants.md": [
       ".claude/launch.json",
+      ".next/_events_21052.json",
+      ".next/_events_22572.json",
+      ".next/_events_26772.json",
+      ".next/_events_28108.json",
+      ".next/_events_33876.json",
+      ".next/_events_35612.json",
       ".next/app-path-routes-manifest.json",
       ".next/build-manifest.json",
       ".next/dev/build-manifest.json",
@@ -1094,10 +1147,10 @@
       ".next/server/prefetch-hints.json",
       ".next/server/server-reference-manifest.js",
       ".next/server/server-reference-manifest.json",
-      ".next/static/chunks/0_k0tvv~jeio1.js",
-      ".next/static/chunks/0_v5dxcc386qr.js",
       ".next/static/chunks/0.b.fm010r592.js",
       ".next/static/chunks/0~ix03.10bxac.js",
+      ".next/static/chunks/003tnyqo5-gn6.js",
+      ".next/static/chunks/003x6qy96txck.js",
       ".next/static/chunks/00fn.~c8g8fss.js",
       ".next/static/chunks/01xlw8hd842-c.js",
       ".next/static/chunks/03~yq9q893hmn.js",
@@ -1106,26 +1159,26 @@
       ".next/static/chunks/085yunpvj_8~f.js",
       ".next/static/chunks/0bpdsmnouv.qk.js",
       ".next/static/chunks/0dlu-~aw404x8.js",
-      ".next/static/chunks/0fj2fbuj5~re7.js",
-      ".next/static/chunks/0gy2_uxxnof28.js",
       ".next/static/chunks/0qlfceh.7zxcr.js",
-      ".next/static/chunks/0qvraivts7u~9.js",
       ".next/static/chunks/0r7m44~cm1a3r.js",
       ".next/static/chunks/0sh.6aqimy6c9.js",
       ".next/static/chunks/0teu~jqxhek-u.js",
       ".next/static/chunks/0txile777fon~.js",
       ".next/static/chunks/0uzs23o2h.cb0.js",
+      ".next/static/chunks/0vdw853nzh__b.js",
+      ".next/static/chunks/0wgp6zy-d30a4.js",
       ".next/static/chunks/0yk0r342jlaw9.js",
       ".next/static/chunks/10amof-9t.vgi.js",
       ".next/static/chunks/10ngpgjgny8vk.js",
+      ".next/static/chunks/1286m6cge2wak.js",
       ".next/static/chunks/12oyou_q1vc72.js",
       ".next/static/chunks/1502ji2lci~2n.js",
       ".next/static/chunks/16~ii_busx8br.js",
       ".next/static/chunks/16zdo34txr_6z.js",
       ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
       ".next/types/cache-life.d.ts",
       ".next/types/routes.d.ts",
       ".next/types/validator.ts",
@@ -1288,6 +1341,12 @@
     ],
     "flows/entrypoints.md": [
       ".claude/launch.json",
+      ".next/_events_21052.json",
+      ".next/_events_22572.json",
+      ".next/_events_26772.json",
+      ".next/_events_28108.json",
+      ".next/_events_33876.json",
+      ".next/_events_35612.json",
       ".next/app-path-routes-manifest.json",
       ".next/build-manifest.json",
       ".next/dev/build-manifest.json",
@@ -1704,10 +1763,10 @@
       ".next/server/prefetch-hints.json",
       ".next/server/server-reference-manifest.js",
       ".next/server/server-reference-manifest.json",
-      ".next/static/chunks/0_k0tvv~jeio1.js",
-      ".next/static/chunks/0_v5dxcc386qr.js",
       ".next/static/chunks/0.b.fm010r592.js",
       ".next/static/chunks/0~ix03.10bxac.js",
+      ".next/static/chunks/003tnyqo5-gn6.js",
+      ".next/static/chunks/003x6qy96txck.js",
       ".next/static/chunks/00fn.~c8g8fss.js",
       ".next/static/chunks/01xlw8hd842-c.js",
       ".next/static/chunks/03~yq9q893hmn.js",
@@ -1716,26 +1775,26 @@
       ".next/static/chunks/085yunpvj_8~f.js",
       ".next/static/chunks/0bpdsmnouv.qk.js",
       ".next/static/chunks/0dlu-~aw404x8.js",
-      ".next/static/chunks/0fj2fbuj5~re7.js",
-      ".next/static/chunks/0gy2_uxxnof28.js",
       ".next/static/chunks/0qlfceh.7zxcr.js",
-      ".next/static/chunks/0qvraivts7u~9.js",
       ".next/static/chunks/0r7m44~cm1a3r.js",
       ".next/static/chunks/0sh.6aqimy6c9.js",
       ".next/static/chunks/0teu~jqxhek-u.js",
       ".next/static/chunks/0txile777fon~.js",
       ".next/static/chunks/0uzs23o2h.cb0.js",
+      ".next/static/chunks/0vdw853nzh__b.js",
+      ".next/static/chunks/0wgp6zy-d30a4.js",
       ".next/static/chunks/0yk0r342jlaw9.js",
       ".next/static/chunks/10amof-9t.vgi.js",
       ".next/static/chunks/10ngpgjgny8vk.js",
+      ".next/static/chunks/1286m6cge2wak.js",
       ".next/static/chunks/12oyou_q1vc72.js",
       ".next/static/chunks/1502ji2lci~2n.js",
       ".next/static/chunks/16~ii_busx8br.js",
       ".next/static/chunks/16zdo34txr_6z.js",
       ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
       ".next/types/cache-life.d.ts",
       ".next/types/routes.d.ts",
       ".next/types/validator.ts",
@@ -1900,6 +1959,12 @@
       ".claude/launch.json"
     ],
     "modules/.next.md": [
+      ".next/_events_21052.json",
+      ".next/_events_22572.json",
+      ".next/_events_26772.json",
+      ".next/_events_28108.json",
+      ".next/_events_33876.json",
+      ".next/_events_35612.json",
       ".next/app-path-routes-manifest.json",
       ".next/build-manifest.json",
       ".next/dev/build-manifest.json",
@@ -2317,37 +2382,37 @@
       ".next/server/server-reference-manifest.js",
       ".next/server/server-reference-manifest.json",
       ".next/static/chunks/0.b.fm010r592.js",
+      ".next/static/chunks/003tnyqo5-gn6.js",
+      ".next/static/chunks/003x6qy96txck.js",
       ".next/static/chunks/00fn.~c8g8fss.js",
       ".next/static/chunks/01xlw8hd842-c.js",
       ".next/static/chunks/03~yq9q893hmn.js",
       ".next/static/chunks/04ccch-4q5.no.js",
       ".next/static/chunks/084_y5t044ez4.js",
       ".next/static/chunks/085yunpvj_8~f.js",
-      ".next/static/chunks/0_k0tvv~jeio1.js",
-      ".next/static/chunks/0_v5dxcc386qr.js",
       ".next/static/chunks/0bpdsmnouv.qk.js",
       ".next/static/chunks/0dlu-~aw404x8.js",
-      ".next/static/chunks/0fj2fbuj5~re7.js",
-      ".next/static/chunks/0gy2_uxxnof28.js",
       ".next/static/chunks/0qlfceh.7zxcr.js",
-      ".next/static/chunks/0qvraivts7u~9.js",
       ".next/static/chunks/0r7m44~cm1a3r.js",
       ".next/static/chunks/0sh.6aqimy6c9.js",
       ".next/static/chunks/0teu~jqxhek-u.js",
       ".next/static/chunks/0txile777fon~.js",
       ".next/static/chunks/0uzs23o2h.cb0.js",
+      ".next/static/chunks/0vdw853nzh__b.js",
+      ".next/static/chunks/0wgp6zy-d30a4.js",
       ".next/static/chunks/0yk0r342jlaw9.js",
       ".next/static/chunks/0~ix03.10bxac.js",
       ".next/static/chunks/10amof-9t.vgi.js",
       ".next/static/chunks/10ngpgjgny8vk.js",
+      ".next/static/chunks/1286m6cge2wak.js",
       ".next/static/chunks/12oyou_q1vc72.js",
       ".next/static/chunks/1502ji2lci~2n.js",
       ".next/static/chunks/16zdo34txr_6z.js",
       ".next/static/chunks/16~ii_busx8br.js",
       ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
       ".next/types/cache-life.d.ts",
       ".next/types/routes.d.ts",
       ".next/types/validator.ts"
@@ -2530,6 +2595,12 @@
     ],
     "repo-map.md": [
       ".claude/launch.json",
+      ".next/_events_21052.json",
+      ".next/_events_22572.json",
+      ".next/_events_26772.json",
+      ".next/_events_28108.json",
+      ".next/_events_33876.json",
+      ".next/_events_35612.json",
       ".next/app-path-routes-manifest.json",
       ".next/build-manifest.json",
       ".next/dev/build-manifest.json",
@@ -2946,10 +3017,10 @@
       ".next/server/prefetch-hints.json",
       ".next/server/server-reference-manifest.js",
       ".next/server/server-reference-manifest.json",
-      ".next/static/chunks/0_k0tvv~jeio1.js",
-      ".next/static/chunks/0_v5dxcc386qr.js",
       ".next/static/chunks/0.b.fm010r592.js",
       ".next/static/chunks/0~ix03.10bxac.js",
+      ".next/static/chunks/003tnyqo5-gn6.js",
+      ".next/static/chunks/003x6qy96txck.js",
       ".next/static/chunks/00fn.~c8g8fss.js",
       ".next/static/chunks/01xlw8hd842-c.js",
       ".next/static/chunks/03~yq9q893hmn.js",
@@ -2958,26 +3029,26 @@
       ".next/static/chunks/085yunpvj_8~f.js",
       ".next/static/chunks/0bpdsmnouv.qk.js",
       ".next/static/chunks/0dlu-~aw404x8.js",
-      ".next/static/chunks/0fj2fbuj5~re7.js",
-      ".next/static/chunks/0gy2_uxxnof28.js",
       ".next/static/chunks/0qlfceh.7zxcr.js",
-      ".next/static/chunks/0qvraivts7u~9.js",
       ".next/static/chunks/0r7m44~cm1a3r.js",
       ".next/static/chunks/0sh.6aqimy6c9.js",
       ".next/static/chunks/0teu~jqxhek-u.js",
       ".next/static/chunks/0txile777fon~.js",
       ".next/static/chunks/0uzs23o2h.cb0.js",
+      ".next/static/chunks/0vdw853nzh__b.js",
+      ".next/static/chunks/0wgp6zy-d30a4.js",
       ".next/static/chunks/0yk0r342jlaw9.js",
       ".next/static/chunks/10amof-9t.vgi.js",
       ".next/static/chunks/10ngpgjgny8vk.js",
+      ".next/static/chunks/1286m6cge2wak.js",
       ".next/static/chunks/12oyou_q1vc72.js",
       ".next/static/chunks/1502ji2lci~2n.js",
       ".next/static/chunks/16~ii_busx8br.js",
       ".next/static/chunks/16zdo34txr_6z.js",
       ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
       ".next/types/cache-life.d.ts",
       ".next/types/routes.d.ts",
       ".next/types/validator.ts",
@@ -3142,6 +3213,12 @@
       ".claude/launch.json"
     ],
     "symbols/.next.symbols.json": [
+      ".next/_events_21052.json",
+      ".next/_events_22572.json",
+      ".next/_events_26772.json",
+      ".next/_events_28108.json",
+      ".next/_events_33876.json",
+      ".next/_events_35612.json",
       ".next/app-path-routes-manifest.json",
       ".next/build-manifest.json",
       ".next/dev/build-manifest.json",
@@ -3559,37 +3636,37 @@
       ".next/server/server-reference-manifest.js",
       ".next/server/server-reference-manifest.json",
       ".next/static/chunks/0.b.fm010r592.js",
+      ".next/static/chunks/003tnyqo5-gn6.js",
+      ".next/static/chunks/003x6qy96txck.js",
       ".next/static/chunks/00fn.~c8g8fss.js",
       ".next/static/chunks/01xlw8hd842-c.js",
       ".next/static/chunks/03~yq9q893hmn.js",
       ".next/static/chunks/04ccch-4q5.no.js",
       ".next/static/chunks/084_y5t044ez4.js",
       ".next/static/chunks/085yunpvj_8~f.js",
-      ".next/static/chunks/0_k0tvv~jeio1.js",
-      ".next/static/chunks/0_v5dxcc386qr.js",
       ".next/static/chunks/0bpdsmnouv.qk.js",
       ".next/static/chunks/0dlu-~aw404x8.js",
-      ".next/static/chunks/0fj2fbuj5~re7.js",
-      ".next/static/chunks/0gy2_uxxnof28.js",
       ".next/static/chunks/0qlfceh.7zxcr.js",
-      ".next/static/chunks/0qvraivts7u~9.js",
       ".next/static/chunks/0r7m44~cm1a3r.js",
       ".next/static/chunks/0sh.6aqimy6c9.js",
       ".next/static/chunks/0teu~jqxhek-u.js",
       ".next/static/chunks/0txile777fon~.js",
       ".next/static/chunks/0uzs23o2h.cb0.js",
+      ".next/static/chunks/0vdw853nzh__b.js",
+      ".next/static/chunks/0wgp6zy-d30a4.js",
       ".next/static/chunks/0yk0r342jlaw9.js",
       ".next/static/chunks/0~ix03.10bxac.js",
       ".next/static/chunks/10amof-9t.vgi.js",
       ".next/static/chunks/10ngpgjgny8vk.js",
+      ".next/static/chunks/1286m6cge2wak.js",
       ".next/static/chunks/12oyou_q1vc72.js",
       ".next/static/chunks/1502ji2lci~2n.js",
       ".next/static/chunks/16zdo34txr_6z.js",
       ".next/static/chunks/16~ii_busx8br.js",
       ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-      ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+      ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
       ".next/types/cache-life.d.ts",
       ".next/types/routes.d.ts",
       ".next/types/validator.ts"
@@ -3774,12 +3851,22 @@
   "generatedArtifacts": {
     "changes/impact-report.md": {
       "dependencies": [
+        ".claude/launch.json",
+        ".next/_events_21052.json",
+        ".next/_events_22572.json",
+        ".next/_events_26772.json",
+        ".next/_events_28108.json",
+        ".next/_events_33876.json",
+        ".next/_events_35612.json",
         ".next/build-manifest.json",
         ".next/dev/prerender-manifest.json",
-        ".next/dev/server/app/page/react-loadable-manifest.json",
+        ".next/dev/server/chunks/ssr/[root-of-the-server]__09h8in1._.js",
+        ".next/dev/server/chunks/ssr/[root-of-the-server]__0u4e96o._.js",
+        ".next/dev/server/chunks/ssr/[root-of-the-server]__0xlmxgi._.js",
+        ".next/dev/server/chunks/ssr/[root-of-the-server]__0xo239y._.js",
+        ".next/dev/static/chunks/src_0fmup2r._.js",
         ".next/dev/static/chunks/src_0izbcuf._.js",
-        ".next/dev/static/chunks/src_features_graph_GraphApp_tsx_0y-zs-f._.js",
-        ".next/dev/static/chunks/src_features_graph_GraphApp_tsx_0~uy~jx._.js",
+        ".next/dev/static/chunks/src_0sw1_wl._.js",
         ".next/diagnostics/route-bundle-stats.json",
         ".next/fallback-build-manifest.json",
         ".next/server/app/_not-found/page_client-reference-manifest.js",
@@ -3787,27 +3874,58 @@
         ".next/server/app/page/react-loadable-manifest.json",
         ".next/server/app/page_client-reference-manifest.js",
         ".next/server/app/profile/page_client-reference-manifest.js",
+        ".next/server/chunks/ssr/[root-of-the-server]__0bh4_.n._.js",
+        ".next/server/chunks/ssr/[root-of-the-server]__0eu04-u._.js",
+        ".next/server/chunks/ssr/[root-of-the-server]__0gkf33d._.js",
+        ".next/server/chunks/ssr/[root-of-the-server]__13_89qx._.js",
+        ".next/server/chunks/ssr/_13orez4._.js",
         ".next/server/middleware-build-manifest.js",
-        ".next/static/chunks/0.b.fm010r592.js",
-        ".next/static/chunks/023lx-2d.dfj9.js",
-        ".next/static/chunks/0c4wlpn2p7j26.js",
+        ".next/static/chunks/003tnyqo5-gn6.js",
+        ".next/static/chunks/003x6qy96txck.js",
+        ".next/static/chunks/0_k0tvv~jeio1.js",
+        ".next/static/chunks/0_v5dxcc386qr.js",
         ".next/static/chunks/0fj2fbuj5~re7.js",
         ".next/static/chunks/0gy2_uxxnof28.js",
-        ".next/static/chunks/0rv7mtijs17t5.js",
-        ".next/static/chunks/0uwvba05_050g.js",
-        ".next/static/chunks/10amof-9t.vgi.js",
+        ".next/static/chunks/0qvraivts7u~9.js",
+        ".next/static/chunks/0vdw853nzh__b.js",
+        ".next/static/chunks/0wgp6zy-d30a4.js",
+        ".next/static/chunks/1286m6cge2wak.js",
         ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
         ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
         ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
-        ".next/static/i08sLLjM4O0fABs_aMWsE/_buildManifest.js",
-        ".next/static/i08sLLjM4O0fABs_aMWsE/_clientMiddlewareManifest.js",
-        ".next/static/i08sLLjM4O0fABs_aMWsE/_ssgManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "next-env.d.ts",
+        "src/app/badges/page.tsx",
+        "src/app/profile/page.tsx",
+        "src/components/Badges.tsx",
+        "src/components/LoginModal.tsx",
+        "src/components/Navbar.tsx",
+        "src/components/Profile.tsx",
         "src/features/graph/GraphApp.tsx",
         "src/features/graph/app/store/types.ts",
         "src/features/graph/components/GraphCanvas.tsx",
-        "src/features/graph/kernel/modules/root-loader.ts"
+        "src/features/graph/components/GraphControlRail.tsx",
+        "src/features/graph/db/database.ts",
+        "src/features/graph/db/entities.ts",
+        "src/features/graph/db/repositories.ts",
+        "src/features/graph/db/utils.ts",
+        "src/features/graph/kernel/modules/context.ts",
+        "src/features/graph/kernel/modules/follower-discovery.ts",
+        "src/features/graph/kernel/modules/root-loader.ts",
+        "src/features/graph/kernel/transcript-relay.ts",
+        "src/features/graph/kernel/transitions/root-load.ts",
+        "src/features/graph/nostr/relay-adapter.ts",
+        "src/features/graph/nostr/relay-transport.ts",
+        "src/features/graph/nostr/types.ts",
+        "src/features/graph/render/GraphViewport.tsx",
+        "src/features/graph/render/GraphViewportLazy.tsx",
+        "src/features/graph/render/index.ts"
       ],
-      "hash": "2ee8a3a66d4c4e1f2836758c4fabd3d8656b402b749f2634580781686129bc77"
+      "hash": "df51e8d57f43cf6e685c5be2f2b3aaee9d733effe014a6a55519679b563f11e6"
     },
     "changes/stale-artifacts.md": {
       "dependencies": [
@@ -3842,11 +3960,17 @@
         "symbols/store.symbols.json",
         "symbols/types.symbols.json"
       ],
-      "hash": "ba6ad60a834e138bcb36d76c79afda7a0976c6d31a6fec067f9b54e10190bf87"
+      "hash": "cf4379f5c168d20b14d1b46db452bb650f42bc73c991826e24d0ee4f42ee3885"
     },
     "decisions/architecture.md": {
       "dependencies": [
         ".claude/launch.json",
+        ".next/_events_21052.json",
+        ".next/_events_22572.json",
+        ".next/_events_26772.json",
+        ".next/_events_28108.json",
+        ".next/_events_33876.json",
+        ".next/_events_35612.json",
         ".next/app-path-routes-manifest.json",
         ".next/build-manifest.json",
         ".next/dev/build-manifest.json",
@@ -4263,10 +4387,10 @@
         ".next/server/prefetch-hints.json",
         ".next/server/server-reference-manifest.js",
         ".next/server/server-reference-manifest.json",
-        ".next/static/chunks/0_k0tvv~jeio1.js",
-        ".next/static/chunks/0_v5dxcc386qr.js",
         ".next/static/chunks/0.b.fm010r592.js",
         ".next/static/chunks/0~ix03.10bxac.js",
+        ".next/static/chunks/003tnyqo5-gn6.js",
+        ".next/static/chunks/003x6qy96txck.js",
         ".next/static/chunks/00fn.~c8g8fss.js",
         ".next/static/chunks/01xlw8hd842-c.js",
         ".next/static/chunks/03~yq9q893hmn.js",
@@ -4275,26 +4399,26 @@
         ".next/static/chunks/085yunpvj_8~f.js",
         ".next/static/chunks/0bpdsmnouv.qk.js",
         ".next/static/chunks/0dlu-~aw404x8.js",
-        ".next/static/chunks/0fj2fbuj5~re7.js",
-        ".next/static/chunks/0gy2_uxxnof28.js",
         ".next/static/chunks/0qlfceh.7zxcr.js",
-        ".next/static/chunks/0qvraivts7u~9.js",
         ".next/static/chunks/0r7m44~cm1a3r.js",
         ".next/static/chunks/0sh.6aqimy6c9.js",
         ".next/static/chunks/0teu~jqxhek-u.js",
         ".next/static/chunks/0txile777fon~.js",
         ".next/static/chunks/0uzs23o2h.cb0.js",
+        ".next/static/chunks/0vdw853nzh__b.js",
+        ".next/static/chunks/0wgp6zy-d30a4.js",
         ".next/static/chunks/0yk0r342jlaw9.js",
         ".next/static/chunks/10amof-9t.vgi.js",
         ".next/static/chunks/10ngpgjgny8vk.js",
+        ".next/static/chunks/1286m6cge2wak.js",
         ".next/static/chunks/12oyou_q1vc72.js",
         ".next/static/chunks/1502ji2lci~2n.js",
         ".next/static/chunks/16~ii_busx8br.js",
         ".next/static/chunks/16zdo34txr_6z.js",
         ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
         ".next/types/cache-life.d.ts",
         ".next/types/routes.d.ts",
         ".next/types/validator.ts",
@@ -4455,11 +4579,17 @@
         "src/types/nostr.d.ts",
         "tsconfig.json"
       ],
-      "hash": "a4f1669e154d5562379caa20a902d2bdf033dc28a347915883c71c7037ca65b9"
+      "hash": "ceab7057f0db310d8532b12ea37c5abb737e469ce3fd5a52b911856a8b184e82"
     },
     "decisions/invariants.md": {
       "dependencies": [
         ".claude/launch.json",
+        ".next/_events_21052.json",
+        ".next/_events_22572.json",
+        ".next/_events_26772.json",
+        ".next/_events_28108.json",
+        ".next/_events_33876.json",
+        ".next/_events_35612.json",
         ".next/app-path-routes-manifest.json",
         ".next/build-manifest.json",
         ".next/dev/build-manifest.json",
@@ -4876,10 +5006,10 @@
         ".next/server/prefetch-hints.json",
         ".next/server/server-reference-manifest.js",
         ".next/server/server-reference-manifest.json",
-        ".next/static/chunks/0_k0tvv~jeio1.js",
-        ".next/static/chunks/0_v5dxcc386qr.js",
         ".next/static/chunks/0.b.fm010r592.js",
         ".next/static/chunks/0~ix03.10bxac.js",
+        ".next/static/chunks/003tnyqo5-gn6.js",
+        ".next/static/chunks/003x6qy96txck.js",
         ".next/static/chunks/00fn.~c8g8fss.js",
         ".next/static/chunks/01xlw8hd842-c.js",
         ".next/static/chunks/03~yq9q893hmn.js",
@@ -4888,26 +5018,26 @@
         ".next/static/chunks/085yunpvj_8~f.js",
         ".next/static/chunks/0bpdsmnouv.qk.js",
         ".next/static/chunks/0dlu-~aw404x8.js",
-        ".next/static/chunks/0fj2fbuj5~re7.js",
-        ".next/static/chunks/0gy2_uxxnof28.js",
         ".next/static/chunks/0qlfceh.7zxcr.js",
-        ".next/static/chunks/0qvraivts7u~9.js",
         ".next/static/chunks/0r7m44~cm1a3r.js",
         ".next/static/chunks/0sh.6aqimy6c9.js",
         ".next/static/chunks/0teu~jqxhek-u.js",
         ".next/static/chunks/0txile777fon~.js",
         ".next/static/chunks/0uzs23o2h.cb0.js",
+        ".next/static/chunks/0vdw853nzh__b.js",
+        ".next/static/chunks/0wgp6zy-d30a4.js",
         ".next/static/chunks/0yk0r342jlaw9.js",
         ".next/static/chunks/10amof-9t.vgi.js",
         ".next/static/chunks/10ngpgjgny8vk.js",
+        ".next/static/chunks/1286m6cge2wak.js",
         ".next/static/chunks/12oyou_q1vc72.js",
         ".next/static/chunks/1502ji2lci~2n.js",
         ".next/static/chunks/16~ii_busx8br.js",
         ".next/static/chunks/16zdo34txr_6z.js",
         ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
         ".next/types/cache-life.d.ts",
         ".next/types/routes.d.ts",
         ".next/types/validator.ts",
@@ -5068,11 +5198,17 @@
         "src/types/nostr.d.ts",
         "tsconfig.json"
       ],
-      "hash": "bcad8a4b88ed1a633bb419c6981eb6bbd62804b534d1e039556fb7096f74e7ef"
+      "hash": "b5bb3585eb01d27a18ae5c184e3c93a1105843a9b28463fa89a4e9e58fb54fd9"
     },
     "flows/entrypoints.md": {
       "dependencies": [
         ".claude/launch.json",
+        ".next/_events_21052.json",
+        ".next/_events_22572.json",
+        ".next/_events_26772.json",
+        ".next/_events_28108.json",
+        ".next/_events_33876.json",
+        ".next/_events_35612.json",
         ".next/app-path-routes-manifest.json",
         ".next/build-manifest.json",
         ".next/dev/build-manifest.json",
@@ -5489,10 +5625,10 @@
         ".next/server/prefetch-hints.json",
         ".next/server/server-reference-manifest.js",
         ".next/server/server-reference-manifest.json",
-        ".next/static/chunks/0_k0tvv~jeio1.js",
-        ".next/static/chunks/0_v5dxcc386qr.js",
         ".next/static/chunks/0.b.fm010r592.js",
         ".next/static/chunks/0~ix03.10bxac.js",
+        ".next/static/chunks/003tnyqo5-gn6.js",
+        ".next/static/chunks/003x6qy96txck.js",
         ".next/static/chunks/00fn.~c8g8fss.js",
         ".next/static/chunks/01xlw8hd842-c.js",
         ".next/static/chunks/03~yq9q893hmn.js",
@@ -5501,26 +5637,26 @@
         ".next/static/chunks/085yunpvj_8~f.js",
         ".next/static/chunks/0bpdsmnouv.qk.js",
         ".next/static/chunks/0dlu-~aw404x8.js",
-        ".next/static/chunks/0fj2fbuj5~re7.js",
-        ".next/static/chunks/0gy2_uxxnof28.js",
         ".next/static/chunks/0qlfceh.7zxcr.js",
-        ".next/static/chunks/0qvraivts7u~9.js",
         ".next/static/chunks/0r7m44~cm1a3r.js",
         ".next/static/chunks/0sh.6aqimy6c9.js",
         ".next/static/chunks/0teu~jqxhek-u.js",
         ".next/static/chunks/0txile777fon~.js",
         ".next/static/chunks/0uzs23o2h.cb0.js",
+        ".next/static/chunks/0vdw853nzh__b.js",
+        ".next/static/chunks/0wgp6zy-d30a4.js",
         ".next/static/chunks/0yk0r342jlaw9.js",
         ".next/static/chunks/10amof-9t.vgi.js",
         ".next/static/chunks/10ngpgjgny8vk.js",
+        ".next/static/chunks/1286m6cge2wak.js",
         ".next/static/chunks/12oyou_q1vc72.js",
         ".next/static/chunks/1502ji2lci~2n.js",
         ".next/static/chunks/16~ii_busx8br.js",
         ".next/static/chunks/16zdo34txr_6z.js",
         ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
         ".next/types/cache-life.d.ts",
         ".next/types/routes.d.ts",
         ".next/types/validator.ts",
@@ -5681,16 +5817,22 @@
         "src/types/nostr.d.ts",
         "tsconfig.json"
       ],
-      "hash": "8b90c42e51b26afbbdb5f8b8b4fc313124992163bd9c62da150cfd802f3eae6a"
+      "hash": "7a0c894738207ee614a4bac9fb832f76a91f237538f1e1aab089d48dadb8bbe4"
     },
     "modules/.claude.md": {
       "dependencies": [
         ".claude/launch.json"
       ],
-      "hash": "cf2fc3c2287417137cfe682abfd5506a647eee4e5aa0cfe0386df1f4ebc85c7e"
+      "hash": "5596ce34b7a1d205b25e6f0da98b83c209001b81c396747670a5ba1837215381"
     },
     "modules/.next.md": {
       "dependencies": [
+        ".next/_events_21052.json",
+        ".next/_events_22572.json",
+        ".next/_events_26772.json",
+        ".next/_events_28108.json",
+        ".next/_events_33876.json",
+        ".next/_events_35612.json",
         ".next/app-path-routes-manifest.json",
         ".next/build-manifest.json",
         ".next/dev/build-manifest.json",
@@ -6108,42 +6250,42 @@
         ".next/server/server-reference-manifest.js",
         ".next/server/server-reference-manifest.json",
         ".next/static/chunks/0.b.fm010r592.js",
+        ".next/static/chunks/003tnyqo5-gn6.js",
+        ".next/static/chunks/003x6qy96txck.js",
         ".next/static/chunks/00fn.~c8g8fss.js",
         ".next/static/chunks/01xlw8hd842-c.js",
         ".next/static/chunks/03~yq9q893hmn.js",
         ".next/static/chunks/04ccch-4q5.no.js",
         ".next/static/chunks/084_y5t044ez4.js",
         ".next/static/chunks/085yunpvj_8~f.js",
-        ".next/static/chunks/0_k0tvv~jeio1.js",
-        ".next/static/chunks/0_v5dxcc386qr.js",
         ".next/static/chunks/0bpdsmnouv.qk.js",
         ".next/static/chunks/0dlu-~aw404x8.js",
-        ".next/static/chunks/0fj2fbuj5~re7.js",
-        ".next/static/chunks/0gy2_uxxnof28.js",
         ".next/static/chunks/0qlfceh.7zxcr.js",
-        ".next/static/chunks/0qvraivts7u~9.js",
         ".next/static/chunks/0r7m44~cm1a3r.js",
         ".next/static/chunks/0sh.6aqimy6c9.js",
         ".next/static/chunks/0teu~jqxhek-u.js",
         ".next/static/chunks/0txile777fon~.js",
         ".next/static/chunks/0uzs23o2h.cb0.js",
+        ".next/static/chunks/0vdw853nzh__b.js",
+        ".next/static/chunks/0wgp6zy-d30a4.js",
         ".next/static/chunks/0yk0r342jlaw9.js",
         ".next/static/chunks/0~ix03.10bxac.js",
         ".next/static/chunks/10amof-9t.vgi.js",
         ".next/static/chunks/10ngpgjgny8vk.js",
+        ".next/static/chunks/1286m6cge2wak.js",
         ".next/static/chunks/12oyou_q1vc72.js",
         ".next/static/chunks/1502ji2lci~2n.js",
         ".next/static/chunks/16zdo34txr_6z.js",
         ".next/static/chunks/16~ii_busx8br.js",
         ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
         ".next/types/cache-life.d.ts",
         ".next/types/routes.d.ts",
         ".next/types/validator.ts"
       ],
-      "hash": "0aa65f9c56335ab9cec3add76786d7d033775118f1c5e56c0100f4b9d3f281c5"
+      "hash": "c65c94ccafd46b9763834bbceec54ba33c1a7e1e99dfb8a4b4006dc36c326f9c"
     },
     "modules/app.md": {
       "dependencies": [
@@ -6152,7 +6294,7 @@
         "src/app/page.tsx",
         "src/app/profile/page.tsx"
       ],
-      "hash": "8a05de17ae266dfeabfa7e97496b92a02cdc3388ec8746c467d3f6ea7bfd4338"
+      "hash": "9afac578e651f9e5042960ef0dd97419fb660710c5a82805052190b3a160bd67"
     },
     "modules/components.md": {
       "dependencies": [
@@ -6164,7 +6306,7 @@
         "src/components/Profile.tsx",
         "src/components/SkeletonImage.tsx"
       ],
-      "hash": "d4bb08609addaf529cc380c675c2dd98fc5af0eff1026826820b77f81ae73b24"
+      "hash": "a0b9c06a376365a466f530c02177c3ac6e669a1ecd0a92c031c3f931b1f3ee37"
     },
     "modules/docs.md": {
       "dependencies": [
@@ -6297,7 +6439,7 @@
         "src/features/graph/workers/verifyWorker.ts",
         "src/features/graph/workers/verifyWorkerPool.ts"
       ],
-      "hash": "32d08e84dd76590a9f5ac12143ba7ded4340da29d6832a4c5b4c09c7d9e8aa85"
+      "hash": "3cd9db0ff68b2a5345facaaaa10a26c577b9b95a8ab7c69486577c51e75da64d"
     },
     "modules/lib.md": {
       "dependencies": [
@@ -6328,7 +6470,7 @@
         "postcss.config.mjs",
         "tsconfig.json"
       ],
-      "hash": "4cfec2d5c32b5ff729b73e1f88f0718a60b6fade7c7fa08dcad033918d55c4c8"
+      "hash": "6a6623e3803eccf20461b60fcee098bd8ae9ab1f43e8f060e40d9a2226959136"
     },
     "modules/scripts.md": {
       "dependencies": [
@@ -6354,6 +6496,12 @@
     "repo-map.md": {
       "dependencies": [
         ".claude/launch.json",
+        ".next/_events_21052.json",
+        ".next/_events_22572.json",
+        ".next/_events_26772.json",
+        ".next/_events_28108.json",
+        ".next/_events_33876.json",
+        ".next/_events_35612.json",
         ".next/app-path-routes-manifest.json",
         ".next/build-manifest.json",
         ".next/dev/build-manifest.json",
@@ -6770,10 +6918,10 @@
         ".next/server/prefetch-hints.json",
         ".next/server/server-reference-manifest.js",
         ".next/server/server-reference-manifest.json",
-        ".next/static/chunks/0_k0tvv~jeio1.js",
-        ".next/static/chunks/0_v5dxcc386qr.js",
         ".next/static/chunks/0.b.fm010r592.js",
         ".next/static/chunks/0~ix03.10bxac.js",
+        ".next/static/chunks/003tnyqo5-gn6.js",
+        ".next/static/chunks/003x6qy96txck.js",
         ".next/static/chunks/00fn.~c8g8fss.js",
         ".next/static/chunks/01xlw8hd842-c.js",
         ".next/static/chunks/03~yq9q893hmn.js",
@@ -6782,26 +6930,26 @@
         ".next/static/chunks/085yunpvj_8~f.js",
         ".next/static/chunks/0bpdsmnouv.qk.js",
         ".next/static/chunks/0dlu-~aw404x8.js",
-        ".next/static/chunks/0fj2fbuj5~re7.js",
-        ".next/static/chunks/0gy2_uxxnof28.js",
         ".next/static/chunks/0qlfceh.7zxcr.js",
-        ".next/static/chunks/0qvraivts7u~9.js",
         ".next/static/chunks/0r7m44~cm1a3r.js",
         ".next/static/chunks/0sh.6aqimy6c9.js",
         ".next/static/chunks/0teu~jqxhek-u.js",
         ".next/static/chunks/0txile777fon~.js",
         ".next/static/chunks/0uzs23o2h.cb0.js",
+        ".next/static/chunks/0vdw853nzh__b.js",
+        ".next/static/chunks/0wgp6zy-d30a4.js",
         ".next/static/chunks/0yk0r342jlaw9.js",
         ".next/static/chunks/10amof-9t.vgi.js",
         ".next/static/chunks/10ngpgjgny8vk.js",
+        ".next/static/chunks/1286m6cge2wak.js",
         ".next/static/chunks/12oyou_q1vc72.js",
         ".next/static/chunks/1502ji2lci~2n.js",
         ".next/static/chunks/16~ii_busx8br.js",
         ".next/static/chunks/16zdo34txr_6z.js",
         ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
         ".next/types/cache-life.d.ts",
         ".next/types/routes.d.ts",
         ".next/types/validator.ts",
@@ -6962,7 +7110,7 @@
         "src/types/nostr.d.ts",
         "tsconfig.json"
       ],
-      "hash": "16491ba970112f81ec75427adebfaa31e78b16240853367a45163b5488acf65e"
+      "hash": "ee4f1930dc1e824a7d6e4cd27fcc85023578c43f7b86e68397aaae89d4909adf"
     },
     "symbols/.claude.symbols.json": {
       "dependencies": [
@@ -6972,6 +7120,12 @@
     },
     "symbols/.next.symbols.json": {
       "dependencies": [
+        ".next/_events_21052.json",
+        ".next/_events_22572.json",
+        ".next/_events_26772.json",
+        ".next/_events_28108.json",
+        ".next/_events_33876.json",
+        ".next/_events_35612.json",
         ".next/app-path-routes-manifest.json",
         ".next/build-manifest.json",
         ".next/dev/build-manifest.json",
@@ -7389,37 +7543,37 @@
         ".next/server/server-reference-manifest.js",
         ".next/server/server-reference-manifest.json",
         ".next/static/chunks/0.b.fm010r592.js",
+        ".next/static/chunks/003tnyqo5-gn6.js",
+        ".next/static/chunks/003x6qy96txck.js",
         ".next/static/chunks/00fn.~c8g8fss.js",
         ".next/static/chunks/01xlw8hd842-c.js",
         ".next/static/chunks/03~yq9q893hmn.js",
         ".next/static/chunks/04ccch-4q5.no.js",
         ".next/static/chunks/084_y5t044ez4.js",
         ".next/static/chunks/085yunpvj_8~f.js",
-        ".next/static/chunks/0_k0tvv~jeio1.js",
-        ".next/static/chunks/0_v5dxcc386qr.js",
         ".next/static/chunks/0bpdsmnouv.qk.js",
         ".next/static/chunks/0dlu-~aw404x8.js",
-        ".next/static/chunks/0fj2fbuj5~re7.js",
-        ".next/static/chunks/0gy2_uxxnof28.js",
         ".next/static/chunks/0qlfceh.7zxcr.js",
-        ".next/static/chunks/0qvraivts7u~9.js",
         ".next/static/chunks/0r7m44~cm1a3r.js",
         ".next/static/chunks/0sh.6aqimy6c9.js",
         ".next/static/chunks/0teu~jqxhek-u.js",
         ".next/static/chunks/0txile777fon~.js",
         ".next/static/chunks/0uzs23o2h.cb0.js",
+        ".next/static/chunks/0vdw853nzh__b.js",
+        ".next/static/chunks/0wgp6zy-d30a4.js",
         ".next/static/chunks/0yk0r342jlaw9.js",
         ".next/static/chunks/0~ix03.10bxac.js",
         ".next/static/chunks/10amof-9t.vgi.js",
         ".next/static/chunks/10ngpgjgny8vk.js",
+        ".next/static/chunks/1286m6cge2wak.js",
         ".next/static/chunks/12oyou_q1vc72.js",
         ".next/static/chunks/1502ji2lci~2n.js",
         ".next/static/chunks/16zdo34txr_6z.js",
         ".next/static/chunks/16~ii_busx8br.js",
         ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
-        ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
+        ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
         ".next/types/cache-life.d.ts",
         ".next/types/routes.d.ts",
         ".next/types/validator.ts"
@@ -7433,7 +7587,7 @@
         "src/app/page.tsx",
         "src/app/profile/page.tsx"
       ],
-      "hash": "59af99d2f9bfe562a44f206eb83c6688658347cd92368764b5a1a43b726318b7"
+      "hash": "9d4c93303ccb0a2a01f325c08b701a359ae13c1ffe255da6946139dcfc500bd1"
     },
     "symbols/components.symbols.json": {
       "dependencies": [
@@ -7445,7 +7599,7 @@
         "src/components/Profile.tsx",
         "src/components/SkeletonImage.tsx"
       ],
-      "hash": "2b8d46f382af5b1385a2ac091cea5d84782fa32d86e4b6cc2655ef264f7e94fb"
+      "hash": "75be8f265413e68908ee1ba42acf7544b21f34a718145f9619f93b9e3fd5e1ee"
     },
     "symbols/docs.symbols.json": {
       "dependencies": [
@@ -7578,7 +7732,7 @@
         "src/features/graph/workers/verifyWorker.ts",
         "src/features/graph/workers/verifyWorkerPool.ts"
       ],
-      "hash": "5e39426b0ec9197cf7beb61c9f381a28bd63fc5d2ba1f5627422048f89e1130d"
+      "hash": "5761bb36942c9dd50189ea8f96791867f1ae81f740ccfb5c3773fc9c7f957b3a"
     },
     "symbols/lib.symbols.json": {
       "dependencies": [
@@ -7633,16 +7787,70 @@
       "hash": "f78c2e5d633803cc7c4dd7d55b9023fb7ca3508b25781a5424bccc9f83d5c16d"
     }
   },
-  "generatedAt": "2026-04-11T15:39:47.834Z",
+  "generatedAt": "2026-04-11T18:52:51.931Z",
   "schemaVersion": 1,
   "sourceFiles": {
     ".claude/launch.json": {
       "exports": [],
-      "hash": "a770d53d3e810af18bd4f51bd704dad51ca3153af7b8b514d6756ad69db43df1",
+      "hash": "2efe55e267d47995e0a7b56f0baa6a3bf5a015261a2812258d0897822a02a4d6",
       "imports": [],
       "language": "json",
       "module": ".claude",
       "path": ".claude/launch.json",
+      "symbolNames": []
+    },
+    ".next/_events_21052.json": {
+      "exports": [],
+      "hash": "9f8ac8908b4dd51161c9684a64a58f2076e0ff073de2fa7f7ec8e6e2658c7b5d",
+      "imports": [],
+      "language": "json",
+      "module": ".next",
+      "path": ".next/_events_21052.json",
+      "symbolNames": []
+    },
+    ".next/_events_22572.json": {
+      "exports": [],
+      "hash": "1a1041c00f55844af98d83b397312355b18e12e577ab23cfb6594a4f528827d6",
+      "imports": [],
+      "language": "json",
+      "module": ".next",
+      "path": ".next/_events_22572.json",
+      "symbolNames": []
+    },
+    ".next/_events_26772.json": {
+      "exports": [],
+      "hash": "d5c9e1a4e64ff0a7d0f3206ce11d397b42a731c93bcb08bbe4e5f6a3ad2fb130",
+      "imports": [],
+      "language": "json",
+      "module": ".next",
+      "path": ".next/_events_26772.json",
+      "symbolNames": []
+    },
+    ".next/_events_28108.json": {
+      "exports": [],
+      "hash": "301a3d25625e59ae5d04f45ac3948626ab004fe5f28d5031fa800bfeb709803c",
+      "imports": [],
+      "language": "json",
+      "module": ".next",
+      "path": ".next/_events_28108.json",
+      "symbolNames": []
+    },
+    ".next/_events_33876.json": {
+      "exports": [],
+      "hash": "c15c5726d6146914a1a538adb7e1b18054763f63d675148bd58f929408dcfe8d",
+      "imports": [],
+      "language": "json",
+      "module": ".next",
+      "path": ".next/_events_33876.json",
+      "symbolNames": []
+    },
+    ".next/_events_35612.json": {
+      "exports": [],
+      "hash": "d6ec3ef85708f60e0a705d4a1734dc6d53e786168b1a5d4371e29892d6093dbf",
+      "imports": [],
+      "language": "json",
+      "module": ".next",
+      "path": ".next/_events_35612.json",
       "symbolNames": []
     },
     ".next/app-path-routes-manifest.json": {
@@ -7656,7 +7864,7 @@
     },
     ".next/build-manifest.json": {
       "exports": [],
-      "hash": "823206e25fdf11a3a8b16b3f3655bf10f3ca7f7d8d950c9a73def4f99dcda739",
+      "hash": "cbab6540a845d7d75140c2a37dbd69a7b5ce6b2d46a1c8f65c5fe15357e7da9f",
       "imports": [],
       "language": "json",
       "module": ".next",
@@ -7701,7 +7909,7 @@
     },
     ".next/dev/prerender-manifest.json": {
       "exports": [],
-      "hash": "0885d1a563e379236d013a09b614062f6874452a7967228f43fe45d207420f09",
+      "hash": "cb6413d90d01fbc261af80815887dbbaae588737932ed0330aa7be19b76fee15",
       "imports": [],
       "language": "json",
       "module": ".next",
@@ -8042,7 +8250,7 @@
     },
     ".next/dev/server/chunks/ssr/[root-of-the-server]__09h8in1._.js": {
       "exports": [],
-      "hash": "1cf9354667a18d367d8a6e99d1000cd9adeb5964a7fb9c7c7ba67b37753b35d5",
+      "hash": "30e2f134409cbc56006fa356d6fbfad0b47ef6ab69c6a072447bf1084dd2a00c",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -8087,7 +8295,7 @@
     },
     ".next/dev/server/chunks/ssr/[root-of-the-server]__0u4e96o._.js": {
       "exports": [],
-      "hash": "8585c105e7a353a6ffb841ad4cc79f271e95d1fe053f5bafe2a2d49423253c4a",
+      "hash": "31c1bff4047aaaa89054d3da102a0355c271f057dd50ef63d7f8ded86298d0be",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -8096,7 +8304,7 @@
     },
     ".next/dev/server/chunks/ssr/[root-of-the-server]__0xlmxgi._.js": {
       "exports": [],
-      "hash": "28ff316392b5a7b974dbee64efa7e6291349d9d8e9cedf3455e570790f8c62ae",
+      "hash": "130aa5d51f940d0a97abeec889d7942c6c1deea87ac1bfd520bb9705117046e2",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -8105,7 +8313,7 @@
     },
     ".next/dev/server/chunks/ssr/[root-of-the-server]__0xo239y._.js": {
       "exports": [],
-      "hash": "87d8114be69534358515f727995c7682ae3e00e245ec0cf069b05d782fb63f22",
+      "hash": "00c80f5a9e4101174b088c193e9b4fdb9582f641a278cf0805188bb1712401f2",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -9801,7 +10009,7 @@
     },
     ".next/dev/static/chunks/src_0fmup2r._.js": {
       "exports": [],
-      "hash": "e0ff3161fe43334cc7f87de5d0d5304827ba1e28e62685c69caf5c8ceb77ac0b",
+      "hash": "0b9a5e57a1932dc2a62e964e59c68663cf0ec80f3eea95066093a887c516137a",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -9837,7 +10045,7 @@
     },
     ".next/dev/static/chunks/src_0izbcuf._.js": {
       "exports": [],
-      "hash": "afb2d473ba5d1e129460ddd42621548a706a1eb0ff1a11b6f30e77d5691fdb1f",
+      "hash": "1c88d5d6cb30df06ce83e3caab5b4c82444de051bbde23fef7857fce679c896b",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -9909,7 +10117,7 @@
     },
     ".next/dev/static/chunks/src_0sw1_wl._.js": {
       "exports": [],
-      "hash": "d6485479248f6676269a8df7cfe03ac7e4ff925d42bb78ae20221184bc77bf2a",
+      "hash": "65d5de35cd04a9ace61ee63397593f5c109e5f866fc60857e83f2fa3e3002ac0",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -10615,7 +10823,7 @@
     },
     ".next/diagnostics/route-bundle-stats.json": {
       "exports": [],
-      "hash": "a75a3ee9aa561302b5d368f15df03046123a13f0e7d147b2fc193d965ef2e093",
+      "hash": "3a91f8ec13058e3433212b5278f85c70ceadd66d773a648dded7c0bd0c5f61c4",
       "imports": [],
       "language": "json",
       "module": ".next",
@@ -10633,7 +10841,7 @@
     },
     ".next/fallback-build-manifest.json": {
       "exports": [],
-      "hash": "847207252be18f1096c2fddb67abc8088ec281357e730a8341af4e4e43f97251",
+      "hash": "86b754433e44b799a6f7f7e1a978c8f71f6202a468c950d77cad6ab42bad2d41",
       "imports": [],
       "language": "json",
       "module": ".next",
@@ -10862,7 +11070,7 @@
     },
     ".next/server/app/_not-found/page_client-reference-manifest.js": {
       "exports": [],
-      "hash": "1ae50d2133e629170db78fbbf24dcfbbb4ac2b87bc457d9fddd965205e7b1838",
+      "hash": "fc25d8a63ede37a93e1c446db215485c56c1e7b70b2cc4ae1b63336250e126e5",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -10936,7 +11144,7 @@
     },
     ".next/server/app/badges/page_client-reference-manifest.js": {
       "exports": [],
-      "hash": "daa3c33f619152bd7189d9295655b8a7718494c10daa9df6f74d8d9a7c44ba7b",
+      "hash": "67707a30f8fae43b5abb944d1e6c2dd24163ce75529ad8615cb11b91068752ea",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -11030,7 +11238,7 @@
     },
     ".next/server/app/page/react-loadable-manifest.json": {
       "exports": [],
-      "hash": "dc50e0b4ca6010516faf4c43f9d9214bd520947723bad1b3bf9fb54b904f0420",
+      "hash": "a1d3f5cd8fb3d8c115d60f03eaca22d980d11fc443fc285f1434edc96fccc5c6",
       "imports": [],
       "language": "json",
       "module": ".next",
@@ -11048,7 +11256,7 @@
     },
     ".next/server/app/page_client-reference-manifest.js": {
       "exports": [],
-      "hash": "d26c67a0e28446a7f4a801b4ecaa9bd20838c43361cb1196b52a3877af34fe44",
+      "hash": "d67f38dab1d8fdd3947c2eca14bd4e694a90bd76bec3c286155ee1e12a4015e0",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -11122,7 +11330,7 @@
     },
     ".next/server/app/profile/page_client-reference-manifest.js": {
       "exports": [],
-      "hash": "4a071302c310292383a763241f73220acf634d8852a2daceb7cb35abcdf449e2",
+      "hash": "c97f2845518ad1d7fcc10be965e5a9549fe41cddb22e44ad049bed69cfbee7cd",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -11297,7 +11505,7 @@
     },
     ".next/server/chunks/ssr/[root-of-the-server]__0bh4_.n._.js": {
       "exports": [],
-      "hash": "0814b67e1c708253bfcfcf885e3bdffb72fb57e5fe05d07b7ddcffa5f803af1a",
+      "hash": "dadec8115decd42765e6af1eb82b8dbee147a5bea1f9a3df22b49946c90011fc",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -11306,7 +11514,7 @@
     },
     ".next/server/chunks/ssr/[root-of-the-server]__0eu04-u._.js": {
       "exports": [],
-      "hash": "a65984b2d15a806b5762ccdf8981d63ef7b5cda64b6a2c992ffdbec0f333e1b9",
+      "hash": "a6ebd8b798012886b2780574abafece2408005042db6918e004239fcae20639e",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -11315,7 +11523,7 @@
     },
     ".next/server/chunks/ssr/[root-of-the-server]__0gkf33d._.js": {
       "exports": [],
-      "hash": "19647c348ad3c09f317b49c81367a6818d565a36b38175a0db7fad912290d8ae",
+      "hash": "2f9ad2837a87528316b686e6a9606349f25c6465b490b12205452463aee77c6b",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -11351,7 +11559,7 @@
     },
     ".next/server/chunks/ssr/[root-of-the-server]__13_89qx._.js": {
       "exports": [],
-      "hash": "b33f0ab5eea09849c55e86b0181eccee7ee05c06da6d874de2db3085b6841c9e",
+      "hash": "40c2bf4bf24c2838c4a3cfc3d41c1f23adf01e0d7423f8d968cf09f3775758f9",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -11472,7 +11680,7 @@
     },
     ".next/server/chunks/ssr/_13orez4._.js": {
       "exports": [],
-      "hash": "40e4f7d75592c991e679c1033b6fb30eda7f9c4848f68293f04647e857314077",
+      "hash": "c005ab98239ebd6f08cb561cde8c1c4cd22d49505d7950f95d1abf29101908e9",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -11661,7 +11869,7 @@
     },
     ".next/server/middleware-build-manifest.js": {
       "exports": [],
-      "hash": "2a748ac11c46aab2b53f532809cd66540cb34fb04615b79e37cec8001eb17013",
+      "hash": "1baa8d35faf0b9e90c6033ed1c4a21d44cea6d3c28891324a76e40f87e123ba7",
       "imports": [],
       "language": "js",
       "module": ".next",
@@ -11740,6 +11948,24 @@
       "path": ".next/static/chunks/0.b.fm010r592.js",
       "symbolNames": []
     },
+    ".next/static/chunks/003tnyqo5-gn6.js": {
+      "exports": [],
+      "hash": "54c4847af81ba378b6bb005d0dd90f0e7455001560918627951fa7365149b634",
+      "imports": [],
+      "language": "js",
+      "module": ".next",
+      "path": ".next/static/chunks/003tnyqo5-gn6.js",
+      "symbolNames": []
+    },
+    ".next/static/chunks/003x6qy96txck.js": {
+      "exports": [],
+      "hash": "98f5f9b2600951b42ab3ec368d7eef63dd33a77f8b5dee693d20a57d603ce94e",
+      "imports": [],
+      "language": "js",
+      "module": ".next",
+      "path": ".next/static/chunks/003x6qy96txck.js",
+      "symbolNames": []
+    },
     ".next/static/chunks/00fn.~c8g8fss.js": {
       "exports": [],
       "hash": "6b34f444b0eafc07a415cae23424c20d52aadcc1f85f3410c2a45ea22e3907d4",
@@ -11794,24 +12020,6 @@
       "path": ".next/static/chunks/085yunpvj_8~f.js",
       "symbolNames": []
     },
-    ".next/static/chunks/0_k0tvv~jeio1.js": {
-      "exports": [],
-      "hash": "44bb1eb083c0511fc859f22e4d7bb8b2ae26c0bef098fe682ac8975240a6cb9d",
-      "imports": [],
-      "language": "js",
-      "module": ".next",
-      "path": ".next/static/chunks/0_k0tvv~jeio1.js",
-      "symbolNames": []
-    },
-    ".next/static/chunks/0_v5dxcc386qr.js": {
-      "exports": [],
-      "hash": "ce7c3b8dc4566819a8bfc746e1d72801c0988298c82562f8e3288d9e6cccb449",
-      "imports": [],
-      "language": "js",
-      "module": ".next",
-      "path": ".next/static/chunks/0_v5dxcc386qr.js",
-      "symbolNames": []
-    },
     ".next/static/chunks/0bpdsmnouv.qk.js": {
       "exports": [],
       "hash": "6b567500e248b5f3c5aba438e089b1f8d75c5cfea35af7afa3242d154770bdfb",
@@ -11830,24 +12038,6 @@
       "path": ".next/static/chunks/0dlu-~aw404x8.js",
       "symbolNames": []
     },
-    ".next/static/chunks/0fj2fbuj5~re7.js": {
-      "exports": [],
-      "hash": "b14d0ca3514b652bfe271db68c63d7e332d287d0c2301485cb7f94351801aae0",
-      "imports": [],
-      "language": "js",
-      "module": ".next",
-      "path": ".next/static/chunks/0fj2fbuj5~re7.js",
-      "symbolNames": []
-    },
-    ".next/static/chunks/0gy2_uxxnof28.js": {
-      "exports": [],
-      "hash": "df0059a0c550afa90238456e6bd9e019d4d5b993db01fc062e33a304f1937ddf",
-      "imports": [],
-      "language": "js",
-      "module": ".next",
-      "path": ".next/static/chunks/0gy2_uxxnof28.js",
-      "symbolNames": []
-    },
     ".next/static/chunks/0qlfceh.7zxcr.js": {
       "exports": [],
       "hash": "63d69a87e5360c1ed588bd3cdadad7d3cd66e6db1239fbd0d7cc7dfcc1ad99e4",
@@ -11855,15 +12045,6 @@
       "language": "js",
       "module": ".next",
       "path": ".next/static/chunks/0qlfceh.7zxcr.js",
-      "symbolNames": []
-    },
-    ".next/static/chunks/0qvraivts7u~9.js": {
-      "exports": [],
-      "hash": "43781864e4906f17bf07fcd0ff8cade84e4faa5b0f5c1788d4b6cb2b6b313e7f",
-      "imports": [],
-      "language": "js",
-      "module": ".next",
-      "path": ".next/static/chunks/0qvraivts7u~9.js",
       "symbolNames": []
     },
     ".next/static/chunks/0r7m44~cm1a3r.js": {
@@ -11911,6 +12092,24 @@
       "path": ".next/static/chunks/0uzs23o2h.cb0.js",
       "symbolNames": []
     },
+    ".next/static/chunks/0vdw853nzh__b.js": {
+      "exports": [],
+      "hash": "717c73d334859f8abbaafd558a5460c5ebc621e0a2f1f64e2ef2c0cf76543590",
+      "imports": [],
+      "language": "js",
+      "module": ".next",
+      "path": ".next/static/chunks/0vdw853nzh__b.js",
+      "symbolNames": []
+    },
+    ".next/static/chunks/0wgp6zy-d30a4.js": {
+      "exports": [],
+      "hash": "092ee6662a10af652c1c0051e7190cc157df62942c1f9e682c997311d3255993",
+      "imports": [],
+      "language": "js",
+      "module": ".next",
+      "path": ".next/static/chunks/0wgp6zy-d30a4.js",
+      "symbolNames": []
+    },
     ".next/static/chunks/0yk0r342jlaw9.js": {
       "exports": [],
       "hash": "30204f2fbf118d6dc15374b5fa5c8ea3ee5010c9b9061222b316c538d46868b9",
@@ -11945,6 +12144,15 @@
       "language": "js",
       "module": ".next",
       "path": ".next/static/chunks/10ngpgjgny8vk.js",
+      "symbolNames": []
+    },
+    ".next/static/chunks/1286m6cge2wak.js": {
+      "exports": [],
+      "hash": "690b66634cac3e644ffe2c544ad658541420d6c4d353c395c1a39f754f081741",
+      "imports": [],
+      "language": "js",
+      "module": ".next",
+      "path": ".next/static/chunks/1286m6cge2wak.js",
       "symbolNames": []
     },
     ".next/static/chunks/12oyou_q1vc72.js": {
@@ -11992,31 +12200,31 @@
       "path": ".next/static/chunks/turbopack-0z39ddaox1eq2.js",
       "symbolNames": []
     },
-    ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js": {
+    ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js": {
       "exports": [],
       "hash": "9476e0afd3f9da68a64e6ec58631191fd3eaca62c9f5a377e7517fe9a89e59ea",
       "imports": [],
       "language": "js",
       "module": ".next",
-      "path": ".next/static/fvdqpwJK2-OrFtKOPbwdC/_buildManifest.js",
+      "path": ".next/static/pFyQvd8o7aYOM9sir_Hqn/_buildManifest.js",
       "symbolNames": []
     },
-    ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js": {
+    ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js": {
       "exports": [],
       "hash": "5483e3295dc35dfe29ea932efc85341c916f10ff78ff5b0e965e003710893a4a",
       "imports": [],
       "language": "js",
       "module": ".next",
-      "path": ".next/static/fvdqpwJK2-OrFtKOPbwdC/_clientMiddlewareManifest.js",
+      "path": ".next/static/pFyQvd8o7aYOM9sir_Hqn/_clientMiddlewareManifest.js",
       "symbolNames": []
     },
-    ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js": {
+    ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js": {
       "exports": [],
       "hash": "678f6ce2cb80b1fe72fc67e7412be6e2ab6ada083111b64f7c40d35e3cba5e00",
       "imports": [],
       "language": "js",
       "module": ".next",
-      "path": ".next/static/fvdqpwJK2-OrFtKOPbwdC/_ssgManifest.js",
+      "path": ".next/static/pFyQvd8o7aYOM9sir_Hqn/_ssgManifest.js",
       "symbolNames": []
     },
     ".next/types/cache-life.d.ts": {
@@ -12079,7 +12287,7 @@
     },
     "AGENTS.md": {
       "exports": [],
-      "hash": "1e7adf65a6e536f89c1b8785ee5ccc9deda52576fdc65a07c83c0c137bacba32",
+      "hash": "965442b8e5bf2300b012ad6e39a5c804ef25a4ad9d2371c68156c35ba643c815",
       "imports": [],
       "language": "md",
       "module": "root",
@@ -12088,7 +12296,7 @@
     },
     "CLAUDE.md": {
       "exports": [],
-      "hash": "f856fb91f7140b2557a7836e32f03f100847086cf8f225e1667ab57dd5df2b17",
+      "hash": "daa4b1ba5a8204019a597003b7aec3a50697d66e5330831340fc017eccf90a86",
       "imports": [],
       "language": "md",
       "module": "root",
@@ -12175,12 +12383,12 @@
     },
     "next-env.d.ts": {
       "exports": [],
-      "hash": "4e4da12aa061aac172fb1bcb48e9b6e4b293080d2f494327925fdba8f39632ac",
+      "hash": "083e23c4c5e7761db151134ea1ef7896120c86c5888cdc8a861f534f7e86d6fd",
       "imports": [
         {
           "external": false,
-          "resolvedPath": ".next/types/routes.d.ts",
-          "specifier": "./.next/types/routes.d.ts"
+          "resolvedPath": ".next/dev/types/routes.d.ts",
+          "specifier": "./.next/dev/types/routes.d.ts"
         }
       ],
       "language": "ts",
@@ -13149,7 +13357,7 @@
       "exports": [
         "BadgesPage"
       ],
-      "hash": "92bd1c8597d4365d375ce11daf3132b559c3612f8df7676d63412548696df1b7",
+      "hash": "618bd05e6f1332ee188b2193e67b5d177e2a926239cce158625c7cb352262cef",
       "imports": [
         {
           "external": true,
@@ -13227,7 +13435,7 @@
       "exports": [
         "ProfilePage"
       ],
-      "hash": "9cd5a1bf5d39d9d01bf63b2bd8cf618bfb2b75c35a09198721c63f93c2d45c7c",
+      "hash": "27ff85bb6e40c7546802cf5bacbf53a4a30e6d0bd6d93d70cffa2d0040e45dc6",
       "imports": [
         {
           "external": true,
@@ -13263,7 +13471,7 @@
       "exports": [
         "Badges"
       ],
-      "hash": "d98e021f5d72d7278f685fd1e923197d0278ef92c3b0deaffbb4bccbb9b54419",
+      "hash": "6e60bef5a7d25ae98aa743d88ce196fe303c81edd70bebb85e75abf2a4c33223",
       "imports": [
         {
           "external": true,
@@ -13326,7 +13534,7 @@
       "exports": [
         "LoginModal"
       ],
-      "hash": "1b3b60a152fd8462dbd45d43b52fd14958cc0847344e7bcf32f42ca35f51cb0e",
+      "hash": "2edccc26540d67392fef0795b9aa90a88436a350f68c9dd9e24e6eecf0db1b2c",
       "imports": [
         {
           "external": true,
@@ -13362,7 +13570,7 @@
       "exports": [
         "Navbar"
       ],
-      "hash": "0969d29fcced4e3a55ea86a383238c7048680587a838bb030aa64d3cf56f5879",
+      "hash": "be434127f2878adf4ced5aa217064ed9566cd23478a58f55c3a76615a73d0fe6",
       "imports": [
         {
           "external": false,
@@ -13412,7 +13620,7 @@
       "exports": [
         "Profile"
       ],
-      "hash": "e9f9fe4325fa2917e4322d8d8dde0fcb52fd5c8b674c62db00809de775903e99",
+      "hash": "6dd59eedf897b43b67402a6ab50457c8741ff9b1cbb809728b8801fed06bc51a",
       "imports": [
         {
           "external": true,
@@ -13478,7 +13686,7 @@
     },
     "src/features/graph/GraphApp.tsx": {
       "exports": [],
-      "hash": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+      "hash": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
       "imports": [
         {
           "external": true,
@@ -14040,7 +14248,7 @@
         "ZapLayerStatus",
         "ZapSlice"
       ],
-      "hash": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+      "hash": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
       "imports": [
         {
           "external": true,
@@ -14174,9 +14382,11 @@
     "src/features/graph/components/GraphCanvas.tsx": {
       "exports": [
         "GraphCanvas",
-        "GraphCanvasDiagnostics"
+        "GraphCanvasDiagnostics",
+        "GraphProgressBody",
+        "GraphProgressSnapshot"
       ],
-      "hash": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+      "hash": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
       "imports": [
         {
           "external": true,
@@ -14282,8 +14492,10 @@
         "GraphCanvasProps",
         "GraphCanvasRecoveryChrome",
         "GraphCanvasRecoveryChromeProps",
+        "GraphProgressBody",
         "GraphProgressMetricRow",
         "GraphProgressMetricRowProps",
+        "GraphProgressSnapshot",
         "HoverGraphState",
         "NodeDetailPanel",
         "PathfindingPanel",
@@ -14322,7 +14534,7 @@
       "exports": [
         "GraphControlRail"
       ],
-      "hash": "413d79643402d97a522fbd80b5b33d8122260fc4cef9c798596d7b1ed97f4e19",
+      "hash": "6691ddad06c0616e501667e5482ef61ed7bcb94bb9e0119cfa8e4f112134dbcb",
       "imports": [
         {
           "external": true,
@@ -14341,11 +14553,10 @@
       "module": "features",
       "path": "src/features/graph/components/GraphControlRail.tsx",
       "symbolNames": [
-        "ControlFeedback",
         "GraphControlRail",
         "GraphControlRailProps",
         "RelationshipToggleState",
-        "resolveControlFeedback"
+        "useIsCompact"
       ]
     },
     "src/features/graph/components/NodeAccessRail.tsx": {
@@ -14741,7 +14952,7 @@
         "NostrGraphDexie",
         "createNostrGraphDatabase"
       ],
-      "hash": "59a577913a3a9bee2005469de7dbb91da0b44da67f57e2c67677727f4b82f64b",
+      "hash": "e7163dcc6f22d90bd89d8096be0fe3cbd0e0db4d51870177d618c9991a4d97c1",
       "imports": [
         {
           "external": true,
@@ -14789,7 +15000,7 @@
         "ReplaceableHeadRecord",
         "ZapRecord"
       ],
-      "hash": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+      "hash": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
       "imports": [],
       "language": "ts",
       "module": "features",
@@ -14863,7 +15074,7 @@
         "createRepositories",
         "deleteDatabase"
       ],
-      "hash": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+      "hash": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
       "imports": [
         {
           "external": true,
@@ -14917,7 +15128,7 @@
         "shouldReplaceProjection",
         "toSortedUniqueStrings"
       ],
-      "hash": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+      "hash": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
       "imports": [
         {
           "external": true,
@@ -15628,7 +15839,7 @@
         "KernelContext",
         "RelayAdapterInstance"
       ],
-      "hash": "637942dc3fc82fb7371c0da665489a4e2053046f6b2728c7f93933e394158388",
+      "hash": "b6fcd02bdef2e50b58bd14c6312ec94dc9ed3dbdbe2f47e56eee134b02413b95",
       "imports": [
         {
           "external": true,
@@ -15702,7 +15913,7 @@
         "ROOT_RELAY_LIST_KIND",
         "createFollowerDiscoveryModule"
       ],
-      "hash": "b9ed9fa00b05c0fc989e84d480c662f1d112b506a6d80bc15b5f6f1cbc74e843",
+      "hash": "4693b8cfd959e0e14cb5e11d7c0cfb67cf96deb79c11299803634e47ea2046b3",
       "imports": [
         {
           "external": true,
@@ -16181,7 +16392,7 @@
         "RootLoaderModule",
         "createRootLoaderModule"
       ],
-      "hash": "494f57a8f2e62c7ef83e8c7b909f4f5a2e0b02cc8650399686948b5d249b9a33",
+      "hash": "4350b32b0849f05b9c2bc15cfdb3f506c1ef78b9c302fccdcd9683ff3b255e03",
       "imports": [
         {
           "external": true,
@@ -16568,7 +16779,7 @@
         "createTranscriptRelayAdapter",
         "createTranscriptRelayAdapterFactory"
       ],
-      "hash": "eb8091f2f983af217f2f5725dad5289e268b10c07240a1d91fb661f6514c41b9",
+      "hash": "306a4de71400bb24ab0dfbb35eaeb6d56440ec38b5f98e82ffa8ef7dfd81b7a1",
       "imports": [
         {
           "external": true,
@@ -16635,7 +16846,7 @@
       "exports": [
         "transitionRootLoad"
       ],
-      "hash": "aa8bf9bd7fd8b1667197bc7bd4973fab8383526c54d3191948de317c47a6e5fc",
+      "hash": "8cb3a97ae45792d0997542f400eb191157c8f3ec9f82ef71fd10c0a741f8ca49",
       "imports": [
         {
           "external": true,
@@ -16751,7 +16962,7 @@
         "RelayPoolAdapter",
         "createRelayPoolAdapter"
       ],
-      "hash": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+      "hash": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
       "imports": [
         {
           "external": false,
@@ -16807,7 +17018,7 @@
       "exports": [
         "NostrToolsRelayTransport"
       ],
-      "hash": "48a0483b4375bdd827d9b8155c1b7ff6c178ac6ddbecd88cfbb706ccfe3a9826",
+      "hash": "76a4482fced0ad62b2a6d6008857ad19ca8fc794e4991a4a9d39c7c2698bddd5",
       "imports": [
         {
           "external": false,
@@ -16882,7 +17093,7 @@
         "RelayUrlValidationOptions",
         "RelayVerificationMode"
       ],
-      "hash": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+      "hash": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
       "imports": [
         {
           "external": true,
@@ -17107,7 +17318,7 @@
       "exports": [
         "GraphViewport"
       ],
-      "hash": "e7029c17974f505e681445b102cd1bac6ed77d872d35c6f2e67d89d2273d69ee",
+      "hash": "621d113af00d025abcd6abda7f1aacdf548eb2dd34617a27e745ddc8c5cee97c",
       "imports": [
         {
           "external": true,
@@ -17146,7 +17357,7 @@
       "exports": [
         "GraphViewportLazy"
       ],
-      "hash": "eafc1c02736feeea113cd1bbaa41f6970402b7b1b484a8aa8b5e807ca053e151",
+      "hash": "d0e7d311408b1d50cf2509a370fc196237a6e70f44a05b741c890280455d533b",
       "imports": [
         {
           "external": true,
@@ -17848,7 +18059,7 @@
     },
     "src/features/graph/render/index.ts": {
       "exports": [],
-      "hash": "200cef92848b526b5489f1df7fadfe71678d973aa296a855ff4a52459bb774f7",
+      "hash": "d5c4ac2ff2a6eaaa5812bc61105d3573adb12ce6e2bbefed480f73ef05f0d0db",
       "imports": [
         {
           "external": true,
@@ -18838,6 +19049,6 @@
       "symbolNames": []
     }
   },
-  "sourceRevision": "6989c5d",
+  "sourceRevision": "443189c",
   "toolVersion": "0.1.0"
 }

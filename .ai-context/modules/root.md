@@ -19,10 +19,10 @@ Configuracion del repo, entrypoints o archivos que no pertenecen a un modulo mas
 - tsconfig.json
 
 ## Hashes Fuente
-- AGENTS.md: 1e7adf65a6e5
-- CLAUDE.md: f856fb91f714
+- AGENTS.md: 965442b8e5bf
+- CLAUDE.md: daa4b1ba5a82
 - eslint.config.mjs: 94fce984ee99
-- next-env.d.ts: 4e4da12aa061
+- next-env.d.ts: 083e23c4c5e7
 - next.config.ts: a972c4f0ffa6
 - package.json: e61b0a5a92f9
 - PERFORMANCE_PROMPT.md: c5cac4476094

@@ -627,7 +627,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "AnalysisSlice",
     "references": []
   },
@@ -635,7 +635,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "AppStateCreator",
     "references": []
   },
@@ -643,7 +643,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "AppStore",
     "references": []
   },
@@ -651,7 +651,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "AppStoreApi",
     "references": []
   },
@@ -659,7 +659,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ArrowType",
     "references": []
   },
@@ -667,7 +667,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ConnectionsSourceLayer",
     "references": []
   },
@@ -675,7 +675,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "DevicePerformanceProfile",
     "references": []
   },
@@ -683,7 +683,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "EffectiveGraphCaps",
     "references": []
   },
@@ -691,7 +691,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "EffectiveImageBudget",
     "references": []
   },
@@ -699,7 +699,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ExportJobProgress",
     "references": []
   },
@@ -707,7 +707,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ExportJobStatus",
     "references": []
   },
@@ -715,7 +715,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ExportSlice",
     "references": []
   },
@@ -723,7 +723,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "GraphCaps",
     "references": []
   },
@@ -731,7 +731,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "GraphLink",
     "references": []
   },
@@ -739,7 +739,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "GraphLinkRelation",
     "references": []
   },
@@ -747,7 +747,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "GraphNode",
     "references": []
   },
@@ -755,7 +755,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "GraphNodeProfile",
     "references": []
   },
@@ -763,7 +763,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "GraphNodeSource",
     "references": []
   },
@@ -771,7 +771,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "GraphSlice",
     "references": []
   },
@@ -779,7 +779,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ImageQualityMode",
     "references": []
   },
@@ -787,7 +787,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "KeywordLayerState",
     "references": []
   },
@@ -795,7 +795,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "KeywordLayerStatus",
     "references": []
   },
@@ -803,7 +803,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "KeywordMatch",
     "references": []
   },
@@ -811,7 +811,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "KeywordSlice",
     "references": []
   },
@@ -819,7 +819,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "NodeExpansionPhase",
     "references": []
   },
@@ -827,7 +827,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "NodeExpansionState",
     "references": []
   },
@@ -835,7 +835,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "NodeExpansionStatus",
     "references": []
   },
@@ -843,7 +843,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "NodeStructurePreviewState",
     "references": []
   },
@@ -851,7 +851,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "PathfindingSelectionMode",
     "references": []
   },
@@ -859,7 +859,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "PathfindingSlice",
     "references": []
   },
@@ -867,7 +867,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "PathfindingState",
     "references": []
   },
@@ -875,7 +875,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "PathfindingStatus",
     "references": []
   },
@@ -883,7 +883,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ProfileDataSource",
     "references": []
   },
@@ -891,7 +891,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "RelayHealth",
     "references": []
   },
@@ -899,7 +899,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "RelayHealthStatus",
     "references": []
   },
@@ -907,7 +907,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "RelayOverrideStatus",
     "references": []
   },
@@ -915,7 +915,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "RelaySlice",
     "references": []
   },
@@ -923,7 +923,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "RenderConfig",
     "references": []
   },
@@ -931,7 +931,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "RootCollectionProgress",
     "references": []
   },
@@ -939,7 +939,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "RootCollectionProgressStatus",
     "references": []
   },
@@ -947,7 +947,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "RootLoadState",
     "references": []
   },
@@ -955,7 +955,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "RootLoadStatus",
     "references": []
   },
@@ -963,7 +963,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "RootVisibleLinkProgress",
     "references": []
   },
@@ -971,7 +971,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "SavedRootEntry",
     "references": []
   },
@@ -979,7 +979,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "SavedRootProfileSnapshot",
     "references": []
   },
@@ -987,7 +987,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ToggleDeepUserSelectionResult",
     "references": []
   },
@@ -995,7 +995,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "UiLayer",
     "references": []
   },
@@ -1003,7 +1003,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "UiPanel",
     "references": []
   },
@@ -1011,7 +1011,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "UiSlice",
     "references": []
   },
@@ -1019,7 +1019,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "UpsertGraphNodesResult",
     "references": []
   },
@@ -1027,7 +1027,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ViewportInteractionState",
     "references": []
   },
@@ -1035,7 +1035,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ZapLayerEdge",
     "references": []
   },
@@ -1043,7 +1043,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ZapLayerState",
     "references": []
   },
@@ -1051,7 +1051,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ZapLayerStatus",
     "references": []
   },
@@ -1059,7 +1059,7 @@
     "exported": true,
     "filePath": "src/features/graph/app/store/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "b3a3aa7eb13eea061219e58325dcd44e9b144e74e5edc2f3352bde119fa58787",
+    "lastSourceHashUsed": "2324eab97153be7d7dda77ca242eb4409f749ee57d8947fd1fabc9f56faba55f",
     "name": "ZapSlice",
     "references": []
   },
@@ -1206,7 +1206,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "ActiveNodeExpansion",
     "references": []
   },
@@ -1214,7 +1214,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "applyImageFrameDiagnostics",
     "references": []
   },
@@ -1222,7 +1222,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "AVATAR_FULL_HD_VIEWPORT_QUIET_MS",
     "references": []
   },
@@ -1230,7 +1230,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "AVATAR_HD_VIEWPORT_QUIET_MS",
     "references": []
   },
@@ -1238,7 +1238,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "BOOTSTRAP_IMAGE_QUALITY_MODE",
     "references": []
   },
@@ -1246,7 +1246,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "clampProgressValue",
     "references": []
   },
@@ -1254,7 +1254,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "COALESCED_FRAME_DELAY_MS",
     "references": []
   },
@@ -1262,7 +1262,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "createBuildRenderModelJobKey",
     "references": []
   },
@@ -1270,7 +1270,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "createGraphAnalysisSignature",
     "references": []
   },
@@ -1278,7 +1278,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "createPathfindingSignature",
     "references": []
   },
@@ -1286,7 +1286,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "createRenderConfigSignature",
     "references": []
   },
@@ -1294,7 +1294,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "createSortedCollectionSignature",
     "references": []
   },
@@ -1302,7 +1302,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "DIAGNOSTICS_COMMIT_DELAY_MS",
     "references": []
   },
@@ -1310,7 +1310,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "EMPTY_HOVER_STATE",
     "references": []
   },
@@ -1318,7 +1318,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "EMPTY_IMAGE_DIAGNOSTICS",
     "references": []
   },
@@ -1326,7 +1326,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "EMPTY_IMAGE_FRAME",
     "references": []
   },
@@ -1334,7 +1334,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "EMPTY_NODE_SCREEN_RADII",
     "references": []
   },
@@ -1342,7 +1342,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "emptyStateCopy",
     "references": []
   },
@@ -1350,7 +1350,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "equalGraphLabels",
     "references": []
   },
@@ -1358,7 +1358,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "equalGraphViewState",
     "references": []
   },
@@ -1366,7 +1366,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "equalImageRenderPayload",
     "references": []
   },
@@ -1374,7 +1374,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "equalImageSourceHandleRecords",
     "references": []
   },
@@ -1382,7 +1382,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "equalNodeScreenRadii",
     "references": []
   },
@@ -1390,7 +1390,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "equalStringLists",
     "references": []
   },
@@ -1398,7 +1398,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "formatNodeExpansionPhaseLabel",
     "references": []
   },
@@ -1406,7 +1406,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "getDisplayProgressTotal",
     "references": []
   },
@@ -1414,7 +1414,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "getRelationshipToggleState",
     "references": []
   },
@@ -1422,7 +1422,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "getRenderModelErrorMessage",
     "references": []
   },
@@ -1430,7 +1430,7 @@
     "exported": true,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "GraphCanvas",
     "references": []
   },
@@ -1438,7 +1438,7 @@
     "exported": true,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "GraphCanvasDiagnostics",
     "references": []
   },
@@ -1446,7 +1446,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "GraphCanvasKeywordSearch",
     "references": []
   },
@@ -1454,7 +1454,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "GraphCanvasKeywordSearchProps",
     "references": []
   },
@@ -1462,7 +1462,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "GraphCanvasPanels",
     "references": []
   },
@@ -1470,7 +1470,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "GraphCanvasPanelsProps",
     "references": []
   },
@@ -1478,7 +1478,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "GraphCanvasProps",
     "references": []
   },
@@ -1486,7 +1486,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "GraphCanvasRecoveryChrome",
     "references": []
   },
@@ -1494,15 +1494,24 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "GraphCanvasRecoveryChromeProps",
     "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/features/graph/components/GraphCanvas.tsx",
+    "kind": "function",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
+    "name": "GraphProgressBody",
+    "references": [],
+    "signature": "GraphProgressBody({ snapshot }: { snapshot: GraphProgressSnapshot })"
   },
   {
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "GraphProgressMetricRow",
     "references": []
   },
@@ -1510,15 +1519,23 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "GraphProgressMetricRowProps",
+    "references": []
+  },
+  {
+    "exported": true,
+    "filePath": "src/features/graph/components/GraphCanvas.tsx",
+    "kind": "interface",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
+    "name": "GraphProgressSnapshot",
     "references": []
   },
   {
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "hasRenderableFrameSize",
     "references": []
   },
@@ -1526,7 +1543,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "HoverGraphState",
     "references": []
   },
@@ -1534,7 +1551,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "isRelationshipLayer",
     "references": []
   },
@@ -1542,7 +1559,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "NodeDetailPanel",
     "references": []
   },
@@ -1550,7 +1567,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "PathfindingPanel",
     "references": []
   },
@@ -1558,7 +1575,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "ProgressMetric",
     "references": []
   },
@@ -1566,7 +1583,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "type",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "ProgressMetricTone",
     "references": []
   },
@@ -1574,7 +1591,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "QUIET_VIEWPORT_READY_MS",
     "references": []
   },
@@ -1582,7 +1599,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "readNowMs",
     "references": []
   },
@@ -1590,7 +1607,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "RESIZE_SETTLE_DELAY_MS",
     "references": []
   },
@@ -1598,7 +1615,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "selectGraphCanvasKeywordSearchState",
     "references": []
   },
@@ -1606,7 +1623,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "selectGraphCanvasPanelState",
     "references": []
   },
@@ -1614,7 +1631,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "selectGraphCanvasRenderState",
     "references": []
   },
@@ -1622,23 +1639,15 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphCanvas.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "cbf9ef5bdcb3ef9aa3cb45cbb544bc943c3e796edf3842a4bb78500c662ca10f",
+    "lastSourceHashUsed": "b48125bac9affe40f944b283b8f5081449ca8b6d79e82c5748272a37ae60f52e",
     "name": "VIEWPORT_SETTLE_DELAY_MS",
-    "references": []
-  },
-  {
-    "exported": false,
-    "filePath": "src/features/graph/components/GraphControlRail.tsx",
-    "kind": "interface",
-    "lastSourceHashUsed": "413d79643402d97a522fbd80b5b33d8122260fc4cef9c798596d7b1ed97f4e19",
-    "name": "ControlFeedback",
     "references": []
   },
   {
     "exported": true,
     "filePath": "src/features/graph/components/GraphControlRail.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "413d79643402d97a522fbd80b5b33d8122260fc4cef9c798596d7b1ed97f4e19",
+    "lastSourceHashUsed": "6691ddad06c0616e501667e5482ef61ed7bcb94bb9e0119cfa8e4f112134dbcb",
     "name": "GraphControlRail",
     "references": []
   },
@@ -1646,7 +1655,7 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphControlRail.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "413d79643402d97a522fbd80b5b33d8122260fc4cef9c798596d7b1ed97f4e19",
+    "lastSourceHashUsed": "6691ddad06c0616e501667e5482ef61ed7bcb94bb9e0119cfa8e4f112134dbcb",
     "name": "GraphControlRailProps",
     "references": []
   },
@@ -1654,17 +1663,18 @@
     "exported": false,
     "filePath": "src/features/graph/components/GraphControlRail.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "413d79643402d97a522fbd80b5b33d8122260fc4cef9c798596d7b1ed97f4e19",
+    "lastSourceHashUsed": "6691ddad06c0616e501667e5482ef61ed7bcb94bb9e0119cfa8e4f112134dbcb",
     "name": "RelationshipToggleState",
     "references": []
   },
   {
     "exported": false,
     "filePath": "src/features/graph/components/GraphControlRail.tsx",
-    "kind": "variable",
-    "lastSourceHashUsed": "413d79643402d97a522fbd80b5b33d8122260fc4cef9c798596d7b1ed97f4e19",
-    "name": "resolveControlFeedback",
-    "references": []
+    "kind": "function",
+    "lastSourceHashUsed": "6691ddad06c0616e501667e5482ef61ed7bcb94bb9e0119cfa8e4f112134dbcb",
+    "name": "useIsCompact",
+    "references": [],
+    "signature": "useIsCompact()"
   },
   {
     "exported": true,
@@ -2060,7 +2070,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/database.ts",
     "kind": "function",
-    "lastSourceHashUsed": "59a577913a3a9bee2005469de7dbb91da0b44da67f57e2c67677727f4b82f64b",
+    "lastSourceHashUsed": "e7163dcc6f22d90bd89d8096be0fe3cbd0e0db4d51870177d618c9991a4d97c1",
     "name": "createNostrGraphDatabase",
     "references": [],
     "signature": "createNostrGraphDatabase(name?: string): NostrGraphDexie"
@@ -2069,7 +2079,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/database.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "59a577913a3a9bee2005469de7dbb91da0b44da67f57e2c67677727f4b82f64b",
+    "lastSourceHashUsed": "e7163dcc6f22d90bd89d8096be0fe3cbd0e0db4d51870177d618c9991a4d97c1",
     "name": "NOSTR_GRAPH_DB_NAME",
     "references": []
   },
@@ -2077,7 +2087,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/database.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "59a577913a3a9bee2005469de7dbb91da0b44da67f57e2c67677727f4b82f64b",
+    "lastSourceHashUsed": "e7163dcc6f22d90bd89d8096be0fe3cbd0e0db4d51870177d618c9991a4d97c1",
     "name": "NOSTR_GRAPH_DB_SCHEMA_V1",
     "references": []
   },
@@ -2085,7 +2095,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/database.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "59a577913a3a9bee2005469de7dbb91da0b44da67f57e2c67677727f4b82f64b",
+    "lastSourceHashUsed": "e7163dcc6f22d90bd89d8096be0fe3cbd0e0db4d51870177d618c9991a4d97c1",
     "name": "NOSTR_GRAPH_DB_SCHEMA_V2",
     "references": []
   },
@@ -2093,7 +2103,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/database.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "59a577913a3a9bee2005469de7dbb91da0b44da67f57e2c67677727f4b82f64b",
+    "lastSourceHashUsed": "e7163dcc6f22d90bd89d8096be0fe3cbd0e0db4d51870177d618c9991a4d97c1",
     "name": "NOSTR_GRAPH_DB_SCHEMA_V3",
     "references": []
   },
@@ -2101,7 +2111,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/database.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "59a577913a3a9bee2005469de7dbb91da0b44da67f57e2c67677727f4b82f64b",
+    "lastSourceHashUsed": "e7163dcc6f22d90bd89d8096be0fe3cbd0e0db4d51870177d618c9991a4d97c1",
     "name": "NOSTR_GRAPH_DB_SCHEMA_V4",
     "references": []
   },
@@ -2109,7 +2119,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/database.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "59a577913a3a9bee2005469de7dbb91da0b44da67f57e2c67677727f4b82f64b",
+    "lastSourceHashUsed": "e7163dcc6f22d90bd89d8096be0fe3cbd0e0db4d51870177d618c9991a4d97c1",
     "name": "NOSTR_GRAPH_DB_SCHEMA_V5",
     "references": []
   },
@@ -2117,7 +2127,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/database.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "59a577913a3a9bee2005469de7dbb91da0b44da67f57e2c67677727f4b82f64b",
+    "lastSourceHashUsed": "e7163dcc6f22d90bd89d8096be0fe3cbd0e0db4d51870177d618c9991a4d97c1",
     "name": "NOSTR_GRAPH_DB_SCHEMA_V6",
     "references": []
   },
@@ -2125,7 +2135,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/database.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "59a577913a3a9bee2005469de7dbb91da0b44da67f57e2c67677727f4b82f64b",
+    "lastSourceHashUsed": "e7163dcc6f22d90bd89d8096be0fe3cbd0e0db4d51870177d618c9991a4d97c1",
     "name": "NOSTR_GRAPH_DB_SCHEMA_V7",
     "references": []
   },
@@ -2133,7 +2143,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/database.ts",
     "kind": "class",
-    "lastSourceHashUsed": "59a577913a3a9bee2005469de7dbb91da0b44da67f57e2c67677727f4b82f64b",
+    "lastSourceHashUsed": "e7163dcc6f22d90bd89d8096be0fe3cbd0e0db4d51870177d618c9991a4d97c1",
     "name": "NostrGraphDexie",
     "references": []
   },
@@ -2141,7 +2151,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "type",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "AddressableHeadKey",
     "references": []
   },
@@ -2149,7 +2159,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "AddressableHeadRecord",
     "references": []
   },
@@ -2157,7 +2167,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "type",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "CaptureScope",
     "references": []
   },
@@ -2165,7 +2175,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "ContactListRecord",
     "references": []
   },
@@ -2173,7 +2183,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "ImageVariantRecord",
     "references": []
   },
@@ -2181,7 +2191,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "InboundFollowerSnapshotRecord",
     "references": []
   },
@@ -2189,7 +2199,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "InboundRefRecord",
     "references": []
   },
@@ -2197,7 +2207,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "type",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "InboundRelationType",
     "references": []
   },
@@ -2205,7 +2215,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "type",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "NostrTag",
     "references": []
   },
@@ -2213,7 +2223,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "NoteExtractRecord",
     "references": []
   },
@@ -2221,7 +2231,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "ProfileRecord",
     "references": []
   },
@@ -2229,7 +2239,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "RawEventInput",
     "references": []
   },
@@ -2237,7 +2247,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "RawEventRecord",
     "references": []
   },
@@ -2245,7 +2255,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "RelayDiscoveryStatsRecord",
     "references": []
   },
@@ -2253,7 +2263,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "RelayListRecord",
     "references": []
   },
@@ -2261,7 +2271,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "type",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "ReplaceableHeadKey",
     "references": []
   },
@@ -2269,7 +2279,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "ReplaceableHeadRecord",
     "references": []
   },
@@ -2277,7 +2287,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/entities.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "5d36b3f4ed7e49830876472043d9c586ae509ee670b726d306b5df5e9a63b089",
+    "lastSourceHashUsed": "acc7b342c9c00349c663fa5ca71e5b8cd9de7090dc8a5a9f168bddf76467d827",
     "name": "ZapRecord",
     "references": []
   },
@@ -2285,7 +2295,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "AddressableHeadsRepository",
     "references": []
   },
@@ -2293,7 +2303,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "ContactListsRepository",
     "references": []
   },
@@ -2301,7 +2311,7 @@
     "exported": false,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "function",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "createRelayDiscoveryStatsRecord",
     "references": [],
     "signature": "createRelayDiscoveryStatsRecord(relayUrl: string, existing: RelayDiscoveryStatsRecord | undefined): RelayDiscoveryStatsRecord"
@@ -2310,7 +2320,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "function",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "createRepositories",
     "references": [],
     "signature": "createRepositories(db: NostrGraphDexie): NostrGraphRepositories"
@@ -2319,7 +2329,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "function",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "deleteDatabase",
     "references": [],
     "signature": "deleteDatabase(db: NostrGraphDexie): Promise<void>"
@@ -2328,7 +2338,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "ImageVariantLodSummary",
     "references": []
   },
@@ -2336,7 +2346,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "ImageVariantRepository",
     "references": []
   },
@@ -2344,7 +2354,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "ImageVariantStorageSummary",
     "references": []
   },
@@ -2352,7 +2362,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "InboundFollowerSnapshotsRepository",
     "references": []
   },
@@ -2360,7 +2370,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "InboundRefsRepository",
     "references": []
   },
@@ -2368,7 +2378,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "NostrGraphRepositories",
     "references": []
   },
@@ -2376,7 +2386,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "NoteExtractsRepository",
     "references": []
   },
@@ -2384,7 +2394,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "ProfilesRepository",
     "references": []
   },
@@ -2392,7 +2402,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "RawEventsRepository",
     "references": []
   },
@@ -2400,7 +2410,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "RelayDiscoveryCountInput",
     "references": []
   },
@@ -2408,7 +2418,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "RelayDiscoveryFetchInput",
     "references": []
   },
@@ -2416,7 +2426,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "RelayDiscoveryStatsRepository",
     "references": []
   },
@@ -2424,7 +2434,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "RelayListsRepository",
     "references": []
   },
@@ -2432,7 +2442,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "ReplaceableHeadsRepository",
     "references": []
   },
@@ -2440,7 +2450,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/repositories.ts",
     "kind": "class",
-    "lastSourceHashUsed": "d1e9ea1e9d121092bac0be422e551f7f04727ebc554f05ca480d6aba3eed4a4a",
+    "lastSourceHashUsed": "dd997967db42a4c4fda699162a439fb9bad013ac4951a48337bdd18b36578e77",
     "name": "ZapsRepository",
     "references": []
   },
@@ -2448,7 +2458,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/utils.ts",
     "kind": "function",
-    "lastSourceHashUsed": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+    "lastSourceHashUsed": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
     "name": "buildTieBreakKey",
     "references": [],
     "signature": "buildTieBreakKey(createdAt: number, eventId: string): string"
@@ -2457,7 +2467,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/utils.ts",
     "kind": "function",
-    "lastSourceHashUsed": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+    "lastSourceHashUsed": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
     "name": "compareRawEvents",
     "references": [],
     "signature": "compareRawEvents(left: RawEventRecord, right: RawEventRecord): number"
@@ -2466,7 +2476,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/utils.ts",
     "kind": "function",
-    "lastSourceHashUsed": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+    "lastSourceHashUsed": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
     "name": "mergeCaptureScope",
     "references": [],
     "signature": "mergeCaptureScope(currentScope: CaptureScope, incomingScope: CaptureScope): CaptureScope"
@@ -2475,7 +2485,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/utils.ts",
     "kind": "function",
-    "lastSourceHashUsed": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+    "lastSourceHashUsed": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
     "name": "shouldReplaceCanonicalHead",
     "references": [],
     "signature": "shouldReplaceCanonicalHead(current: Pick<ReplaceableHeadRecord, 'createdAt' | 'eventId'>, incoming: Pick<ReplaceableHeadRecord, 'createdAt' | 'eventId'>): boolean"
@@ -2484,7 +2494,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/utils.ts",
     "kind": "function",
-    "lastSourceHashUsed": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+    "lastSourceHashUsed": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
     "name": "shouldReplaceCanonicalHead",
     "references": [],
     "signature": "shouldReplaceCanonicalHead(current: Pick<AddressableHeadRecord, 'createdAt' | 'eventId'>, incoming: Pick<AddressableHeadRecord, 'createdAt' | 'eventId'>): boolean"
@@ -2493,7 +2503,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/utils.ts",
     "kind": "function",
-    "lastSourceHashUsed": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+    "lastSourceHashUsed": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
     "name": "shouldReplaceCanonicalHead",
     "references": [],
     "signature": "shouldReplaceCanonicalHead(current: { createdAt: number; eventId: string }, incoming: { createdAt: number; eventId: string }): boolean"
@@ -2502,7 +2512,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/utils.ts",
     "kind": "function",
-    "lastSourceHashUsed": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+    "lastSourceHashUsed": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
     "name": "shouldReplaceProjection",
     "references": [],
     "signature": "shouldReplaceProjection(current: Pick<ProfileRecord, 'createdAt' | 'eventId'>, incoming: Pick<ProfileRecord, 'createdAt' | 'eventId'>): boolean"
@@ -2511,7 +2521,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/utils.ts",
     "kind": "function",
-    "lastSourceHashUsed": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+    "lastSourceHashUsed": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
     "name": "shouldReplaceProjection",
     "references": [],
     "signature": "shouldReplaceProjection(current: Pick<ContactListRecord, 'createdAt' | 'eventId'>, incoming: Pick<ContactListRecord, 'createdAt' | 'eventId'>): boolean"
@@ -2520,7 +2530,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/utils.ts",
     "kind": "function",
-    "lastSourceHashUsed": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+    "lastSourceHashUsed": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
     "name": "shouldReplaceProjection",
     "references": [],
     "signature": "shouldReplaceProjection(current: Pick<RelayListRecord, 'createdAt' | 'eventId'>, incoming: Pick<RelayListRecord, 'createdAt' | 'eventId'>): boolean"
@@ -2529,7 +2539,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/utils.ts",
     "kind": "function",
-    "lastSourceHashUsed": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+    "lastSourceHashUsed": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
     "name": "shouldReplaceProjection",
     "references": [],
     "signature": "shouldReplaceProjection(current: { createdAt: number; eventId: string }, incoming: { createdAt: number; eventId: string }): boolean"
@@ -2538,7 +2548,7 @@
     "exported": true,
     "filePath": "src/features/graph/db/utils.ts",
     "kind": "function",
-    "lastSourceHashUsed": "87c04404740643ba3d8df72727308d6dbba63c9e52efedb5995e995e1948c227",
+    "lastSourceHashUsed": "b9b535cf485974fecddb2e79af9813a88b7b32fdca6c2f6457a87b84b6d95c50",
     "name": "toSortedUniqueStrings",
     "references": [],
     "signature": "toSortedUniqueStrings(values: readonly string[]): string[]"
@@ -3403,7 +3413,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "App",
     "references": [],
     "signature": "App({ rootLoader = browserAppKernel }: AppProps)"
@@ -3412,7 +3422,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "AppProps",
     "references": []
   },
@@ -3420,7 +3430,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "formatBottleneck",
     "references": [],
     "signature": "formatBottleneck(stage: GraphCanvasDiagnostics['image']['snapshot']['diagnostics']['bottleneckStage'])"
@@ -3429,7 +3439,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "formatImageHealth",
     "references": [],
     "signature": "formatImageHealth(health: GraphCanvasDiagnostics['image']['snapshot']['diagnostics']['health'])"
@@ -3438,7 +3448,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "formatMs",
     "references": [],
     "signature": "formatMs(value: number)"
@@ -3447,7 +3457,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "GearIcon",
     "references": [],
     "signature": "GearIcon()"
@@ -3456,7 +3466,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "IdentityIcon",
     "references": [],
     "signature": "IdentityIcon()"
@@ -3465,7 +3475,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "mapGraphNodeToSavedRootProfile",
     "references": [],
     "signature": "mapGraphNodeToSavedRootProfile(node: GraphNode): SavedRootProfileSnapshot"
@@ -3474,7 +3484,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "mapNostrProfileToSavedRootProfile",
     "references": [],
     "signature": "mapNostrProfileToSavedRootProfile(profile: NostrProfile): SavedRootProfileSnapshot"
@@ -3483,7 +3493,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "mapPanelToSettingsTab",
     "references": [],
     "signature": "mapPanelToSettingsTab(panel: UiPanel): SettingsTab | null"
@@ -3492,7 +3502,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "MAX_SAVED_ROOT_REFRESHES",
     "references": []
   },
@@ -3500,7 +3510,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "PathIcon",
     "references": [],
     "signature": "PathIcon()"
@@ -3509,7 +3519,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "SAVED_ROOT_PROFILE_STALE_MS",
     "references": []
   },
@@ -3517,7 +3527,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "selectGraphAppActions",
     "references": []
   },
@@ -3525,7 +3535,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "selectGraphAppState",
     "references": []
   },
@@ -3533,7 +3543,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "SETTINGS_TABS",
     "references": []
   },
@@ -3541,7 +3551,7 @@
     "exported": false,
     "filePath": "src/features/graph/GraphApp.tsx",
     "kind": "type",
-    "lastSourceHashUsed": "29c6f7417df33df21c1ef72d972ec3c71a24171d7426ef4033f60b6ae251eaa7",
+    "lastSourceHashUsed": "d2468200173c112637fd93bf04dc436f365072a0f9d2f966c05325a6197bbaca",
     "name": "SettingsTab",
     "references": []
   },
@@ -3882,7 +3892,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/modules/context.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "637942dc3fc82fb7371c0da665489a4e2053046f6b2728c7f93933e394158388",
+    "lastSourceHashUsed": "b6fcd02bdef2e50b58bd14c6312ec94dc9ed3dbdbe2f47e56eee134b02413b95",
     "name": "AppKernelDependencies",
     "references": []
   },
@@ -3890,7 +3900,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/modules/context.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "637942dc3fc82fb7371c0da665489a4e2053046f6b2728c7f93933e394158388",
+    "lastSourceHashUsed": "b6fcd02bdef2e50b58bd14c6312ec94dc9ed3dbdbe2f47e56eee134b02413b95",
     "name": "KernelContext",
     "references": []
   },
@@ -3898,7 +3908,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/modules/context.ts",
     "kind": "type",
-    "lastSourceHashUsed": "637942dc3fc82fb7371c0da665489a4e2053046f6b2728c7f93933e394158388",
+    "lastSourceHashUsed": "b6fcd02bdef2e50b58bd14c6312ec94dc9ed3dbdbe2f47e56eee134b02413b95",
     "name": "RelayAdapterInstance",
     "references": []
   },
@@ -3923,7 +3933,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/modules/follower-discovery.ts",
     "kind": "function",
-    "lastSourceHashUsed": "b9ed9fa00b05c0fc989e84d480c662f1d112b506a6d80bc15b5f6f1cbc74e843",
+    "lastSourceHashUsed": "4693b8cfd959e0e14cb5e11d7c0cfb67cf96deb79c11299803634e47ea2046b3",
     "name": "createFollowerDiscoveryModule",
     "references": [],
     "signature": "createFollowerDiscoveryModule(ctx: KernelContext, collaborators: { analysis: AnalysisModule persistence: PersistenceModule profileHydration: ProfileHydrationModule })"
@@ -3932,7 +3942,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/modules/follower-discovery.ts",
     "kind": "type",
-    "lastSourceHashUsed": "b9ed9fa00b05c0fc989e84d480c662f1d112b506a6d80bc15b5f6f1cbc74e843",
+    "lastSourceHashUsed": "4693b8cfd959e0e14cb5e11d7c0cfb67cf96deb79c11299803634e47ea2046b3",
     "name": "FollowerDiscoveryModule",
     "references": []
   },
@@ -3940,7 +3950,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/modules/follower-discovery.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "b9ed9fa00b05c0fc989e84d480c662f1d112b506a6d80bc15b5f6f1cbc74e843",
+    "lastSourceHashUsed": "4693b8cfd959e0e14cb5e11d7c0cfb67cf96deb79c11299803634e47ea2046b3",
     "name": "INBOUND_COUNT_TIMEOUT_MS",
     "references": []
   },
@@ -3948,7 +3958,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/modules/follower-discovery.ts",
     "kind": "function",
-    "lastSourceHashUsed": "b9ed9fa00b05c0fc989e84d480c662f1d112b506a6d80bc15b5f6f1cbc74e843",
+    "lastSourceHashUsed": "4693b8cfd959e0e14cb5e11d7c0cfb67cf96deb79c11299803634e47ea2046b3",
     "name": "parseRelayListEvent",
     "references": [],
     "signature": "parseRelayListEvent(envelope: RelayEventEnvelope): { readRelays: string[] writeRelays: string[] relays: string[] }"
@@ -3957,7 +3967,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/modules/follower-discovery.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "b9ed9fa00b05c0fc989e84d480c662f1d112b506a6d80bc15b5f6f1cbc74e843",
+    "lastSourceHashUsed": "4693b8cfd959e0e14cb5e11d7c0cfb67cf96deb79c11299803634e47ea2046b3",
     "name": "ROOT_RELAY_LIST_KIND",
     "references": []
   },
@@ -4430,7 +4440,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/modules/root-loader.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "494f57a8f2e62c7ef83e8c7b909f4f5a2e0b02cc8650399686948b5d249b9a33",
+    "lastSourceHashUsed": "4350b32b0849f05b9c2bc15cfdb3f506c1ef78b9c302fccdcd9683ff3b255e03",
     "name": "ActiveLoadSession",
     "references": []
   },
@@ -4438,7 +4448,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/modules/root-loader.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "494f57a8f2e62c7ef83e8c7b909f4f5a2e0b02cc8650399686948b5d249b9a33",
+    "lastSourceHashUsed": "4350b32b0849f05b9c2bc15cfdb3f506c1ef78b9c302fccdcd9683ff3b255e03",
     "name": "CachedRootSnapshot",
     "references": []
   },
@@ -4446,7 +4456,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/modules/root-loader.ts",
     "kind": "function",
-    "lastSourceHashUsed": "494f57a8f2e62c7ef83e8c7b909f4f5a2e0b02cc8650399686948b5d249b9a33",
+    "lastSourceHashUsed": "4350b32b0849f05b9c2bc15cfdb3f506c1ef78b9c302fccdcd9683ff3b255e03",
     "name": "createRootCollectionProgress",
     "references": [],
     "signature": "createRootCollectionProgress(input: { status: RootCollectionProgressStatus loadedCount: number totalCount: number | null isTotalKnown: boolean }): RootCollectionProgress"
@@ -4455,7 +4465,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/modules/root-loader.ts",
     "kind": "function",
-    "lastSourceHashUsed": "494f57a8f2e62c7ef83e8c7b909f4f5a2e0b02cc8650399686948b5d249b9a33",
+    "lastSourceHashUsed": "4350b32b0849f05b9c2bc15cfdb3f506c1ef78b9c302fccdcd9683ff3b255e03",
     "name": "createRootLoaderModule",
     "references": [],
     "signature": "createRootLoaderModule(ctx: KernelContext, collaborators: { analysis: AnalysisModule persistence: PersistenceModule profileHydration: ProfileHydrationModule relaySession: RelaySessionModule keywordLayer: KeywordLayerModule zapLayer: { cancelActiveZapLoad: () => void getZapTargetPubkeys: () => string[] prefetchZapLayer: (targetPubkeys: string[], relayUrls: string[]) => Promise<void> } })"
@@ -4464,7 +4474,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/modules/root-loader.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "494f57a8f2e62c7ef83e8c7b909f4f5a2e0b02cc8650399686948b5d249b9a33",
+    "lastSourceHashUsed": "4350b32b0849f05b9c2bc15cfdb3f506c1ef78b9c302fccdcd9683ff3b255e03",
     "name": "INITIAL_ROOT_DISCOVERY_RELAY_COUNT",
     "references": []
   },
@@ -4472,7 +4482,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/modules/root-loader.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "494f57a8f2e62c7ef83e8c7b909f4f5a2e0b02cc8650399686948b5d249b9a33",
+    "lastSourceHashUsed": "4350b32b0849f05b9c2bc15cfdb3f506c1ef78b9c302fccdcd9683ff3b255e03",
     "name": "MAX_PROFILE_HYDRATION_RELAY_URLS",
     "references": []
   },
@@ -4480,7 +4490,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/modules/root-loader.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "494f57a8f2e62c7ef83e8c7b909f4f5a2e0b02cc8650399686948b5d249b9a33",
+    "lastSourceHashUsed": "4350b32b0849f05b9c2bc15cfdb3f506c1ef78b9c302fccdcd9683ff3b255e03",
     "name": "PreservedExpandedNeighborhood",
     "references": []
   },
@@ -4488,7 +4498,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/modules/root-loader.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "494f57a8f2e62c7ef83e8c7b909f4f5a2e0b02cc8650399686948b5d249b9a33",
+    "lastSourceHashUsed": "4350b32b0849f05b9c2bc15cfdb3f506c1ef78b9c302fccdcd9683ff3b255e03",
     "name": "RootGraphReplacementResult",
     "references": []
   },
@@ -4496,7 +4506,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/modules/root-loader.ts",
     "kind": "type",
-    "lastSourceHashUsed": "494f57a8f2e62c7ef83e8c7b909f4f5a2e0b02cc8650399686948b5d249b9a33",
+    "lastSourceHashUsed": "4350b32b0849f05b9c2bc15cfdb3f506c1ef78b9c302fccdcd9683ff3b255e03",
     "name": "RootLoaderModule",
     "references": []
   },
@@ -4897,7 +4907,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/transcript-relay.ts",
     "kind": "function",
-    "lastSourceHashUsed": "eb8091f2f983af217f2f5725dad5289e268b10c07240a1d91fb661f6514c41b9",
+    "lastSourceHashUsed": "306a4de71400bb24ab0dfbb35eaeb6d56440ec38b5f98e82ffa8ef7dfd81b7a1",
     "name": "createTranscriptRelayAdapter",
     "references": [],
     "signature": "createTranscriptRelayAdapter(options: TranscriptRelayAdapterOptions)"
@@ -4906,7 +4916,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/transcript-relay.ts",
     "kind": "function",
-    "lastSourceHashUsed": "eb8091f2f983af217f2f5725dad5289e268b10c07240a1d91fb661f6514c41b9",
+    "lastSourceHashUsed": "306a4de71400bb24ab0dfbb35eaeb6d56440ec38b5f98e82ffa8ef7dfd81b7a1",
     "name": "createTranscriptRelayAdapterFactory",
     "references": [],
     "signature": "createTranscriptRelayAdapterFactory(options: TranscriptRelayAdapterOptions)"
@@ -4915,7 +4925,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/transcript-relay.ts",
     "kind": "function",
-    "lastSourceHashUsed": "eb8091f2f983af217f2f5725dad5289e268b10c07240a1d91fb661f6514c41b9",
+    "lastSourceHashUsed": "306a4de71400bb24ab0dfbb35eaeb6d56440ec38b5f98e82ffa8ef7dfd81b7a1",
     "name": "filterMatches",
     "references": [],
     "signature": "filterMatches(filter: TranscriptEntry['filter'], requestFilter: Filter): boolean"
@@ -4924,7 +4934,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/transcript-relay.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "eb8091f2f983af217f2f5725dad5289e268b10c07240a1d91fb661f6514c41b9",
+    "lastSourceHashUsed": "306a4de71400bb24ab0dfbb35eaeb6d56440ec38b5f98e82ffa8ef7dfd81b7a1",
     "name": "RelayTranscript",
     "references": []
   },
@@ -4932,7 +4942,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/transcript-relay.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "eb8091f2f983af217f2f5725dad5289e268b10c07240a1d91fb661f6514c41b9",
+    "lastSourceHashUsed": "306a4de71400bb24ab0dfbb35eaeb6d56440ec38b5f98e82ffa8ef7dfd81b7a1",
     "name": "TranscriptEntry",
     "references": []
   },
@@ -4940,7 +4950,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/transcript-relay.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "eb8091f2f983af217f2f5725dad5289e268b10c07240a1d91fb661f6514c41b9",
+    "lastSourceHashUsed": "306a4de71400bb24ab0dfbb35eaeb6d56440ec38b5f98e82ffa8ef7dfd81b7a1",
     "name": "TranscriptRelayAdapterOptions",
     "references": []
   },
@@ -4998,7 +5008,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/transitions/root-load.ts",
     "kind": "type",
-    "lastSourceHashUsed": "aa8bf9bd7fd8b1667197bc7bd4973fab8383526c54d3191948de317c47a6e5fc",
+    "lastSourceHashUsed": "8cb3a97ae45792d0997542f400eb191157c8f3ec9f82ef71fd10c0a741f8ca49",
     "name": "RootLoadAction",
     "references": []
   },
@@ -5006,7 +5016,7 @@
     "exported": true,
     "filePath": "src/features/graph/kernel/transitions/root-load.ts",
     "kind": "function",
-    "lastSourceHashUsed": "aa8bf9bd7fd8b1667197bc7bd4973fab8383526c54d3191948de317c47a6e5fc",
+    "lastSourceHashUsed": "8cb3a97ae45792d0997542f400eb191157c8f3ec9f82ef71fd10c0a741f8ca49",
     "name": "transitionRootLoad",
     "references": [],
     "signature": "transitionRootLoad(current: RootLoadStatus, action: RootLoadAction): RootLoadStatus | null"
@@ -5015,7 +5025,7 @@
     "exported": false,
     "filePath": "src/features/graph/kernel/transitions/root-load.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "aa8bf9bd7fd8b1667197bc7bd4973fab8383526c54d3191948de317c47a6e5fc",
+    "lastSourceHashUsed": "8cb3a97ae45792d0997542f400eb191157c8f3ec9f82ef71fd10c0a741f8ca49",
     "name": "TRANSITIONS",
     "references": []
   },
@@ -5141,7 +5151,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "ActiveRelayAttempt",
     "references": []
   },
@@ -5149,7 +5159,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "BACKGROUND_FLUSH_DELAY_MS",
     "references": []
   },
@@ -5157,7 +5167,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "function",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "batchFilters",
     "references": [],
     "signature": "batchFilters(filters: Filter[], maxAuthorsPerFilter: number): Filter[]"
@@ -5166,7 +5176,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "ConnectionEntry",
     "references": []
   },
@@ -5174,7 +5184,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "function",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "createRelayPoolAdapter",
     "references": [],
     "signature": "createRelayPoolAdapter(options: RelayAdapterOptions): RelayPoolAdapter"
@@ -5183,7 +5193,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "function",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "dedupeRelayUrls",
     "references": [],
     "signature": "dedupeRelayUrls(relayUrls: string[]): string[]"
@@ -5192,7 +5202,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "DEFAULT_CONNECT_TIMEOUT_MS",
     "references": []
   },
@@ -5200,7 +5210,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "DEFAULT_MAX_AUTHORS_PER_FILTER",
     "references": []
   },
@@ -5208,7 +5218,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "DEFAULT_PAGE_TIMEOUT_MS",
     "references": []
   },
@@ -5216,7 +5226,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "DEFAULT_RETRY_COUNT",
     "references": []
   },
@@ -5224,7 +5234,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "DEFAULT_STRAGGLER_GRACE_MS",
     "references": []
   },
@@ -5232,7 +5242,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "HEALTH_PUBLISH_DELAY_MS",
     "references": []
   },
@@ -5240,7 +5250,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "variable",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "INTERACTIVE_FLUSH_DELAY_MS",
     "references": []
   },
@@ -5248,7 +5258,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "class",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "RelayPoolAdapter",
     "references": []
   },
@@ -5256,7 +5266,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-adapter.ts",
     "kind": "type",
-    "lastSourceHashUsed": "7870cefb81f1229bf2a2b0118eab2ec13367dabe67159c938be1af8525c746f0",
+    "lastSourceHashUsed": "915d83a84f085caae9c5bf5cb135292a82532751483d820d68d351dce0f76257",
     "name": "TerminalKind",
     "references": []
   },
@@ -5264,7 +5274,7 @@
     "exported": false,
     "filePath": "src/features/graph/nostr/relay-transport.ts",
     "kind": "class",
-    "lastSourceHashUsed": "48a0483b4375bdd827d9b8155c1b7ff6c178ac6ddbecd88cfbb706ccfe3a9826",
+    "lastSourceHashUsed": "76a4482fced0ad62b2a6d6008857ad19ca8fc794e4991a4a9d39c7c2698bddd5",
     "name": "NostrToolsRelayConnection",
     "references": []
   },
@@ -5272,7 +5282,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/relay-transport.ts",
     "kind": "class",
-    "lastSourceHashUsed": "48a0483b4375bdd827d9b8155c1b7ff6c178ac6ddbecd88cfbb706ccfe3a9826",
+    "lastSourceHashUsed": "76a4482fced0ad62b2a6d6008857ad19ca8fc794e4991a4a9d39c7c2698bddd5",
     "name": "NostrToolsRelayTransport",
     "references": []
   },
@@ -5333,7 +5343,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayAdapterErrorCode",
     "references": []
   },
@@ -5341,7 +5351,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayAdapterErrorDetails",
     "references": []
   },
@@ -5349,7 +5359,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayAdapterOptions",
     "references": []
   },
@@ -5357,7 +5367,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayClock",
     "references": []
   },
@@ -5365,7 +5375,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayConnection",
     "references": []
   },
@@ -5373,7 +5383,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayCountOptions",
     "references": []
   },
@@ -5381,7 +5391,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayCountRequestOptions",
     "references": []
   },
@@ -5389,7 +5399,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayCountResult",
     "references": []
   },
@@ -5397,7 +5407,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayEventEnvelope",
     "references": []
   },
@@ -5405,7 +5415,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayEventObservable",
     "references": []
   },
@@ -5413,7 +5423,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayHealthSnapshot",
     "references": []
   },
@@ -5421,7 +5431,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayHealthStatus",
     "references": []
   },
@@ -5429,7 +5439,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayObserver",
     "references": []
   },
@@ -5437,7 +5447,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayQueryFilter",
     "references": []
   },
@@ -5445,7 +5455,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelaySubscribeHandlers",
     "references": []
   },
@@ -5453,7 +5463,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelaySubscribeOptions",
     "references": []
   },
@@ -5461,7 +5471,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelaySubscriptionHandle",
     "references": []
   },
@@ -5469,7 +5479,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelaySubscriptionPriority",
     "references": []
   },
@@ -5477,7 +5487,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelaySubscriptionStats",
     "references": []
   },
@@ -5485,7 +5495,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelaySubscriptionSummary",
     "references": []
   },
@@ -5493,7 +5503,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayTransport",
     "references": []
   },
@@ -5501,7 +5511,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "interface",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayUrlValidationOptions",
     "references": []
   },
@@ -5509,7 +5519,7 @@
     "exported": true,
     "filePath": "src/features/graph/nostr/types.ts",
     "kind": "type",
-    "lastSourceHashUsed": "572e22e0ca20e2af3565df3b299456d5d038c94eebc52348ca4e28b8c48f7060",
+    "lastSourceHashUsed": "685daf4fefb12b1db4c753349f9c2eac9996962163376454090248a0065307d3",
     "name": "RelayVerificationMode",
     "references": []
   },
@@ -7501,7 +7511,7 @@
     "exported": true,
     "filePath": "src/features/graph/render/GraphViewport.tsx",
     "kind": "function",
-    "lastSourceHashUsed": "e7029c17974f505e681445b102cd1bac6ed77d872d35c6f2e67d89d2273d69ee",
+    "lastSourceHashUsed": "621d113af00d025abcd6abda7f1aacdf548eb2dd34617a27e745ddc8c5cee97c",
     "name": "GraphViewport",
     "references": [],
     "signature": "GraphViewport({ width, height, model, viewState, hoveredNodePubkey, hoveredEdgeId, hoveredEdgePubkeys, selectedNodePubkey, visibleLabels, nodeScreenRadii, imageFrame, onAvatarRendererDelivery, onHoverGraph, onSelectNode, onViewStateChange, renderConfig, comparedNodePubkeys, }: GraphViewportProps)"
@@ -7510,7 +7520,7 @@
     "exported": false,
     "filePath": "src/features/graph/render/GraphViewport.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "e7029c17974f505e681445b102cd1bac6ed77d872d35c6f2e67d89d2273d69ee",
+    "lastSourceHashUsed": "621d113af00d025abcd6abda7f1aacdf548eb2dd34617a27e745ddc8c5cee97c",
     "name": "GraphViewportProps",
     "references": []
   },
@@ -7518,7 +7528,7 @@
     "exported": false,
     "filePath": "src/features/graph/render/GraphViewportLazy.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "eafc1c02736feeea113cd1bbaa41f6970402b7b1b484a8aa8b5e807ca053e151",
+    "lastSourceHashUsed": "d0e7d311408b1d50cf2509a370fc196237a6e70f44a05b741c890280455d533b",
     "name": "DeckGraphRendererLazy",
     "references": []
   },
@@ -7526,7 +7536,7 @@
     "exported": true,
     "filePath": "src/features/graph/render/GraphViewportLazy.tsx",
     "kind": "variable",
-    "lastSourceHashUsed": "eafc1c02736feeea113cd1bbaa41f6970402b7b1b484a8aa8b5e807ca053e151",
+    "lastSourceHashUsed": "d0e7d311408b1d50cf2509a370fc196237a6e70f44a05b741c890280455d533b",
     "name": "GraphViewportLazy",
     "references": []
   },
@@ -7534,7 +7544,7 @@
     "exported": false,
     "filePath": "src/features/graph/render/GraphViewportLazy.tsx",
     "kind": "interface",
-    "lastSourceHashUsed": "eafc1c02736feeea113cd1bbaa41f6970402b7b1b484a8aa8b5e807ca053e151",
+    "lastSourceHashUsed": "d0e7d311408b1d50cf2509a370fc196237a6e70f44a05b741c890280455d533b",
     "name": "GraphViewportLazyProps",
     "references": []
   },

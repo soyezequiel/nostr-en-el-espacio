@@ -1,6 +1,6 @@
 # Mapa del Repositorio
 
-> Generado por la capa deterministica de context-artifact-generator. sourceRevision=6989c5d
+> Generado por la capa deterministica de context-artifact-generator. sourceRevision=443189c
 
 ## Proposito del Proyecto
 Package nostr-starter.
@@ -14,7 +14,7 @@ Package nostr-starter.
 
 ## Modulos Principales
 - .claude (1 archivos)
-- .next (451 archivos)
+- .next (457 archivos)
 - app (4 archivos)
 - components (7 archivos)
 - docs (3 archivos)

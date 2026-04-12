@@ -126,3 +126,4 @@ src/
 ## Nota importante
 
 La superficie principal del producto es el grafo en `/`. `profile` y `badges` siguen siendo utiles, pero la historia mas fuerte del proyecto esta en la exploracion de identidad, la incertidumbre de relays y la exportacion de evidencia.
+

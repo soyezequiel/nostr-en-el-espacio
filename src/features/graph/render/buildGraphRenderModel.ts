@@ -14,7 +14,7 @@ import {
 import { isSafeAvatarUrl } from '@/features/graph/render/avatar'
 import { getNodeDisplayLabel } from '@/features/graph/render/labels'
 import {
-  runGraphPhysicsLayout,
+  createGraphPhysicsSimulation,
   type GraphPhysicsLink,
   type GraphPhysicsNode,
 } from '@/features/graph/render/graphPhysics'
@@ -40,23 +40,23 @@ type VisibleLayer = Exclude<BuildGraphRenderModelInput['activeLayer'], 'connecti
 type VisibleLink = Pick<GraphLink, 'source' | 'target'> | Pick<ZapLayerEdge, 'source' | 'target'>
 
 const GRAPH_RADIUS_SETTINGS = {
-  avatarBoost: 2.4,
-  averageDegreePenalty: 0.035,
+  avatarBoost: 1.2,
+  averageDegreePenalty: 0.045,
   contextScaleMax: 1.14,
-  contextScaleMin: 0.76,
-  densityLogFactor: 0.28,
-  followMaxRadius: 22,
-  connectionsFollowMaxRadius: 32,
-  followMinRadius: 8,
+  contextScaleMin: 0.56,
+  densityLogFactor: 0.36,
+  followMaxRadius: 16,
+  connectionsFollowMaxRadius: 24,
+  followMinRadius: 6,
   keywordBoostCap: 5.2,
-  degreeBoostCap: 4.1,
-  sharedBoostCap: 3.8,
-  sharedBoostFactor: 1.8,
-  rootMaxRadius: 34,
+  degreeBoostCap: 3,
+  sharedBoostCap: 2.4,
+  sharedBoostFactor: 1.15,
+  rootMaxRadius: 30,
   rootMinRadius: ROOT_NODE_RADIUS,
-  rootSparseBoostFactor: 12,
-  zapMaxRadius: 24,
-  zapMinRadius: 9,
+  rootSparseBoostFactor: 8,
+  zapMaxRadius: 18,
+  zapMinRadius: 7,
 } as const
 
 const COMMUNITY_PALETTE = [
@@ -1092,7 +1092,9 @@ const resolveNodeVisuals = ({
   }
 }
 
-export const buildGraphRenderModel = ({
+const graphPhysicsSimulation = createGraphPhysicsSimulation()
+
+export const buildGraphRenderModel = async ({
   nodes,
   links,
   inboundLinks,
@@ -1110,7 +1112,7 @@ export const buildGraphRenderModel = ({
   renderConfig,
   previousPositions,
   previousLayoutKey,
-}: BuildGraphRenderModelInput): GraphRenderModel => {
+}: BuildGraphRenderModelInput): Promise<GraphRenderModel> => {
   const evidence = deriveDirectedEvidence({
     links,
     inboundLinks,
@@ -1426,7 +1428,7 @@ export const buildGraphRenderModel = ({
       warmStartedCount > 0 &&
       warmStartedCount >= Math.floor(layoutNodes.length * 0.5)
 
-    runGraphPhysicsLayout({
+    await graphPhysicsSimulation.run({
       nodes: layoutNodes,
       links: layoutLinks,
       rootNodePubkey,

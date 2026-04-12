@@ -30,25 +30,63 @@ export type GraphPhysicsLink = {
   relation: 'follow' | 'inbound' | 'zap'
 }
 
-const GRAPH_PHYSICS_SETTINGS = {
-  alphaDecay: 0.16,
-  nBodyStrength: -280,
-  nBodyTheta: 1.2,
-  nBodyDistanceMax: 900,
-  collisionPadding: 10,
-  connectionsCollisionPadding: 16,
-  centerGravityStrength: 0.028,
+export type GraphPhysicsConfig = {
+  alpha: number
+  alphaDecay: number
+  alphaMin: number
+  velocityDecay: number
+  nBodyStrength: number
+  nBodyTheta: number
+  nBodyDistanceMax: number
+  collisionPadding: number
+  connectionsCollisionPadding: number
+  collisionStrength: number
+  collisionIterations: number
+  centerGravityStrength: number
+  ticks: number
+  linkStrength: number
+  sharedLinkStrengthLogFactor: number
+  sharedLinkStrengthCap: number
+  rootLinkDistance: number
+  siblingLinkDistance: number
+  connectionsLinkDistance: number
+  sharedLinkDistanceReductionPerLog2: number
+  sharedLinkDistanceReductionCap: number
+}
+
+export type GraphPhysicsLayoutJob = {
+  nodes: GraphPhysicsNode[]
+  links: GraphPhysicsLink[]
+  rootNodePubkey: string | null
+  sharedByExpandedCount: ReadonlyMap<string, number>
+  renderConfig: BuildGraphRenderModelInput['renderConfig']
+  activeLayer: BuildGraphRenderModelInput['activeLayer']
+  ticks?: number
+}
+
+export const DEFAULT_DENSE_GRAPH_PHYSICS_CONFIG: GraphPhysicsConfig = {
+  alpha: 1,
+  alphaDecay: 0.2,
+  alphaMin: 0.002,
+  velocityDecay: 0.32,
+  nBodyStrength: -560,
+  nBodyTheta: 0.9,
+  nBodyDistanceMax: 1200,
+  collisionPadding: 20,
+  connectionsCollisionPadding: 30,
+  collisionStrength: 1,
+  collisionIterations: 4,
+  centerGravityStrength: 0.018,
   ticks: 90,
-  velocityDecay: 0.35,
-  linkStrength: 0.28,
-  sharedLinkStrengthLogFactor: 0.12,
-  sharedLinkStrengthCap: 0.52,
-  rootLinkDistance: 110,
-  siblingLinkDistance: 56,
-  connectionsLinkDistance: 92,
-  sharedLinkDistanceReductionPerLog2: 10,
-  sharedLinkDistanceReductionCap: 18,
-} as const
+  linkStrength: 0.18,
+  sharedLinkStrengthLogFactor: 0.035,
+  sharedLinkStrengthCap: 0.26,
+  rootLinkDistance: 184,
+  siblingLinkDistance: 112,
+  connectionsLinkDistance: 156,
+  sharedLinkDistanceReductionPerLog2: 2,
+  sharedLinkDistanceReductionCap: 4,
+}
 
 const createSeededRandom = (seed: number) => {
   let state = seed >>> 0
@@ -83,29 +121,38 @@ const createFastSeed = (
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
 
+const mergeGraphPhysicsConfig = (
+  overrides?: Partial<GraphPhysicsConfig>,
+): GraphPhysicsConfig => ({
+  ...DEFAULT_DENSE_GRAPH_PHYSICS_CONFIG,
+  ...overrides,
+})
+
 const resolveSharedLinkStrength = ({
   link,
   sharedByExpandedCount,
+  config,
 }: {
   link: GraphPhysicsLink
   sharedByExpandedCount: ReadonlyMap<string, number>
+  config: GraphPhysicsConfig
 }) => {
   if (link.relation !== 'follow') {
-    return GRAPH_PHYSICS_SETTINGS.linkStrength
+    return config.linkStrength
   }
 
   const targetPubkey = (link.target as GraphPhysicsNode).pubkey
   const sharedCount = sharedByExpandedCount.get(targetPubkey) ?? 1
 
   if (sharedCount <= 1) {
-    return GRAPH_PHYSICS_SETTINGS.linkStrength
+    return config.linkStrength
   }
 
   return clampNumber(
-    GRAPH_PHYSICS_SETTINGS.linkStrength +
-      Math.log2(sharedCount) * GRAPH_PHYSICS_SETTINGS.sharedLinkStrengthLogFactor,
-    GRAPH_PHYSICS_SETTINGS.linkStrength,
-    GRAPH_PHYSICS_SETTINGS.sharedLinkStrengthCap,
+    config.linkStrength +
+      Math.log2(sharedCount) * config.sharedLinkStrengthLogFactor,
+    config.linkStrength,
+    config.sharedLinkStrengthCap,
   )
 }
 
@@ -115,12 +162,14 @@ const resolveLinkDistance = ({
   sharedByExpandedCount,
   renderConfig,
   activeLayer,
+  config,
 }: {
   link: GraphPhysicsLink
   rootNodePubkey: string | null
   sharedByExpandedCount: ReadonlyMap<string, number>
   renderConfig: BuildGraphRenderModelInput['renderConfig']
   activeLayer: BuildGraphRenderModelInput['activeLayer']
+  config: GraphPhysicsConfig
 }) => {
   const sourceNode = link.source as GraphPhysicsNode
   const targetNode = link.target as GraphPhysicsNode
@@ -130,10 +179,10 @@ const resolveLinkDistance = ({
     (activeLayer === 'connections' ? 32 : 20)
   const baseDistance =
     activeLayer === 'connections'
-      ? GRAPH_PHYSICS_SETTINGS.connectionsLinkDistance
+      ? config.connectionsLinkDistance
       : sourceNode.pubkey === rootNodePubkey || targetNode.pubkey === rootNodePubkey
-        ? GRAPH_PHYSICS_SETTINGS.rootLinkDistance
-        : GRAPH_PHYSICS_SETTINGS.siblingLinkDistance
+        ? config.rootLinkDistance
+        : config.siblingLinkDistance
   const resolvedBaseDistance = Math.max(
     baseDistance * renderConfig.nodeSpacingFactor,
     minimumDistance,
@@ -149,101 +198,118 @@ const resolveLinkDistance = ({
   }
 
   const reduction = Math.min(
-    Math.log2(sharedCount) *
-      GRAPH_PHYSICS_SETTINGS.sharedLinkDistanceReductionPerLog2,
-    GRAPH_PHYSICS_SETTINGS.sharedLinkDistanceReductionCap,
+    Math.log2(sharedCount) * config.sharedLinkDistanceReductionPerLog2,
+    config.sharedLinkDistanceReductionCap,
   )
 
   return Math.max(resolvedBaseDistance - reduction, minimumDistance)
 }
 
-export const runGraphPhysicsLayout = ({
-  nodes,
+const createGraphPhysicsForces = ({
   links,
   rootNodePubkey,
   sharedByExpandedCount,
   renderConfig,
   activeLayer,
-  ticks = GRAPH_PHYSICS_SETTINGS.ticks,
-}: {
-  nodes: GraphPhysicsNode[]
-  links: GraphPhysicsLink[]
-  rootNodePubkey: string | null
-  sharedByExpandedCount: ReadonlyMap<string, number>
-  renderConfig: BuildGraphRenderModelInput['renderConfig']
-  activeLayer: BuildGraphRenderModelInput['activeLayer']
-  ticks?: number
-}) => {
-  const simulation = forceSimulation(nodes)
-    .randomSource(
-      createSeededRandom(
-        createFastSeed(rootNodePubkey, nodes.length, links.length),
-      ),
+  config,
+}: Omit<GraphPhysicsLayoutJob, 'nodes' | 'ticks'> & {
+  config: GraphPhysicsConfig
+}) => ({
+  nBody: forceManyBody<GraphPhysicsNode>()
+    .strength(config.nBodyStrength)
+    .distanceMax(config.nBodyDistanceMax)
+    .theta(config.nBodyTheta),
+  collision: forceCollide<GraphPhysicsNode>()
+    .radius((node) =>
+      node.radius +
+      (activeLayer === 'connections'
+        ? config.connectionsCollisionPadding
+        : config.collisionPadding),
     )
-    .alpha(1)
-    .alphaDecay(GRAPH_PHYSICS_SETTINGS.alphaDecay)
-    .velocityDecay(GRAPH_PHYSICS_SETTINGS.velocityDecay)
-    .force(
-      'nBody',
-      forceManyBody<GraphPhysicsNode>()
-        .strength(GRAPH_PHYSICS_SETTINGS.nBodyStrength)
-        .distanceMax(GRAPH_PHYSICS_SETTINGS.nBodyDistanceMax)
-        .theta(GRAPH_PHYSICS_SETTINGS.nBodyTheta),
+    .strength(config.collisionStrength)
+    .iterations(config.collisionIterations),
+  link: forceLink<GraphPhysicsNode, GraphPhysicsLink>(links)
+    .id((node) => node.id)
+    .distance((link: GraphPhysicsLink) =>
+      resolveLinkDistance({
+        link,
+        rootNodePubkey,
+        sharedByExpandedCount,
+        renderConfig,
+        activeLayer,
+        config,
+      }),
     )
-    .force(
-      'collision',
-      forceCollide<GraphPhysicsNode>()
-        .radius((node) =>
-          node.radius +
-          (activeLayer === 'connections'
-            ? GRAPH_PHYSICS_SETTINGS.connectionsCollisionPadding
-            : GRAPH_PHYSICS_SETTINGS.collisionPadding),
-        )
-        .strength(0.9)
-        .iterations(2),
-    )
-    .force(
-      'link',
-      forceLink<GraphPhysicsNode, GraphPhysicsLink>(links)
-        .id((node) => node.id)
-        .distance((link: GraphPhysicsLink) =>
-          resolveLinkDistance({
-            link,
-            rootNodePubkey,
-            sharedByExpandedCount,
-            renderConfig,
-            activeLayer,
-          }),
-        )
-        .strength((link: GraphPhysicsLink) =>
-          resolveSharedLinkStrength({
-            link,
-            sharedByExpandedCount,
-          }),
-        ),
-    )
-    .force('center', forceCenter(0, 0))
-    .force(
-      'gravityX',
-      forceX<GraphPhysicsNode>(0).strength(
-        GRAPH_PHYSICS_SETTINGS.centerGravityStrength,
-      ),
-    )
-    .force(
-      'gravityY',
-      forceY<GraphPhysicsNode>(0).strength(
-        GRAPH_PHYSICS_SETTINGS.centerGravityStrength,
-      ),
-    )
-    .stop()
+    .strength((link: GraphPhysicsLink) =>
+      resolveSharedLinkStrength({
+        link,
+        sharedByExpandedCount,
+        config,
+      }),
+    ),
+  center: forceCenter(0, 0),
+  gravityX: forceX<GraphPhysicsNode>(0).strength(config.centerGravityStrength),
+  gravityY: forceY<GraphPhysicsNode>(0).strength(config.centerGravityStrength),
+})
 
-  // Separate the physics loop from the render model assembly so layout tuning
-  // stays isolated from the visual node/edge construction.
-  const ALPHA_CONVERGENCE_THRESHOLD = 0.002
-  for (let tick = 0; tick < ticks; tick += 1) {
-    simulation.tick()
-    if (simulation.alpha() < ALPHA_CONVERGENCE_THRESHOLD) break
-  }
-
-  simulation.stop()
+export type GraphPhysicsSimulationRunner = {
+  run(job: GraphPhysicsLayoutJob): Promise<GraphPhysicsNode[]>
 }
+
+export function createGraphPhysicsSimulation(
+  overrides?: Partial<GraphPhysicsConfig>,
+): GraphPhysicsSimulationRunner {
+  const config = mergeGraphPhysicsConfig(overrides)
+
+  return {
+    async run({
+      nodes,
+      links,
+      rootNodePubkey,
+      sharedByExpandedCount,
+      renderConfig,
+      activeLayer,
+      ticks = config.ticks,
+    }: GraphPhysicsLayoutJob): Promise<GraphPhysicsNode[]> {
+      const forces = createGraphPhysicsForces({
+        links,
+        rootNodePubkey,
+        sharedByExpandedCount,
+        renderConfig,
+        activeLayer,
+        config,
+      })
+
+      const simulation = forceSimulation(nodes)
+        .randomSource(
+          createSeededRandom(
+            createFastSeed(rootNodePubkey, nodes.length, links.length),
+          ),
+        )
+        .alpha(config.alpha)
+        .alphaDecay(config.alphaDecay)
+        .alphaMin(config.alphaMin)
+        .velocityDecay(config.velocityDecay)
+        .force('nBody', forces.nBody)
+        .force('collision', forces.collision)
+        .force('link', forces.link)
+        .force('center', forces.center)
+        .force('gravityX', forces.gravityX)
+        .force('gravityY', forces.gravityY)
+        .stop()
+
+      for (let tick = 0; tick < ticks; tick += 1) {
+        simulation.tick()
+        if (simulation.alpha() < config.alphaMin) break
+      }
+
+      simulation.stop()
+      return nodes
+    },
+  }
+}
+
+const defaultGraphPhysicsSimulation = createGraphPhysicsSimulation()
+
+export const runGraphPhysicsLayout = (job: GraphPhysicsLayoutJob) =>
+  defaultGraphPhysicsSimulation.run(job)

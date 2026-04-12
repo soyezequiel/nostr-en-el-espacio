@@ -43,6 +43,8 @@ const GRAPH_NODE_PROMINENCE_SETTINGS = {
   capBoostFactor: 0.22,
   commonFollowBoost: 0.06,
   connectionsLayerBoost: 0.08,
+  degreeBoostCap: 0.34,
+  degreeBoostLogFactor: 0.1,
   expandedBoost: 0.08,
   floorBoostFactor: 0.34,
   pathEndpointBoost: 0.18,
@@ -152,6 +154,7 @@ type ProjectedNodeMetric = {
 type VisibleNodeRadiusStats = {
   minBaseRadius: number
   maxBaseRadius: number
+  maxVisibleDegree: number
 }
 
 const getKeywordMatchScreenScale = ({
@@ -205,6 +208,14 @@ const getNodeProminenceScale = ({
       GRAPH_NODE_PROMINENCE_SETTINGS.sharedBoostCap,
       Math.log2(node.sharedByExpandedCount + 1) *
         GRAPH_NODE_PROMINENCE_SETTINGS.sharedBoostLogFactor,
+    )
+  }
+
+  if (node.visibleDegree > 1) {
+    boost += Math.min(
+      GRAPH_NODE_PROMINENCE_SETTINGS.degreeBoostCap,
+      Math.log2(node.visibleDegree + 1) *
+        GRAPH_NODE_PROMINENCE_SETTINGS.degreeBoostLogFactor,
     )
   }
 
@@ -298,12 +309,17 @@ const resolveVisibleNodeRadiusStats = (
     return {
       minBaseRadius: 0,
       maxBaseRadius: 0,
+      maxVisibleDegree: 0,
     }
   }
 
   return {
     minBaseRadius,
     maxBaseRadius,
+    maxVisibleDegree: nodes.reduce(
+      (maxDegree, node) => Math.max(maxDegree, node.visibleDegree),
+      0,
+    ),
   }
 }
 

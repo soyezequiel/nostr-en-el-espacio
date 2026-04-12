@@ -1729,6 +1729,7 @@ export const buildGraphRenderModel = ({
           sharedByExpandedCount.get(node.pubkey) ?? 0,
           nodeRadiusContext,
         ),
+      visibleDegree: visibleDegreeByPubkey.get(node.pubkey) ?? 0,
       keywordHits: node.keywordHits,
       isRoot: node.pubkey === rootNodePubkey,
       isExpanded: expandedNodePubkeys.has(node.pubkey),

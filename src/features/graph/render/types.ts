@@ -40,6 +40,7 @@ export interface GraphRenderNode {
   pictureUrl: string | null
   position: [number, number]
   radius: number
+  visibleDegree: number
   keywordHits: number
   isRoot: boolean
   isExpanded: boolean

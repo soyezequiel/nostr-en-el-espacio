@@ -90,6 +90,9 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
     zapLayer,
     nodeDetail,
   })
+  let connectionsDerivationInFlight = false
+  let connectionsDerivationQueued = false
+  let connectionsDerivationTimer: ReturnType<typeof setTimeout> | null = null
 
   /**
    * Derives directed follow edges between current graph nodes.
@@ -105,7 +108,8 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
     const rootPubkey = state.rootNodePubkey
     const graphNodePubkeys = new Set(Object.keys(state.nodes))
 
-    if (graphNodePubkeys.size === 0) {
+    if (graphNodePubkeys.size === 0 || rootPubkey === null) {
+      ctx.store.getState().setConnectionsLinks([])
       return
     }
 
@@ -201,6 +205,73 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
     ctx.store.getState().setConnectionsLinks(derivedLinks)
   }
 
+  const runConnectionsDerivation = async () => {
+    if (connectionsDerivationInFlight) {
+      connectionsDerivationQueued = true
+      return
+    }
+
+    connectionsDerivationInFlight = true
+
+    try {
+      await deriveConnectionsLinks()
+    } finally {
+      connectionsDerivationInFlight = false
+
+      if (
+        connectionsDerivationQueued &&
+        ctx.store.getState().activeLayer === 'connections'
+      ) {
+        connectionsDerivationQueued = false
+        scheduleConnectionsDerivation()
+      } else {
+        connectionsDerivationQueued = false
+      }
+    }
+  }
+
+  const scheduleConnectionsDerivation = () => {
+    if (ctx.store.getState().activeLayer !== 'connections') {
+      return
+    }
+
+    if (connectionsDerivationTimer !== null) {
+      clearTimeout(connectionsDerivationTimer)
+    }
+
+    connectionsDerivationTimer = setTimeout(() => {
+      connectionsDerivationTimer = null
+      void runConnectionsDerivation()
+    }, 0)
+  }
+
+  const unsubscribeConnectionsRefresh = ctx.store.subscribe(
+    (nextState, previousState) => {
+      const enteredConnections =
+        nextState.activeLayer === 'connections' &&
+        previousState.activeLayer !== 'connections'
+      const graphChangedWhileViewingConnections =
+        nextState.activeLayer === 'connections' &&
+        (nextState.graphRevision !== previousState.graphRevision ||
+          nextState.inboundGraphRevision !== previousState.inboundGraphRevision ||
+          nextState.rootNodePubkey !== previousState.rootNodePubkey)
+
+      if (enteredConnections || graphChangedWhileViewingConnections) {
+        scheduleConnectionsDerivation()
+        return
+      }
+
+      if (
+        nextState.activeLayer !== 'connections' &&
+        previousState.activeLayer === 'connections' &&
+        connectionsDerivationTimer !== null
+      ) {
+        clearTimeout(connectionsDerivationTimer)
+        connectionsDerivationTimer = null
+      }
+    },
+  )
+
   function toggleLayer(layer: UiLayer): ToggleLayerResult {
     const state = ctx.store.getState()
     const previousLayer = state.activeLayer
@@ -215,9 +286,6 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
 
     if (layer === 'connections' && previousLayer !== 'connections') {
       state.setConnectionsSourceLayer(previousLayer)
-      // Async: derive cross-edges. Reads cached contact lists first,
-      // then fetches missing ones from relays before computing edges.
-      void deriveConnectionsLinks()
     }
 
     state.setActiveLayer(layer)
@@ -253,6 +321,11 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
   }
 
   function dispose(): void {
+    unsubscribeConnectionsRefresh()
+    if (connectionsDerivationTimer !== null) {
+      clearTimeout(connectionsDerivationTimer)
+      connectionsDerivationTimer = null
+    }
     relaySession.flushPendingRelayHealth()
     rootLoader.cancelActiveLoad()
     zapLayer.cancelActiveZapLoad()

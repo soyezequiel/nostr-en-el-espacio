@@ -53,66 +53,6 @@ export function RenderConfigPanel() {
 
       <section className="settings-card">
         <div className="settings-card__title-row">
-          <h3>Nodes</h3>
-        </div>
-
-        <label className="settings-toggle">
-          <input
-            checked={renderConfig.autoSizeNodes}
-            onChange={(event) =>
-              setRenderConfig({ autoSizeNodes: event.target.checked })
-            }
-            type="checkbox"
-          />
-          <span>Escala automatica</span>
-        </label>
-
-        <div className="settings-field">
-          <div className="settings-field__label-row">
-            <label htmlFor="node-size-input">Escala manual</label>
-            <span>
-              {renderConfig.autoSizeNodes
-                ? 'Auto'
-                : `${renderConfig.nodeSizeFactor.toFixed(1)}x`}
-            </span>
-          </div>
-          <input
-            disabled={renderConfig.autoSizeNodes}
-            id="node-size-input"
-            max="2.5"
-            min="0.5"
-            onChange={(event) =>
-              setRenderConfig({ nodeSizeFactor: parseFloat(event.target.value) })
-            }
-            step="0.1"
-            type="range"
-            value={renderConfig.nodeSizeFactor}
-          />
-        </div>
-
-        <div className="settings-field">
-          <div className="settings-field__label-row">
-            <label htmlFor="node-spacing-input">Separacion del layout</label>
-            <span>{renderConfig.nodeSpacingFactor.toFixed(1)}x</span>
-          </div>
-          <input
-            id="node-spacing-input"
-            max="2.5"
-            min="0.5"
-            onChange={(event) =>
-              setRenderConfig({
-                nodeSpacingFactor: parseFloat(event.target.value),
-              })
-            }
-            step="0.1"
-            type="range"
-            value={renderConfig.nodeSpacingFactor}
-          />
-        </div>
-      </section>
-
-      <section className="settings-card">
-        <div className="settings-card__title-row">
           <h3>Images and emphasis</h3>
         </div>
 

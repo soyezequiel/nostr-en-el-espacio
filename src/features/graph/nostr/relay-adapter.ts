@@ -175,17 +175,25 @@ export class RelayPoolAdapter {
     const health = this.relayHealth.get(url)
 
     // Circuit breaker: stop hammering relays that have recently failed.
-    if (
-      health &&
-      health.status === 'offline' &&
-      this.clock.now() - health.lastChangeMs < 60_000
-    ) {
-      return {
-        relayUrl: url,
-        count: null,
-        supported: false,
-        elapsedMs: 0,
-        errorMessage: 'Relay is temporarily skipped due to offline status.',
+    if (health) {
+      const timeSinceChange = this.clock.now() - health.lastChangeMs
+      if (health.status === 'offline' && timeSinceChange < 60_000) {
+        return {
+          relayUrl: url,
+          count: null,
+          supported: false,
+          elapsedMs: 0,
+          errorMessage: 'Relay is temporarily skipped due to offline status.',
+        }
+      }
+      if (health.status === 'degraded' && timeSinceChange < 5_000) {
+        return {
+          relayUrl: url,
+          count: null,
+          supported: false,
+          elapsedMs: 0,
+          errorMessage: 'Relay is temporarily skipped due to degraded status.',
+        }
       }
     }
 
@@ -455,15 +463,16 @@ export class RelayPoolAdapter {
     }
 
     const startRelay = async (url: string, attemptNumber: number) => {
-      if (attemptNumber === 1) {
-        const health = this.relayHealth.get(url)
-        // Circuit breaker: hold off retrying dead relays for 60s to prevent spamming
-        // the console with native WebSocket trace logs on batch requests.
-        if (
-          health &&
-          health.status === 'offline' &&
-          this.clock.now() - health.lastChangeMs < 60_000
-        ) {
+      const health = this.relayHealth.get(url)
+      if (health) {
+        const timeSinceChange = this.clock.now() - health.lastChangeMs
+        // Circuit breaker: hold off retrying dead relays for 60s
+        if (health.status === 'offline' && timeSinceChange < 60_000) {
+          finishRelay(url)
+          return
+        }
+        // Circuit breaker: prevent new subscriptions from hammering a degraded relay
+        if (attemptNumber === 1 && health.status === 'degraded' && timeSinceChange < 5_000) {
           finishRelay(url)
           return
         }

@@ -14,6 +14,39 @@ export type VisibleGeometryContext = {
   viewState: Pick<GraphViewState, 'zoom'>
 }
 
+const OVERVIEW_NODE_SIZE_SHRINK_START_ZOOM = 0.75
+const OVERVIEW_NODE_SIZE_SHRINK_FULL_ZOOM = -1.25
+const OVERVIEW_NODE_SIZE_MIN_FACTOR = 0.42
+
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value))
+
+const smoothstep = (value: number) => {
+  const t = clampNumber(value, 0, 1)
+  return t * t * (3 - 2 * t)
+}
+
+export const getZoomResponsiveNodeSizeFactor = ({
+  nodeSizeFactor,
+  zoom,
+}: {
+  nodeSizeFactor: number
+  zoom: number
+}) => {
+  if (!Number.isFinite(zoom) || zoom >= OVERVIEW_NODE_SIZE_SHRINK_START_ZOOM) {
+    return nodeSizeFactor
+  }
+
+  const shrinkProgress =
+    (OVERVIEW_NODE_SIZE_SHRINK_START_ZOOM - zoom) /
+    (OVERVIEW_NODE_SIZE_SHRINK_START_ZOOM - OVERVIEW_NODE_SIZE_SHRINK_FULL_ZOOM)
+  const easedProgress = smoothstep(shrinkProgress)
+  const overviewScale =
+    1 - (1 - OVERVIEW_NODE_SIZE_MIN_FACTOR) * easedProgress
+
+  return nodeSizeFactor * overviewScale
+}
+
 const adjustSegmentEndpoint = ({
   from,
   to,

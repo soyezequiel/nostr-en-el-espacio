@@ -40,6 +40,7 @@ import {
   getVisibleArrowPlacement,
   getVisibleEdgeEndpoints,
   getVisibleNodeRadius,
+  getZoomResponsiveNodeSizeFactor,
   type VisibleGeometryContext,
 } from '@/features/graph/render/visibleGeometry'
 import type {
@@ -856,7 +857,10 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
     } =
       topologyData
     const { segments } = topologyData.geometry
-    const nodeSizeFactor = renderConfig.nodeSizeFactor ?? 1
+    const nodeSizeFactor = getZoomResponsiveNodeSizeFactor({
+      nodeSizeFactor: renderConfig.nodeSizeFactor ?? 1,
+      zoom: viewState.zoom,
+    })
     const viewScale = Math.max(Number.MIN_VALUE, Math.pow(2, viewState.zoom))
     const getScreenRadius = (pubkey: string, fallbackRadius: number) =>
       getVisibleNodeRadius({

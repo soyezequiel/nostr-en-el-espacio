@@ -34,6 +34,7 @@ interface GraphViewportProps {
   onViewStateChange: (viewState: GraphViewState) => void
   renderConfig: RenderConfig
   comparedNodePubkeys: ReadonlySet<string>
+  devicePerformanceProfile: string
 }
 
 export function GraphViewport({
@@ -54,6 +55,7 @@ export function GraphViewport({
   onViewStateChange,
   renderConfig,
   comparedNodePubkeys,
+  devicePerformanceProfile,
 }: GraphViewportProps) {
   return (
     <GraphViewportLazy
@@ -74,6 +76,7 @@ export function GraphViewport({
       width={width}
       renderConfig={renderConfig}
       comparedNodePubkeys={comparedNodePubkeys}
+      devicePerformanceProfile={devicePerformanceProfile}
     />
   )
 }

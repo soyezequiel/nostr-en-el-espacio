@@ -24,39 +24,79 @@ export const buildArrowMarkerData = ({
       ? 'triangle-bidirectional'
       : 'chevron-bidirectional'
 
-  const seenMiddle = new Set<string>()
-  const seenEnd = new Set<string>()
-  const result: ArrowMarkerDatum[] = []
+  const edgeStates = new Map<
+    string,
+    {
+      prototype: GraphEdgeSegment
+      isBidirectional: boolean
+      middleSegment: GraphEdgeSegment | null
+      middleSegmentDistance: number
+      endSegment: GraphEdgeSegment | null
+      endSegmentProgress: number
+    }
+  >()
 
   for (const segment of segments) {
-    const pairKey = [segment.source, segment.target].sort().join(':')
+    const edgeState =
+      edgeStates.get(segment.id) ?? {
+        prototype: segment,
+        isBidirectional:
+          segment.relation === 'mutual' || segment.isBidirectional === true,
+        middleSegment: null,
+        middleSegmentDistance: Number.POSITIVE_INFINITY,
+        endSegment: null,
+        endSegmentProgress: Number.NEGATIVE_INFINITY,
+      }
+    edgeState.isBidirectional =
+      edgeState.isBidirectional ||
+      segment.relation === 'mutual' ||
+      segment.isBidirectional === true
 
-    if (
-      segment.isBidirectional === true &&
-      segment.progressStart <= 0.5 &&
-      segment.progressEnd > 0.5
-    ) {
-      if (!seenMiddle.has(pairKey)) {
-        seenMiddle.add(pairKey)
+    const midpointDistance = Math.abs(
+      (segment.progressStart + segment.progressEnd) / 2 - 0.5,
+    )
+    if (midpointDistance < edgeState.middleSegmentDistance) {
+      edgeState.middleSegmentDistance = midpointDistance
+      edgeState.middleSegment = segment
+    }
+
+    if (segment.progressEnd >= edgeState.endSegmentProgress) {
+      edgeState.endSegment = segment
+      edgeState.endSegmentProgress = segment.progressEnd
+    }
+
+    edgeStates.set(segment.id, edgeState)
+  }
+
+  const result: ArrowMarkerDatum[] = []
+
+  for (const edgeState of edgeStates.values()) {
+    if (edgeState.isBidirectional) {
+      if (edgeState.middleSegment !== null) {
         result.push({
-          ...segment,
+          ...edgeState.prototype,
+          sourcePosition: edgeState.middleSegment.sourcePosition,
+          targetPosition: edgeState.middleSegment.targetPosition,
+          progressStart: edgeState.middleSegment.progressStart,
+          progressEnd: edgeState.middleSegment.progressEnd,
+          relation: 'mutual',
+          isBidirectional: true,
           arrowIcon: bidirectionalArrowIcon,
         })
       }
       continue
     }
 
-    // Only add directional arrow if it's NOT a bidirectional edge
-    // and we haven't seen an end arrow for this specific direction.
-    if (!segment.isBidirectional && segment.progressEnd === 1) {
-      const directionKey = `${segment.source}->${segment.target}`
-      if (!seenEnd.has(directionKey)) {
-        seenEnd.add(directionKey)
-        result.push({
-          ...segment,
-          arrowIcon: directionalArrowIcon,
-        })
-      }
+    if (edgeState.endSegment !== null) {
+      result.push({
+        ...edgeState.prototype,
+        sourcePosition: edgeState.endSegment.sourcePosition,
+        targetPosition: edgeState.endSegment.targetPosition,
+        progressStart: edgeState.endSegment.progressStart,
+        progressEnd: edgeState.endSegment.progressEnd,
+        isBidirectional: false,
+        arrowIcon: directionalArrowIcon,
+      })
     }
   }
 

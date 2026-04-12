@@ -2749,6 +2749,7 @@ export const GraphCanvas = memo(function GraphCanvas({
               renderConfig={renderConfig}
               forceLowDevicePixels={isMobileProfile}
               hoverInteractionEnabled={hoverInteractionEnabled}
+              devicePerformanceProfile={devicePerformanceProfile}
             />
           ) : null}
 

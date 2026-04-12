@@ -73,6 +73,7 @@ interface DeckGraphRendererProps {
   forceLowDevicePixels?: boolean
   hoverInteractionEnabled?: boolean
   comparedNodePubkeys?: ReadonlySet<string>
+  devicePerformanceProfile: string
 }
 
 const resolvePickedPubkey = (
@@ -149,6 +150,7 @@ export const DeckGraphRenderer = memo(function DeckGraphRenderer({
   onSelectNode,
   onViewStateChange,
   renderConfig,
+  devicePerformanceProfile,
   forceLowDevicePixels = false,
   hoverInteractionEnabled = true,
 }: DeckGraphRendererProps) {
@@ -327,6 +329,7 @@ export const DeckGraphRenderer = memo(function DeckGraphRenderer({
         onAvatarRendererDelivery,
         hoverPickingEnabled: hoverInteractionEnabled && hoverPickingEnabled,
         renderConfig,
+        devicePerformanceProfile,
       }),
     ],
     [
@@ -343,6 +346,7 @@ export const DeckGraphRenderer = memo(function DeckGraphRenderer({
       hoverInteractionEnabled,
       hoverPickingEnabled,
       renderConfig,
+      devicePerformanceProfile,
     ],
   )
 

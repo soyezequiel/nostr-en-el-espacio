@@ -295,6 +295,17 @@ export function RenderConfigPanel() {
 
         <label className="settings-toggle">
           <input
+            checked={renderConfig.showFocusFade}
+            onChange={(event) =>
+              setRenderConfig({ showFocusFade: event.target.checked })
+            }
+            type="checkbox"
+          />
+          <span>Modo Focus (desvanecer resto)</span>
+        </label>
+
+        <label className="settings-toggle">
+          <input
             checked={renderConfig.showAvatarQualityGuide ?? false}
             onChange={(event) =>
               setRenderConfig({ showAvatarQualityGuide: event.target.checked })

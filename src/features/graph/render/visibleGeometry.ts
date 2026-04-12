@@ -154,16 +154,22 @@ export const getVisibleArrowPlacement = ({
   })
   const zoom = Number.isFinite(context.viewState.zoom) ? context.viewState.zoom : 0
   const viewScale = Math.max(Number.MIN_VALUE, Math.pow(2, zoom))
-  const dx = targetPosition[0] - sourcePosition[0]
-  const dy = targetPosition[1] - sourcePosition[1]
-  const length = Math.hypot(dx, dy)
+  // Use raw segment positions for angle calculation to maintain stability
+  // even if visible endpoints collapse or swap due to clamping at extreme zoom.
+  const rawDx = segment.targetPosition[0] - segment.sourcePosition[0]
+  const rawDy = segment.targetPosition[1] - segment.sourcePosition[1]
+  const rawLength = Math.hypot(rawDx, rawDy)
 
-  if (length === 0) {
+  if (rawLength === 0) {
     return {
       angle: 0,
       position: targetPosition,
     }
   }
+
+  const dx = targetPosition[0] - sourcePosition[0]
+  const dy = targetPosition[1] - sourcePosition[1]
+  const length = Math.hypot(dx, dy)
 
   // Cap arrow compensation to not fly too far away from the edge.
   // When zoom is very low, screen-space padding can exceed world-space length.
@@ -171,7 +177,7 @@ export const getVisibleArrowPlacement = ({
   const safeCompensation = Math.min(compensationWorld, length * 0.4)
 
   return {
-    angle: ((-Math.atan2(dy, dx) * 180) / Math.PI),
+    angle: ((-Math.atan2(rawDy, rawDx) * 180) / Math.PI),
     position: [
       targetPosition[0] + (dx / length) * safeCompensation,
       targetPosition[1] + (dy / length) * safeCompensation,

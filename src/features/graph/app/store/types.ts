@@ -345,6 +345,7 @@ export interface RenderConfig {
   edgeColor?: string
   mutualEdgeColor?: string
   colorProfile?: string
+  showFocusFade: boolean
 }
 
 export interface PathfindingState {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildArrowMarkerData } from './GraphSceneLayer'
+import { buildArrowMarkerData } from './arrowMarkers'
 import type { GraphEdgeSegment } from './graphSceneGeometry'
 
 const createSegment = (
@@ -21,13 +21,22 @@ const createSegment = (
   ...overrides,
 })
 
-test('uses a dedicated bidirectional marker for mutual segments', () => {
+test('uses a dedicated bidirectional marker for reciprocal segments', () => {
   const arrowData = buildArrowMarkerData({
     segments: [
       createSegment({
-        progressStart: 0.4,
-        progressEnd: 0.6,
+        id: 'pair:a:b:mutual',
+        relation: 'mutual',
         isBidirectional: true,
+        progressStart: 0.375,
+        progressEnd: 0.5,
+      }),
+      createSegment({
+        id: 'pair:a:b:mutual',
+        relation: 'mutual',
+        isBidirectional: true,
+        progressStart: 0.5,
+        progressEnd: 0.625,
       }),
     ],
     arrowType: 'triangle',
@@ -40,7 +49,7 @@ test('uses a dedicated bidirectional marker for mutual segments', () => {
 test('keeps single-direction arrowheads for non-mutual segments', () => {
   const arrowData = buildArrowMarkerData({
     segments: [createSegment()],
-    arrowType: 'chevron',
+    arrowType: 'arrow',
   })
 
   assert.equal(arrowData.length, 1)

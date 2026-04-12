@@ -133,6 +133,7 @@ export const createInitialUiSliceState = (): Pick<
     edgeColor: '#94a3b8',
     mutualEdgeColor: '#2dd4bf',
     colorProfile: 'monochrome',
+    showFocusFade: true,
   },
   devicePerformanceProfile: DEFAULT_DEVICE_PERFORMANCE_PROFILE,
   effectiveGraphCaps: DEFAULT_EFFECTIVE_GRAPH_CAPS,

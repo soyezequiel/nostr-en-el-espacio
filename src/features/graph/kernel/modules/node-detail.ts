@@ -24,6 +24,8 @@ import {
   buildDiscoveredMessage,
 } from '@/features/graph/kernel/modules/text-helpers'
 
+import { isMobileDevicePerformanceProfile } from '@/features/graph/devicePerformance'
+
 export function createNodeDetailModule(
   ctx: KernelContext,
   collaborators: {
@@ -79,8 +81,23 @@ export function createNodeDetailModule(
       )
     }
 
+    const isMobile = isMobileDevicePerformanceProfile(state.devicePerformanceProfile)
+
     state.setSelectedNodePubkey(pubkey)
-    state.setOpenPanel(pubkey === null ? 'overview' : 'node-detail')
+
+    if (pubkey === null) {
+      state.setOpenPanel('overview')
+    } else if (isMobile) {
+      // En móvil, el primer toque solo activa el efecto Focus (vía selectedNodePubkey).
+      // Solo abrimos el panel de detalle si el usuario toca el mismo nodo otra vez
+      // o si ya tenía el panel de detalle abierto.
+      if (pubkey === previousPubkey || state.openPanel === 'node-detail') {
+        state.setOpenPanel('node-detail')
+      }
+    } else {
+      // En escritorio el click siempre abre el detalle (el foco se maneja por hover).
+      state.setOpenPanel('node-detail')
+    }
 
     if (pubkey !== null) {
       prefetchNodeStructurePreview(pubkey)

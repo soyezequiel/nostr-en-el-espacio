@@ -54,6 +54,7 @@ interface GraphViewportLazyProps {
   forceLowDevicePixels?: boolean
   hoverInteractionEnabled?: boolean
   comparedNodePubkeys?: ReadonlySet<string>
+  devicePerformanceProfile: string
 }
 
 /**
@@ -81,6 +82,7 @@ export const GraphViewportLazy = memo(function GraphViewportLazy({
   forceLowDevicePixels,
   hoverInteractionEnabled,
   comparedNodePubkeys,
+  devicePerformanceProfile,
 }: GraphViewportLazyProps) {
   return (
     <Suspense fallback={null}>
@@ -104,6 +106,7 @@ export const GraphViewportLazy = memo(function GraphViewportLazy({
         forceLowDevicePixels={forceLowDevicePixels}
         hoverInteractionEnabled={hoverInteractionEnabled}
         comparedNodePubkeys={comparedNodePubkeys}
+        devicePerformanceProfile={devicePerformanceProfile}
       />
     </Suspense>
   )

@@ -7,7 +7,7 @@ import {
 import { IconLayer, LineLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
 import type { Texture } from '@luma.gl/core'
 
-import type { RenderConfig } from '@/features/graph/app/store/types'
+import type { RenderConfig, DevicePerformanceProfile } from '@/features/graph/app/store/types'
 import type { GraphViewState } from '@/features/graph/render/graphViewState'
 import {
   COMMON_FOLLOW_NODE_COLOR,
@@ -25,6 +25,7 @@ import {
 import {
   buildGraphSceneGeometry,
   createGraphSceneGeometrySignature,
+  type GraphVisualRelation,
 } from '@/features/graph/render/graphSceneGeometry'
 import {
   buildArrowMarkerData,
@@ -53,6 +54,7 @@ import type {
   GraphRenderModel,
   GraphRenderNode,
 } from '@/features/graph/render/types'
+import { isMobileDevicePerformanceProfile } from '@/features/graph/devicePerformance'
 
 const fallbackAvatarUrl =
   'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAxMjgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGNpcmNsZSBjeD0iNjQiIGN5PSI2NCIgcj0iNjQiIGZpbGw9IiMxMDIwMzMiLz4KICA8Y2lyY2xlIGN4PSI2NCIgY3k9IjY0IiByPSI2MCIgZmlsbD0idXJsKCNhdmF0YXItZmFsbGJhY2stYmcpIiBzdHJva2U9InJnYmEoMjU1LDI1NSwyNTUsMC4xOCkiIHN0cm9rZS13aWR0aD0iMiIvPgogIDxjaXJjbGUgY3g9IjY0IiBjeT0iNDgiIHI9IjIwIiBmaWxsPSIjRDlFM0YwIi8+CiAgPHBhdGggZD0iTTMxIDk3LjVDMzUuNyA4MC45IDQ4LjcgNzIgNjQgNzJDNzkuMyA3MiA5Mi4zIDgwLjkgOTcgOTcuNSIgZmlsbD0iI0Q5RTNGMCIvPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJhdmF0YXItZmFsbGJhY2stYmciIHgxPSIyMCIgeTE9IjE4IiB4Mj0iMTA4IiB5Mj0iMTE2IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CiAgICAgIDxzdG9wIHN0b3AtY29sb3I9IiMxRTNBNUYiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMEYxQzJEIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KPC9zdmc+'
@@ -92,17 +94,17 @@ const drawTriangleArrow = (ctx: CanvasRenderingContext2D) => {
 }
 
 const drawBidirectionalTriangleArrow = (ctx: CanvasRenderingContext2D) => {
+  ctx.fillRect(14, 29, 36, 6)
   ctx.beginPath()
   ctx.moveTo(4, 32)
-  ctx.lineTo(20, 18)
-  ctx.lineTo(20, 27)
-  ctx.lineTo(44, 27)
-  ctx.lineTo(44, 18)
-  ctx.lineTo(60, 32)
-  ctx.lineTo(44, 46)
-  ctx.lineTo(44, 37)
-  ctx.lineTo(20, 37)
-  ctx.lineTo(20, 46)
+  ctx.lineTo(16, 22)
+  ctx.lineTo(16, 42)
+  ctx.closePath()
+  ctx.fill()
+  ctx.beginPath()
+  ctx.moveTo(60, 32)
+  ctx.lineTo(48, 22)
+  ctx.lineTo(48, 42)
   ctx.closePath()
   ctx.fill()
 }
@@ -120,6 +122,7 @@ const drawChevronArrow = (ctx: CanvasRenderingContext2D) => {
 }
 
 const drawBidirectionalChevronArrow = (ctx: CanvasRenderingContext2D) => {
+  ctx.fillRect(16, 29, 32, 6)
   ctx.beginPath()
   ctx.moveTo(4, 32)
   ctx.lineTo(18, 18)
@@ -129,9 +132,6 @@ const drawBidirectionalChevronArrow = (ctx: CanvasRenderingContext2D) => {
   ctx.lineTo(18, 46)
   ctx.closePath()
   ctx.fill()
-
-  ctx.fillRect(20, 29, 24, 6)
-
   ctx.beginPath()
   ctx.moveTo(60, 32)
   ctx.lineTo(46, 18)
@@ -147,44 +147,35 @@ const getGraphArrowAtlasAssets = (): ArrowIconAtlasAssets | null => {
   if (graphArrowAtlasAssets !== null) {
     return graphArrowAtlasAssets
   }
-
   if (typeof document === 'undefined') {
     return null
   }
-
   const canvas = document.createElement('canvas')
   canvas.width = GRAPH_ARROW_ATLAS_WIDTH_PX
   canvas.height = GRAPH_ARROW_ATLAS_HEIGHT_PX
-
   const ctx = canvas.getContext('2d')
   if (ctx === null) {
     return null
   }
-
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.fillStyle = '#ffffff'
   ctx.imageSmoothingEnabled = true
-
   ctx.save()
   ctx.translate(0, 0)
   drawTriangleArrow(ctx)
   ctx.restore()
-
   ctx.save()
   ctx.translate(GRAPH_ARROW_ATLAS_CELL_PX, 0)
   drawBidirectionalTriangleArrow(ctx)
   ctx.restore()
-
   ctx.save()
   ctx.translate(GRAPH_ARROW_ATLAS_CELL_PX * 2, 0)
   drawChevronArrow(ctx)
   ctx.restore()
-
   ctx.save()
   ctx.translate(GRAPH_ARROW_ATLAS_CELL_PX * 3, 0)
   drawBidirectionalChevronArrow(ctx)
   ctx.restore()
-
   graphArrowAtlasAssets = {
     iconAtlas: canvas,
     iconMapping: {
@@ -204,8 +195,7 @@ const getGraphArrowAtlasAssets = (): ArrowIconAtlasAssets | null => {
         height: GRAPH_ARROW_ATLAS_CELL_PX,
         anchorX: GRAPH_ARROW_ATLAS_CELL_PX / 2,
         anchorY: GRAPH_ARROW_ANCHOR_Y,
-        mask: true,
-      },
+        mask: true,      },
       chevron: {
         x: GRAPH_ARROW_ATLAS_CELL_PX * 2,
         y: 0,
@@ -226,7 +216,6 @@ const getGraphArrowAtlasAssets = (): ArrowIconAtlasAssets | null => {
       },
     },
   }
-
   return graphArrowAtlasAssets
 }
 
@@ -243,10 +232,10 @@ type GraphSceneLayerProps = {
   hoverPickingEnabled: boolean
   renderConfig: RenderConfig
   onAvatarRendererDelivery?: (snapshot: ImageRendererDeliverySnapshot) => void
+  devicePerformanceProfile: string
 }
 
 const SHARED_NODE_THRESHOLD = 2
-
 const defaultProps: DefaultProps<GraphSceneLayerProps> = {
   hoveredNodePubkey: null,
   hoveredEdgeId: null,
@@ -270,15 +259,35 @@ const hexToRgba = (hex: string, alpha = 255): [number, number, number, number] =
   return [r, g, b, alpha]
 }
 
+type GraphColorEdge = {
+  relation: GraphVisualRelation
+  weight: number
+  isPriority: boolean
+  targetSharedByExpandedCount: number
+  isPathEdge?: boolean
+  source: string
+  target: string
+  id?: string
+  isBidirectional?: boolean
+}
+
+type GraphWidthEdge = {
+  relation: GraphVisualRelation
+  weight: number
+  isPathEdge?: boolean
+  id: string
+  source: string
+  target: string
+  isBidirectional?: boolean
+}
+
+const isMutualVisualEdge = (edge: {
+  relation: GraphVisualRelation
+  isBidirectional?: boolean
+}) => edge.relation === 'mutual' || edge.isBidirectional === true
+
 const getEdgeColor = (
-  edge: Pick<
-    GraphRenderEdge,
-    | 'relation'
-    | 'weight'
-    | 'isPriority'
-    | 'targetSharedByExpandedCount'
-    | 'isPathEdge'
-  > & { source: string; target: string; isBidirectional?: boolean },
+  edge: GraphColorEdge,
   maxZapWeight: number,
   hoveredNodePubkey: string | null,
   hoveredEdgeId: string | null,
@@ -298,7 +307,6 @@ const getEdgeColor = (
     if (edge.isPathEdge) {
       return isHighlighted ? [236, 253, 245, 255] as const : [52, 211, 153, 248] as const
     }
-
     return isHighlighted ? [94, 234, 212, 110] as const : [71, 85, 105, 28] as const
   }
 
@@ -309,20 +317,17 @@ const getEdgeColor = (
     ? hexToRgba(customColors.edgeColor)
     : LINK_COLOR
 
-  if (edge.isBidirectional) {
+  if (isMutualVisualEdge(edge)) {
     return isHighlighted ? mixColor(mutualColor, [255, 255, 255, 255], 0.35) : mutualColor
   }
-
   if (isHighlighted) {
     return HIGHLIGHT_LINK_COLOR
   }
-
   if (activeLayer === 'connections') {
     const baseColor =
       edge.relation === 'follow' ? regularColor : CONNECTIONS_INBOUND_COLOR
     return [baseColor[0], baseColor[1], baseColor[2], 188] as const
   }
-
   if (edge.relation === 'follow') {
     if (
       edge.isPriority ||
@@ -330,12 +335,10 @@ const getEdgeColor = (
     ) {
       return regularColor
     }
-
     const sharedAlpha = Math.max(
       0.12,
       0.35 - Math.log2(edge.targetSharedByExpandedCount) * 0.08,
     )
-
     return [
       regularColor[0],
       regularColor[1],
@@ -343,28 +346,20 @@ const getEdgeColor = (
       Math.round(sharedAlpha * 255),
     ] as const
   }
-
   if (edge.relation !== 'zap') {
     return regularColor
   }
-
   const normalizedWeight =
     maxZapWeight > 0 ? Math.max(0.18, edge.weight / maxZapWeight) : 0.18
-
   return [
     251,
-    191,
-    36,
+    191,    36,
     Math.round(Math.min(0.92, 0.24 + normalizedWeight * 0.6) * 255),
   ] as const
 }
 
 const getEdgeWidth = (
-  edge: Pick<GraphRenderEdge, 'relation' | 'weight' | 'isPathEdge'> & {
-    id: string
-    source: string
-    target: string
-  },
+  edge: GraphWidthEdge,
   maxZapWeight: number,
   hoveredNodePubkey: string | null,
   hoveredEdgeId: string | null,
@@ -383,13 +378,14 @@ const getEdgeWidth = (
     if (edge.isPathEdge) {
       return isHighlighted ? 4.4 : 3.2
     }
-
     return isHighlighted ? 1.4 : 0.85
   }
 
   let baseWidth = 1
   if (activeLayer === 'connections') {
     baseWidth = 2.2
+  } else if (isMutualVisualEdge(edge)) {
+    baseWidth = 1.6
   } else if (edge.relation !== 'zap') {
     baseWidth = 1.4
   } else {
@@ -397,7 +393,6 @@ const getEdgeWidth = (
       maxZapWeight > 0 ? Math.max(0.15, edge.weight / maxZapWeight) : 0.15
     baseWidth = 1.6 + normalizedWeight * 4.4
   }
-
   return isHighlighted ? baseWidth * 2 : baseWidth
 }
 
@@ -409,11 +404,9 @@ const getNodeFillColor = (
   if (activeLayer === 'pathfinding' && hasPathHighlight) {
     return node.fillColor ?? [100, 116, 139, 214]
   }
-
   if (node.isPathNode) {
     return node.fillColor ?? [100, 116, 139, 214]
   }
-
   if (
     node.isCommonFollow &&
     activeLayer !== 'connections' &&
@@ -425,7 +418,6 @@ const getNodeFillColor = (
   ) {
     return COMMON_FOLLOW_NODE_COLOR
   }
-
   return node.fillColor ?? [100, 116, 139, 214]
 }
 
@@ -442,7 +434,6 @@ const mixColor = (
   const inverseRatio = 1 - clampedRatio
   const leftAlpha = left[3] ?? 255
   const rightAlpha = right[3] ?? 255
-
   return [
     Math.round(left[0] * inverseRatio + right[0] * clampedRatio),
     Math.round(left[1] * inverseRatio + right[1] * clampedRatio),
@@ -479,7 +470,6 @@ const getNodeGlassFillColor = (
   const color = shouldMuteKeywordMiss(model, node)
     ? muteKeywordMissColor(frosted)
     : frosted
-
   return [
     color[0],
     color[1],
@@ -499,7 +489,6 @@ const getNodeGlassLineColor = (
   const color = shouldMuteKeywordMiss(model, node)
     ? muteKeywordMissColor(edged)
     : edged
-
   return [
     color[0],
     color[1],
@@ -521,7 +510,6 @@ const getNodeGlassHaloColor = (
   const color = shouldMuteKeywordMiss(model, node)
     ? muteKeywordMissColor(halo)
     : halo
-
   return [
     color[0],
     color[1],
@@ -543,7 +531,6 @@ const getNodeGlassHighlightColor = (
   const color = shouldMuteKeywordMiss(model, node)
     ? muteKeywordMissColor(highlight)
     : highlight
-
   return [
     color[0],
     color[1],
@@ -582,16 +569,13 @@ const getFirstDegreeNeighborPubkeys = (
   if (focusNodePubkey === null) {
     return null
   }
-
   const neighbors = new Set<string>()
-  for (const edge of edges) {
-    if (edge.source === focusNodePubkey) {
+  for (const edge of edges) {    if (edge.source === focusNodePubkey) {
       neighbors.add(edge.target)
     } else if (edge.target === focusNodePubkey) {
       neighbors.add(edge.source)
     }
   }
-
   return neighbors
 }
 
@@ -645,8 +629,10 @@ const imageHandleRecordSignatureCache = new WeakMap<
   Record<string, ImageSourceHandle>,
   string
 >()
+
 const HD_ATLAS_MAX_TEXTURE_SIZE = 4096
 const HD_ATLAS_BUCKETS = [256, 512, 1024] as const
+
 // Favor the first visible paint with a bounded burst, then fall back to the
 // steady 2-pages-per-frame atlas cadence from the manager.
 const AVATAR_ATLAS_INITIAL_BURST_PAGE_COMMITS = 4
@@ -661,11 +647,9 @@ const getGraphSceneTopologyData = (
 ): GraphSceneTopologyCacheEntry => {
   const signature = resolveGraphSceneTopologySignature(model)
   const cachedEntry = graphSceneTopologyCache.get(layerId)
-
   if (cachedEntry && cachedEntry.signature === signature) {
     return cachedEntry
   }
-
   const geometrySignature = `${signature}|${createGraphSceneGeometrySignature(model.edges)}`
   const geometry = buildGraphSceneGeometry(model.edges, geometrySignature)
   const nextEntry: GraphSceneTopologyCacheEntry = {
@@ -692,7 +676,6 @@ const getGraphSceneTopologyData = (
   }
 
   graphSceneTopologyCache.set(layerId, nextEntry)
-
   return nextEntry
 }
 
@@ -715,7 +698,6 @@ const createImageHandleRecordSignature = (
     .join('|')
 
   imageHandleRecordSignatureCache.set(imagesByPubkey, signature)
-
   return signature
 }
 
@@ -724,14 +706,12 @@ const buildAvatarNodesByIconId = (
   imagesByPubkey: Record<string, ImageSourceHandle>,
 ) => {
   const avatarNodesByIconId = new Map<string, GraphRenderNode[]>()
-
   for (const node of avatarNodes) {
     const iconId = imagesByPubkey[node.pubkey].key
     const iconNodes = avatarNodesByIconId.get(iconId) ?? []
     iconNodes.push(node)
     avatarNodesByIconId.set(iconId, iconNodes)
   }
-
   return avatarNodesByIconId
 }
 
@@ -751,8 +731,8 @@ const getGraphSceneEmphasisData = ({
     hoveredNodePubkey ?? '',
     hoveredEdgePubkeys.join(','),
   ].join('|')
-  const cachedEntry = graphSceneEmphasisCache.get(layerId)
 
+  const cachedEntry = graphSceneEmphasisCache.get(layerId)
   if (cachedEntry && cachedEntry.signature === signature) {
     return cachedEntry
   }
@@ -768,7 +748,6 @@ const getGraphSceneEmphasisData = ({
   }
 
   graphSceneEmphasisCache.set(layerId, nextEntry)
-
   return nextEntry
 }
 
@@ -784,11 +763,14 @@ const getGraphSceneImageData = ({
   const baseReadyImagesByPubkey =
     imageFrame.baseReadyImagesByPubkey ?? imageFrame.readyImagesByPubkey
   const hdReadyImagesByPubkey = imageFrame.hdReadyImagesByPubkey ?? {}
+
   const baseReadyImageSignature =
     createImageHandleRecordSignature(baseReadyImagesByPubkey)
   const hdReadyImageSignature =
     createImageHandleRecordSignature(hdReadyImagesByPubkey)
+
   const paintedAvatarPubkeysSignature = imageFrame.paintedPubkeys.join(',')
+
   const signature = [
     resolveGraphSceneTopologySignature(model),
     model.activeLayer,
@@ -796,8 +778,8 @@ const getGraphSceneImageData = ({
     baseReadyImageSignature,
     hdReadyImageSignature,
   ].join('|')
-  const cachedEntry = graphSceneImageDataCache.get(layerId)
 
+  const cachedEntry = graphSceneImageDataCache.get(layerId)
   if (cachedEntry && cachedEntry.signature === signature) {
     return cachedEntry
   }
@@ -806,18 +788,22 @@ const getGraphSceneImageData = ({
   const fallbackAvatarNodes = model.nodes.filter(
     (node) => !paintedAvatarPubkeySet.has(node.pubkey),
   )
+
   const hasKeywordMatches =
     model.activeLayer === 'keywords' &&
     model.nodes.some((node) => node.keywordHits > 0)
+
   const keywordMutedNodes = hasKeywordMatches
     ? model.nodes.filter((node) => node.keywordHits <= 0)
     : []
+
   const baseAvatarNodes = model.nodes.filter(
     (node) => baseReadyImagesByPubkey[node.pubkey] !== undefined,
   )
   const hdAvatarNodes = model.nodes.filter(
     (node) => hdReadyImagesByPubkey[node.pubkey] !== undefined,
   )
+
   const nextEntry: GraphSceneImageDataCacheEntry = {
     signature,
     paintedAvatarPubkeySet,
@@ -839,7 +825,6 @@ const getGraphSceneImageData = ({
   }
 
   graphSceneImageDataCache.set(layerId, nextEntry)
-
   return nextEntry
 }
 
@@ -863,12 +848,17 @@ const coerceIconAtlasTexture = (canvas: HTMLCanvasElement) =>
   canvas as unknown as Texture
 
 class RendererAvatarDeliveryAggregator {
-  private readonly snapshotsByPageId = new Map<string, ImageRendererDeliverySnapshot>()
+  private readonly snapshotsByPageId = new Map<
+    string,
+    ImageRendererDeliverySnapshot
+  >()
   private explicitFailedPubkeys: string[] = []
   private listener?: (snapshot: ImageRendererDeliverySnapshot) => void
   private emittedSignature = ''
 
-  public setListener(listener?: (snapshot: ImageRendererDeliverySnapshot) => void) {
+  public setListener(
+    listener?: (snapshot: ImageRendererDeliverySnapshot) => void,
+  ) {
     this.listener = listener
   }
 
@@ -1030,6 +1020,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
   public static defaultProps = defaultProps
 
   public static layerName = 'GraphSceneLayer'
+
   public renderLayers(): Layer[] {
     const {
       model,
@@ -1044,7 +1035,9 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       imageFrame,
       hoverPickingEnabled,
       onAvatarRendererDelivery,
+      devicePerformanceProfile,
     } = this.props
+
     const topologyData = getGraphSceneTopologyData(this.props.id, model)
     const { hasPathHighlight, emphasisNodes } = getGraphSceneEmphasisData({
       layerId: this.props.id,
@@ -1052,6 +1045,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       hoveredNodePubkey,
       hoveredEdgePubkeys,
     })
+
     const {
       maxZapWeight,
       sharedEmphasisNodes,
@@ -1059,12 +1053,16 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       arrowData,
     } =
       topologyData
+
     const { segments } = topologyData.geometry
+
     const nodeSizeFactor = getZoomResponsiveNodeSizeFactor({
       nodeSizeFactor: renderConfig.nodeSizeFactor ?? 1,
       zoom: viewState.zoom,
     })
+
     const viewScale = Math.max(Number.MIN_VALUE, Math.pow(2, viewState.zoom))
+
     const getScreenRadius = (pubkey: string, fallbackRadius: number) =>
       getVisibleNodeRadius({
         pubkey,
@@ -1072,6 +1070,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         nodeScreenRadii,
         nodeSizeFactor,
       })
+
     // Convert screen-pixel radius to world-space units for deck.gl 'common' sizing.
     //
     // Adaptive damping: the damping factor varies with zoom level so nodes feel
@@ -1090,22 +1089,29 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
     const DAMPING_AT_CLOSEUP = 0.25    // low damping  → larger nodes when zoomed in
     const DAMPING_TRANSITION_CENTER = 2.5  // zoom level at the midpoint of transition
     const DAMPING_TRANSITION_RATE = 1.2    // how quickly damping transitions
+
     const adaptiveDamping =
       DAMPING_AT_CLOSEUP +
       (DAMPING_AT_OVERVIEW - DAMPING_AT_CLOSEUP) /
         (1 + Math.exp((viewState.zoom - DAMPING_TRANSITION_CENTER) * DAMPING_TRANSITION_RATE))
+
     const worldDivisor = Math.pow(viewScale, adaptiveDamping)
+
     const getWorldRadius = (pubkey: string, fallbackRadius: number) =>
       getScreenRadius(pubkey, fallbackRadius) / worldDivisor
+
     const getWorldSize = (pubkey: string, fallbackRadius: number) =>
       getWorldRadius(pubkey, fallbackRadius) * 2
+
     const nodeByPubkey = new Map(model.nodes.map((node) => [node.pubkey, node]))
+
     const visibleGeometryContext: VisibleGeometryContext = {
       nodeByPubkey,
       nodeScreenRadii,
       nodeSizeFactor,
       viewState,
     }
+
     const getSegmentPositions = (
       segment: (typeof segments)[number],
     ) =>
@@ -1113,7 +1119,9 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         segment,
         context: visibleGeometryContext,
       })
+
     const focusNodePubkey = hoveredNodePubkey ?? selectedNodePubkey
+
     const focusedNeighborPubkeys = getFirstDegreeNeighborPubkeys(
       model.edges,
       focusNodePubkey,
@@ -1144,13 +1152,25 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         return [color[0], color[1], color[2], alpha]
       }
 
-      return [color[0], color[1], color[2], Math.round(alpha * 0.05)]
+      if (!renderConfig.showFocusFade) {
+        return [color[0], color[1], color[2], alpha]
+      }
+
+      // El factor original de escritorio era 0.05 (5% opacidad).
+      // En móviles subimos a 0.25 para que no desaparezca el contexto.
+      const isMobile = isMobileDevicePerformanceProfile(devicePerformanceProfile as DevicePerformanceProfile)
+      const fadeFactor = isMobile ? 0.25 : 0.05
+
+      return [color[0], color[1], color[2], Math.round(alpha * fadeFactor)]
     }
+
     const edgeThickness = renderConfig.edgeThickness ?? 1
     const arrowType = renderConfig.arrowType ?? 'none'
+
     const baseReadyImagesByPubkey =
       imageFrame.baseReadyImagesByPubkey ?? imageFrame.readyImagesByPubkey
     const hdReadyImagesByPubkey = imageFrame.hdReadyImagesByPubkey ?? {}
+
     const {
       paintedAvatarPubkeySet,
       fallbackAvatarNodes,
@@ -1175,11 +1195,14 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       maxBurstPageCommitsPerFrame: AVATAR_ATLAS_INITIAL_BURST_PAGE_COMMITS,
       burstCommitPixelBudget: AVATAR_ATLAS_INITIAL_BURST_PIXEL_BUDGET,
     })
+
     avatarAtlas.setSnapshotChangeListener(() => {
       this.setNeedsUpdate()
       this.setNeedsRedraw()
     })
+
     const avatarAtlasSnapshot = avatarAtlas.updateVisibleEntries({
+      // Base atlas entry: uses base runtime handles (probing result).
       entries: baseAvatarNodes.map((node) =>
         createAvatarAtlasEntry({
           pubkey: node.pubkey,
@@ -1187,6 +1210,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         }),
       ),
     })
+
     const avatarDeliveryAggregator = getRendererAvatarDeliveryAggregator(
       `${this.props.id}-avatars`,
     )
@@ -1194,13 +1218,16 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
     avatarDeliveryAggregator.setExplicitFailedPubkeys(
       avatarAtlasSnapshot.delivery.failedPubkeys,
     )
+
     const visibleAvatarPageIds = new Set<string>()
+
     const avatarLayers =
       avatarAtlasSnapshot.pages.length > 0
         ? avatarAtlasSnapshot.pages.map((page) => {
             const pageNodes = [...new Set(page.iconIds)].flatMap(
               (iconId) => avatarNodesByIconId.get(iconId) ?? [],
             )
+
             const pageLayerId = `${baseAvatarLayerId}-${page.key}`
             visibleAvatarPageIds.add(pageLayerId)
 
@@ -1224,7 +1251,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               updateTriggers: {
                 getSize: [nodeScreenRadii, nodeSizeFactor, viewState.zoom],
                 getIcon: [baseReadyImageSignature, page.revision, page.key],
-                getColor: [hoveredNodePubkey],
+                getColor: [hoveredNodePubkey, renderConfig.showFocusFade],
               },
             }
 
@@ -1238,6 +1265,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             })
           })
         : []
+
     const hdAtlasLayerId = `${this.props.id}-avatars-hd`
     const hdAvatarAtlas = getRendererAvatarAtlas(hdAtlasLayerId, {
       maxWidth: HD_ATLAS_MAX_TEXTURE_SIZE,
@@ -1246,10 +1274,12 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       maxBurstPageCommitsPerFrame: AVATAR_ATLAS_INITIAL_BURST_PAGE_COMMITS,
       burstCommitPixelBudget: AVATAR_ATLAS_INITIAL_BURST_PIXEL_BUDGET,
     })
+
     hdAvatarAtlas.setSnapshotChangeListener(() => {
       this.setNeedsUpdate()
       this.setNeedsRedraw()
     })
+
     const hdAvatarAtlasSnapshot = hdAvatarAtlas.updateVisibleEntries({
       // Full HD already usa variantes listas del runtime; aca solo evitamos el
       // auto-packing interno de deck.gl para no crecer una sola textura vertical
@@ -1261,12 +1291,14 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         }),
       ),
     })
+
     const hdAvatarLayers =
       hdAvatarAtlasSnapshot.pages.length > 0
         ? hdAvatarAtlasSnapshot.pages.map((page) => {
             const pageNodes = [...new Set(page.iconIds)].flatMap(
               (iconId) => hdAvatarNodesByIconId.get(iconId) ?? [],
             )
+
             const pageLayerId = `${hdAtlasLayerId}-${page.key}`
             visibleAvatarPageIds.add(pageLayerId)
 
@@ -1277,6 +1309,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               pickable: false,
               iconAtlas: coerceIconAtlasTexture(page.iconAtlas),
               iconMapping: page.iconMapping,
+
               sizeUnits: 'common',
               getPosition: (node: GraphRenderNode) => node.position,
               getSize: (node: GraphRenderNode) =>
@@ -1289,7 +1322,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               updateTriggers: {
                 getSize: [nodeScreenRadii, nodeSizeFactor, viewState.zoom],
                 getIcon: [hdReadyImageSignature, page.revision, page.key],
-                getColor: [hoveredNodePubkey, selectedNodePubkey],
+                getColor: [hoveredNodePubkey, selectedNodePubkey, renderConfig.showFocusFade],
               },
               explicitFailedPubkeys: [],
               onDeliveryDebug: (snapshot) => {
@@ -1298,6 +1331,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             })
           })
         : []
+
     avatarDeliveryAggregator.pruneVisiblePages(visibleAvatarPageIds)
 
     return [
@@ -1347,6 +1381,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             )
             color = [baseColor[0], baseColor[1], baseColor[2], fadedAlpha]
           }
+
           return applyFocusFade(color, 'edge', segment.source, segment.target)
         },
         getWidth: (segment) =>
@@ -1368,6 +1403,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             model.activeLayer,
             hasPathHighlight,
             renderConfig.edgeOpacity,
+            renderConfig.showFocusFade,
           ],
           getWidth: [
             hoveredNodePubkey,
@@ -1413,6 +1449,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
                     mutualEdgeColor: renderConfig.mutualEdgeColor ?? '',
                   },
                 )
+
                 const edgeOpacity = renderConfig.edgeOpacity ?? 1
                 const arrowColor = [
                   color[0],
@@ -1420,6 +1457,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
                   color[2],
                   Math.round(220 * edgeOpacity),
                 ] as const
+
                 return applyFocusFade(
                   arrowColor,
                   'edge',
@@ -1744,7 +1782,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         }),
         updateTriggers: {
           getSize: [nodeScreenRadii, nodeSizeFactor, viewState.zoom],
-          getColor: [hoveredNodePubkey, selectedNodePubkey],
+          getColor: [hoveredNodePubkey, selectedNodePubkey, renderConfig.showFocusFade],
         },
       }),
       ...avatarLayers,
@@ -1797,7 +1835,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         characterSet: 'auto',
         updateTriggers: {
           getPixelOffset: [nodeScreenRadii, nodeSizeFactor],
-          getColor: [hoveredNodePubkey, selectedNodePubkey],
+          getColor: [hoveredNodePubkey, selectedNodePubkey, renderConfig.showFocusFade],
           getBackgroundColor: [hoveredNodePubkey, selectedNodePubkey],
           getBorderColor: [hoveredNodePubkey, selectedNodePubkey],
         },

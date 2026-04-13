@@ -23,6 +23,13 @@ const createInitialNodeExpansionState = (): NodeExpansionState => ({
   totalSteps: null,
   startedAt: null,
   updatedAt: null,
+  runId: null,
+  enrichmentStatus: 'idle',
+  enrichmentProcessedBatches: null,
+  enrichmentTotalBatches: null,
+  enrichmentProcessedCandidates: null,
+  enrichmentTotalCandidates: null,
+  enrichmentNewInboundCount: null,
 })
 
 const createInitialNodeStructurePreviewState = (): NodeStructurePreviewState => ({
@@ -323,11 +330,23 @@ export const createGraphSlice: AppStateCreator<GraphSlice> = (set, get) => ({
     if (
       currentState.status === nextState.status &&
       currentState.message === nextState.message &&
-      currentState.phase === nextState.phase &&
-      currentState.step === nextState.step &&
-      currentState.totalSteps === nextState.totalSteps &&
-      currentState.startedAt === nextState.startedAt &&
-      currentState.updatedAt === nextState.updatedAt
+        currentState.phase === nextState.phase &&
+        currentState.step === nextState.step &&
+        currentState.totalSteps === nextState.totalSteps &&
+        currentState.startedAt === nextState.startedAt &&
+        currentState.updatedAt === nextState.updatedAt &&
+        currentState.runId === nextState.runId &&
+        currentState.enrichmentStatus === nextState.enrichmentStatus &&
+        currentState.enrichmentProcessedBatches ===
+          nextState.enrichmentProcessedBatches &&
+        currentState.enrichmentTotalBatches ===
+          nextState.enrichmentTotalBatches &&
+        currentState.enrichmentProcessedCandidates ===
+          nextState.enrichmentProcessedCandidates &&
+        currentState.enrichmentTotalCandidates ===
+          nextState.enrichmentTotalCandidates &&
+        currentState.enrichmentNewInboundCount ===
+          nextState.enrichmentNewInboundCount
     ) {
       return
     }

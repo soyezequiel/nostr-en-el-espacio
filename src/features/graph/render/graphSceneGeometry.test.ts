@@ -94,7 +94,45 @@ test('collapses reciprocal zap edges into one canonical mutual visual edge', () 
         segment.id === 'pair:a:b:mutual' &&
         segment.relation === 'mutual' &&
         segment.isBidirectional === true,
+      ),
+  )
+})
+
+test('collapses reciprocal inbound and zap edges into one canonical mutual visual edge', () => {
+  const geometry = buildGraphSceneGeometry([
+    createEdge({
+      id: 'a-b:inbound',
+      source: 'a',
+      target: 'b',
+      relation: 'inbound',
+    }),
+    createEdge({
+      id: 'b-a:zap',
+      source: 'b',
+      target: 'a',
+      relation: 'zap',
+      weight: 13,
+    }),
+  ])
+
+  assert.ok(geometry.segments.length > 0)
+  assert.ok(
+    geometry.segments.every(
+      (segment) =>
+        segment.id === 'pair:a:b:mutual' &&
+        segment.relation === 'mutual' &&
+        segment.isBidirectional === true &&
+        segment.source === 'a' &&
+        segment.target === 'b',
     ),
+  )
+  assert.equal(
+    geometry.segments.some((segment) => segment.id === 'a-b:inbound'),
+    false,
+  )
+  assert.equal(
+    geometry.segments.some((segment) => segment.id === 'b-a:zap'),
+    false,
   )
 })
 

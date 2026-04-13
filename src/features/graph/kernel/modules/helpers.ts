@@ -2,6 +2,7 @@ import type { Event, Filter } from 'nostr-tools'
 
 import type {
   AppStore,
+  DevicePerformanceProfile,
   GraphNode,
   RelayHealth,
   RelayHealthStatus as StoreRelayHealthStatus,
@@ -22,6 +23,12 @@ import {
   MAX_ZAP_RECEIPTS,
   NODE_EXPAND_INBOUND_PARSE_CONCURRENCY,
   NODE_EXPAND_INBOUND_QUERY_LIMIT,
+  NODE_EXPAND_RECIPROCAL_AUTHOR_CHUNK_SIZE,
+  NODE_EXPAND_RECIPROCAL_MAX_CANDIDATE_CAP,
+  NODE_EXPAND_RECIPROCAL_MIN_CANDIDATE_CAP,
+  NODE_EXPAND_RECIPROCAL_NODE_BUDGET_WEIGHT,
+  NODE_EXPAND_RECIPROCAL_PROFILE_CANDIDATE_CAPS,
+  NODE_EXPAND_RECIPROCAL_QUERY_CONCURRENCY,
 } from '@/features/graph/kernel/modules/constants'
 import type { RelayAdapterInstance } from '@/features/graph/kernel/modules/context'
 import type {
@@ -30,9 +37,6 @@ import type {
   ZapReceiptInput,
 } from '@/features/graph/workers/events/contracts'
 import type { WorkerClient } from '@/features/graph/workers/shared/runtime'
-
-const RECIPROCAL_AUTHOR_CHUNK_SIZE = 100
-const RECIPROCAL_QUERY_CONCURRENCY = 2
 
 export interface MergedRelayEventEnvelope {
   event: Event
@@ -62,6 +66,33 @@ export type RelayCollectionOptions = RelaySubscribeOptions & {
 export interface InboundFollowerEvidence {
   followerPubkeys: string[]
   partial: boolean
+}
+
+export interface TargetedReciprocalFollowerEvidenceProgress {
+  processedBatches: number
+  totalBatches: number
+  processedCandidates: number
+  totalCandidates: number
+  totalAvailableCandidates: number
+  capped: boolean
+}
+
+export interface TargetedReciprocalFollowerEvidenceBatch {
+  followerPubkeys: string[]
+  partial: boolean
+  progress: TargetedReciprocalFollowerEvidenceProgress
+}
+
+export interface TargetedReciprocalFollowerEvidence
+  extends InboundFollowerEvidence,
+    TargetedReciprocalFollowerEvidenceProgress {
+  hadError?: boolean
+}
+
+export interface TargetedReciprocalCandidatePlan
+  extends TargetedReciprocalFollowerEvidenceProgress {
+  candidatePubkeys: string[]
+  prioritizedCandidateCount: number
 }
 
 export type RelayOverrideValidationResult =
@@ -407,38 +438,162 @@ export function mergeInboundFollowerEvidence(
   }
 }
 
+export function resolveAdaptiveReciprocalCandidateCap(input: {
+  currentNodeCount: number
+  maxGraphNodes: number
+  effectiveGraphMaxNodes?: number
+  devicePerformanceProfile: DevicePerformanceProfile
+}): number {
+  const graphLimit = Math.max(
+    1,
+    Math.min(
+      input.maxGraphNodes,
+      input.effectiveGraphMaxNodes ?? input.maxGraphNodes,
+    ),
+  )
+  const currentNodeCount = Math.max(0, input.currentNodeCount)
+  const remainingNodeBudget = Math.max(0, graphLimit - currentNodeCount)
+  const profileCap =
+    NODE_EXPAND_RECIPROCAL_PROFILE_CANDIDATE_CAPS[input.devicePerformanceProfile]
+  const adaptiveBudget =
+    remainingNodeBudget +
+    Math.floor(currentNodeCount * NODE_EXPAND_RECIPROCAL_NODE_BUDGET_WEIGHT)
+
+  return Math.max(
+    NODE_EXPAND_RECIPROCAL_MIN_CANDIDATE_CAP,
+    Math.min(
+      profileCap,
+      NODE_EXPAND_RECIPROCAL_MAX_CANDIDATE_CAP,
+      adaptiveBudget,
+    ),
+  )
+}
+
+export function planTargetedReciprocalFollowerEvidence(input: {
+  followPubkeys: readonly string[]
+  targetPubkey: string
+  existingGraphPubkeys?: ReadonlySet<string>
+  candidateCap: number
+}): TargetedReciprocalCandidatePlan {
+  const seen = new Set<string>()
+  const prioritized: string[] = []
+  const remaining: string[] = []
+  const existingGraphPubkeys = input.existingGraphPubkeys ?? new Set<string>()
+
+  for (const rawPubkey of input.followPubkeys) {
+    const normalizedPubkey = rawPubkey.trim()
+    if (
+      normalizedPubkey.length === 0 ||
+      normalizedPubkey === input.targetPubkey ||
+      seen.has(normalizedPubkey)
+    ) {
+      continue
+    }
+
+    seen.add(normalizedPubkey)
+    if (existingGraphPubkeys.has(normalizedPubkey)) {
+      prioritized.push(normalizedPubkey)
+      continue
+    }
+
+    remaining.push(normalizedPubkey)
+  }
+
+  const orderedCandidates = [...prioritized, ...remaining]
+  const totalAvailableCandidates = orderedCandidates.length
+  const cappedCandidates = orderedCandidates.slice(
+    0,
+    Math.max(0, Math.round(input.candidateCap)),
+  )
+  const totalCandidates = cappedCandidates.length
+
+  return {
+    candidatePubkeys: cappedCandidates,
+    processedBatches: 0,
+    totalBatches: chunkIntoBatches(
+      cappedCandidates,
+      NODE_EXPAND_RECIPROCAL_AUTHOR_CHUNK_SIZE,
+    ).length,
+    processedCandidates: 0,
+    totalCandidates,
+    totalAvailableCandidates,
+    capped: totalCandidates < totalAvailableCandidates,
+    prioritizedCandidateCount: Math.min(prioritized.length, totalCandidates),
+  }
+}
+
 export async function collectTargetedReciprocalFollowerEvidence({
   adapter,
   eventsWorker,
   followPubkeys,
   targetPubkey,
+  existingGraphPubkeys,
+  candidateCap,
+  onProgress,
+  onBatchComplete,
 }: {
   adapter: RelayAdapterInstance
   eventsWorker: WorkerClient<EventsWorkerActionMap>
   followPubkeys: readonly string[]
   targetPubkey: string
-}): Promise<InboundFollowerEvidence> {
-  const candidatePubkeys = Array.from(
-    new Set(
-      followPubkeys
-        .map((pubkey) => pubkey.trim())
-        .filter((pubkey) => pubkey.length > 0 && pubkey !== targetPubkey),
-    ),
-  ).sort()
+  existingGraphPubkeys?: ReadonlySet<string>
+  candidateCap?: number
+  onProgress?: (
+    progress: TargetedReciprocalFollowerEvidenceProgress,
+  ) => void | Promise<void>
+  onBatchComplete?: (
+    batch: TargetedReciprocalFollowerEvidenceBatch,
+  ) => void | Promise<void>
+}): Promise<TargetedReciprocalFollowerEvidence> {
+  const candidatePlan = planTargetedReciprocalFollowerEvidence({
+    followPubkeys,
+    targetPubkey,
+    existingGraphPubkeys,
+    candidateCap: candidateCap ?? followPubkeys.length,
+  })
 
-  if (candidatePubkeys.length === 0) {
-    return {
-      followerPubkeys: [],
-      partial: false,
-    }
+  const reportProgress = async (
+    progress: TargetedReciprocalFollowerEvidenceProgress,
+  ) => {
+    await onProgress?.(progress)
   }
 
-  const reciprocalEnvelopes: RelayEventEnvelope[] = []
+  if (candidatePlan.totalCandidates === 0) {
+    const emptyResult: TargetedReciprocalFollowerEvidence = {
+      followerPubkeys: [],
+      partial: false,
+      processedBatches: 0,
+      totalBatches: candidatePlan.totalBatches,
+      processedCandidates: 0,
+      totalCandidates: 0,
+      totalAvailableCandidates: candidatePlan.totalAvailableCandidates,
+      capped: candidatePlan.capped,
+    }
+    await reportProgress(emptyResult)
+    return emptyResult
+  }
+
+  const followerPubkeys = new Set<string>()
   let partial = false
+  let hadError = false
+  let processedBatches = 0
+  let processedCandidates = 0
+
+  await reportProgress({
+    processedBatches,
+    totalBatches: candidatePlan.totalBatches,
+    processedCandidates,
+    totalCandidates: candidatePlan.totalCandidates,
+    totalAvailableCandidates: candidatePlan.totalAvailableCandidates,
+    capped: candidatePlan.capped,
+  })
 
   await runWithConcurrencyLimit(
-    chunkIntoBatches(candidatePubkeys, RECIPROCAL_AUTHOR_CHUNK_SIZE),
-    RECIPROCAL_QUERY_CONCURRENCY,
+    chunkIntoBatches(
+      candidatePlan.candidatePubkeys,
+      NODE_EXPAND_RECIPROCAL_AUTHOR_CHUNK_SIZE,
+    ),
+    NODE_EXPAND_RECIPROCAL_QUERY_CONCURRENCY,
     async (authorPubkeys) => {
       const result = await collectRelayEvents(adapter, [
         {
@@ -451,21 +606,49 @@ export async function collectTargetedReciprocalFollowerEvidence({
           ),
         } satisfies Filter & { '#p': string[] },
       ])
+      const parsedEvidence = await collectInboundFollowerEvidence(
+        eventsWorker,
+        selectLatestReplaceableEventsByPubkey(result.events),
+        targetPubkey,
+      )
 
-      reciprocalEnvelopes.push(...result.events)
-      partial = partial || result.error !== null
+      for (const pubkey of parsedEvidence.followerPubkeys) {
+        followerPubkeys.add(pubkey)
+      }
+
+      hadError = hadError || result.error !== null
+      partial = partial || result.error !== null || parsedEvidence.partial
+      processedBatches += 1
+      processedCandidates += authorPubkeys.length
+
+      const progress: TargetedReciprocalFollowerEvidenceProgress = {
+        processedBatches,
+        totalBatches: candidatePlan.totalBatches,
+        processedCandidates,
+        totalCandidates: candidatePlan.totalCandidates,
+        totalAvailableCandidates: candidatePlan.totalAvailableCandidates,
+        capped: candidatePlan.capped,
+      }
+
+      await reportProgress(progress)
+      await onBatchComplete?.({
+        followerPubkeys: parsedEvidence.followerPubkeys,
+        partial: result.error !== null || parsedEvidence.partial,
+        progress,
+      })
     },
   )
 
-  const parsedEvidence = await collectInboundFollowerEvidence(
-    eventsWorker,
-    selectLatestReplaceableEventsByPubkey(reciprocalEnvelopes),
-    targetPubkey,
-  )
-
   return {
-    followerPubkeys: parsedEvidence.followerPubkeys,
-    partial: partial || parsedEvidence.partial,
+    followerPubkeys: Array.from(followerPubkeys).sort(),
+    partial,
+    processedBatches,
+    totalBatches: candidatePlan.totalBatches,
+    processedCandidates,
+    totalCandidates: candidatePlan.totalCandidates,
+    totalAvailableCandidates: candidatePlan.totalAvailableCandidates,
+    capped: candidatePlan.capped,
+    hadError,
   }
 }
 

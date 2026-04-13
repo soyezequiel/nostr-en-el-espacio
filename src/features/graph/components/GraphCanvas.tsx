@@ -247,10 +247,17 @@ const formatNodeExpansionPhaseLabel = (phase: NodeExpansionState['phase']) => {
       return 'correlacionando evidencia'
     case 'merging':
       return 'actualizando grafo'
+    case 'enriching-reciprocity':
+      return 'enriqueciendo reciprocidad'
     case 'idle':
       return 'esperando'
   }
 }
+
+const isNodeExpansionActivelyStreaming = (expansionState: NodeExpansionState) =>
+  expansionState.status === 'loading' ||
+  (expansionState.phase === 'enriching-reciprocity' &&
+    expansionState.enrichmentStatus === 'loading')
 
 const equalStringLists = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&
@@ -2233,7 +2240,9 @@ export const GraphCanvas = memo(function GraphCanvas({
   const activeNodeExpansions = useMemo<ActiveNodeExpansion[]>(
     () =>
       Object.entries(nodeExpansionStates)
-        .filter(([, expansionState]) => expansionState.status === 'loading')
+        .filter(([, expansionState]) =>
+          isNodeExpansionActivelyStreaming(expansionState),
+        )
         .sort(
           ([, left], [, right]) =>
             (right.startedAt ?? right.updatedAt ?? 0) -
@@ -2308,6 +2317,43 @@ export const GraphCanvas = memo(function GraphCanvas({
     [inboundLinks, rootNodePubkey],
   )
   const progressMetrics = useMemo<ProgressMetric[]>(() => {
+    const enrichmentProcessedCandidates =
+      primaryActiveExpansion?.state.enrichmentProcessedCandidates ?? null
+    const enrichmentTotalCandidates =
+      primaryActiveExpansion?.state.enrichmentTotalCandidates ?? null
+    const primaryExpansionReciprocityMetric =
+      primaryActiveExpansion?.state.phase === 'enriching-reciprocity' &&
+      enrichmentTotalCandidates !== null &&
+      enrichmentProcessedCandidates !== null
+        ? {
+            id: `node-expansion-reciprocity:${primaryActiveExpansion.pubkey}`,
+            label: 'Reciprocidad',
+            summary: `${enrichmentProcessedCandidates}/${enrichmentTotalCandidates} candidatos`,
+            detail: [
+              primaryActiveExpansion.state.enrichmentProcessedBatches !== null &&
+              primaryActiveExpansion.state.enrichmentTotalBatches !== null
+                ? `${primaryActiveExpansion.state.enrichmentProcessedBatches}/${primaryActiveExpansion.state.enrichmentTotalBatches} batches`
+                : null,
+              primaryActiveExpansion.state.enrichmentNewInboundCount !== null
+                ? `+${primaryActiveExpansion.state.enrichmentNewInboundCount} inbound`
+                : null,
+              primaryActiveExpansion.state.message,
+            ]
+              .filter(Boolean)
+              .join(' / '),
+            tone: 'inbound' as const,
+            determinate: true,
+            current: enrichmentProcessedCandidates,
+            total: enrichmentTotalCandidates,
+            value:
+              enrichmentTotalCandidates === 0
+                ? 1
+                : clampProgressValue(
+                    enrichmentProcessedCandidates /
+                      Math.max(1, enrichmentTotalCandidates),
+                  ),
+          }
+        : null
     const hasRoot = rootNodePubkey !== null
     const followingProgress: RootCollectionProgress = rootVisibleLinkProgress?.following ?? {
       status:
@@ -2444,8 +2490,11 @@ export const GraphCanvas = memo(function GraphCanvas({
           : null,
     }
 
-    return [followingMetric, followersMetric, imageMetric]
+    return primaryExpansionReciprocityMetric
+      ? [primaryExpansionReciprocityMetric, followingMetric, followersMetric, imageMetric]
+      : [followingMetric, followersMetric, imageMetric]
   }, [
+    primaryActiveExpansion,
     imageDiagnosticsSnapshot,
     rootFollowCount,
     rootInboundCount,
@@ -2574,9 +2623,26 @@ export const GraphCanvas = memo(function GraphCanvas({
                 : 'Esperando root'
   const streamMeta = primaryActiveExpansion
     ? [
-        `Paso ${primaryActiveExpansion.state.step ?? '-'} de ${
-          primaryActiveExpansion.state.totalSteps ?? '-'
-        }`,
+        primaryActiveExpansion.state.phase === 'enriching-reciprocity' &&
+        primaryActiveExpansion.state.enrichmentProcessedBatches !== null &&
+        primaryActiveExpansion.state.enrichmentTotalBatches !== null
+          ? `Batches ${primaryActiveExpansion.state.enrichmentProcessedBatches}/${
+              primaryActiveExpansion.state.enrichmentTotalBatches
+            }`
+          : `Paso ${primaryActiveExpansion.state.step ?? '-'} de ${
+              primaryActiveExpansion.state.totalSteps ?? '-'
+            }`,
+        primaryActiveExpansion.state.phase === 'enriching-reciprocity' &&
+        primaryActiveExpansion.state.enrichmentProcessedCandidates !== null &&
+        primaryActiveExpansion.state.enrichmentTotalCandidates !== null
+          ? `Candidatos ${
+              primaryActiveExpansion.state.enrichmentProcessedCandidates
+            }/${primaryActiveExpansion.state.enrichmentTotalCandidates}`
+          : null,
+        primaryActiveExpansion.state.phase === 'enriching-reciprocity' &&
+        primaryActiveExpansion.state.enrichmentNewInboundCount !== null
+          ? `+${primaryActiveExpansion.state.enrichmentNewInboundCount} inbound`
+          : null,
         activeNodeExpansions.length > 1
           ? `+${activeNodeExpansions.length - 1} expansiones`
           : null,

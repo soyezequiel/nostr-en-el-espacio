@@ -188,6 +188,15 @@ export type NodeExpansionPhase =
   | 'fetching-structure'
   | 'correlating-followers'
   | 'merging'
+  | 'enriching-reciprocity'
+
+export type NodeExpansionEnrichmentStatus =
+  | 'idle'
+  | 'loading'
+  | 'ready'
+  | 'partial'
+  | 'capped'
+  | 'error'
 
 export interface NodeExpansionState {
   status: NodeExpansionStatus
@@ -197,6 +206,13 @@ export interface NodeExpansionState {
   totalSteps: number | null
   startedAt: number | null
   updatedAt: number | null
+  runId?: string | null
+  enrichmentStatus?: NodeExpansionEnrichmentStatus | null
+  enrichmentProcessedBatches?: number | null
+  enrichmentTotalBatches?: number | null
+  enrichmentProcessedCandidates?: number | null
+  enrichmentTotalCandidates?: number | null
+  enrichmentNewInboundCount?: number | null
 }
 
 export interface NodeStructurePreviewState {

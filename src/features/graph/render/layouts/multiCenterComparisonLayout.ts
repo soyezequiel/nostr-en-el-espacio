@@ -150,9 +150,24 @@ const selectComparisonAnchors = ({
     }
   }
   if (explicitAnchors.length === 1) {
+    const explicitAnchor = explicitAnchors[0]
+    const supplementalAnchors = Array.from(
+      new Set([
+        ...comparisonAnchorOrder.filter(
+          (pubkey) =>
+            pubkey !== rootNodePubkey &&
+            pubkey !== explicitAnchor &&
+            expandedNodePubkeys.has(pubkey),
+        ),
+        ...expandedOrdered.filter((pubkey) => pubkey !== explicitAnchor),
+      ]),
+    ).slice(0, Math.max(0, nonRootAnchorBudget - 1))
+
     return {
       activeAnchorPubkeys:
-        rootNodePubkey !== null ? [rootNodePubkey, explicitAnchors[0]] : explicitAnchors,
+        rootNodePubkey !== null
+          ? [rootNodePubkey, explicitAnchor, ...supplementalAnchors]
+          : [explicitAnchor, ...supplementalAnchors],
       overflowAnchorPubkeys: [],
     }
   }
@@ -547,6 +562,198 @@ const buildTwoAnchorPartitionPositions = ({
   return positions
 }
 
+const buildThreeAnchorPartitionPositions = ({
+  visiblePubkeys,
+  memberships,
+  activeAnchorPubkeys,
+  anchorSlots,
+}: {
+  visiblePubkeys: ReadonlySet<string>
+  memberships: Map<string, ComparisonMembership>
+  activeAnchorPubkeys: readonly string[]
+  anchorSlots: ReadonlyMap<string, GraphComparisonAnchorSlot>
+}) => {
+  const positions = new Map<string, [number, number]>()
+  const [leftAnchorPubkey, centerAnchorPubkey, rightAnchorPubkey] =
+    activeAnchorPubkeys
+  const leftAnchorPosition =
+    anchorSlots.get(leftAnchorPubkey)?.position ?? [-300, ANCHOR_TARGET_Y]
+  const centerAnchorPosition =
+    anchorSlots.get(centerAnchorPubkey)?.position ?? [0, ANCHOR_TARGET_Y]
+  const rightAnchorPosition =
+    anchorSlots.get(rightAnchorPubkey)?.position ?? [300, ANCHOR_TARGET_Y]
+
+  positions.set(leftAnchorPubkey, leftAnchorPosition)
+  positions.set(centerAnchorPubkey, centerAnchorPosition)
+  positions.set(rightAnchorPubkey, rightAnchorPosition)
+
+  const buckets = {
+    leftExclusive: [] as string[],
+    centerExclusive: [] as string[],
+    rightExclusive: [] as string[],
+    leftCenterPair: [] as string[],
+    leftRightPair: [] as string[],
+    centerRightPair: [] as string[],
+    allShared: [] as string[],
+    context: [] as string[],
+  }
+
+  const threeAnchorSet = new Set(activeAnchorPubkeys)
+
+  Array.from(visiblePubkeys)
+    .filter((pubkey) => !threeAnchorSet.has(pubkey))
+    .sort()
+    .forEach((pubkey) => {
+      const membership = memberships.get(pubkey)
+      const owners = membership?.ownerAnchorPubkeys ?? []
+      const signature = owners.join('|')
+
+      if (owners.length === 0) {
+        buckets.context.push(pubkey)
+        return
+      }
+
+      if (owners.length === 3) {
+        buckets.allShared.push(pubkey)
+        return
+      }
+
+      if (owners.length === 2) {
+        if (signature === [leftAnchorPubkey, centerAnchorPubkey].sort().join('|')) {
+          buckets.leftCenterPair.push(pubkey)
+          return
+        }
+        if (signature === [leftAnchorPubkey, rightAnchorPubkey].sort().join('|')) {
+          buckets.leftRightPair.push(pubkey)
+          return
+        }
+        buckets.centerRightPair.push(pubkey)
+        return
+      }
+
+      if (owners[0] === leftAnchorPubkey) {
+        buckets.leftExclusive.push(pubkey)
+        return
+      }
+      if (owners[0] === centerAnchorPubkey) {
+        buckets.centerExclusive.push(pubkey)
+        return
+      }
+      buckets.rightExclusive.push(pubkey)
+    })
+
+  buckets.leftExclusive.forEach((pubkey, index) => {
+    const position = getBucketGridPosition({
+      pubkey,
+      index,
+      centerX: leftAnchorPosition[0] - 104,
+      startY: leftAnchorPosition[1] + 132,
+      columns: 4,
+      columnSpacing: 54,
+      rowSpacing: 54,
+    })
+    positions.set(pubkey, [position.x, position.y])
+  })
+
+  buckets.centerExclusive.forEach((pubkey, index) => {
+    const position = getBucketGridPosition({
+      pubkey,
+      index,
+      centerX: centerAnchorPosition[0],
+      startY: centerAnchorPosition[1] + 190,
+      columns: 4,
+      columnSpacing: 54,
+      rowSpacing: 54,
+    })
+    positions.set(pubkey, [position.x, position.y])
+  })
+
+  buckets.rightExclusive.forEach((pubkey, index) => {
+    const position = getBucketGridPosition({
+      pubkey,
+      index,
+      centerX: rightAnchorPosition[0] + 104,
+      startY: rightAnchorPosition[1] + 132,
+      columns: 4,
+      columnSpacing: 54,
+      rowSpacing: 54,
+    })
+    positions.set(pubkey, [position.x, position.y])
+  })
+
+  buckets.leftCenterPair.forEach((pubkey, index) => {
+    const position = getBucketGridPosition({
+      pubkey,
+      index,
+      centerX: (leftAnchorPosition[0] + centerAnchorPosition[0]) / 2,
+      startY: Math.min(leftAnchorPosition[1], centerAnchorPosition[1]) + 76,
+      columns: 3,
+      columnSpacing: 48,
+      rowSpacing: 48,
+      rowJitter: 10,
+    })
+    positions.set(pubkey, [position.x, position.y])
+  })
+
+  buckets.leftRightPair.forEach((pubkey, index) => {
+    const position = getBucketGridPosition({
+      pubkey,
+      index,
+      centerX: (leftAnchorPosition[0] + rightAnchorPosition[0]) / 2,
+      startY: Math.min(leftAnchorPosition[1], rightAnchorPosition[1]) + 124,
+      columns: 4,
+      columnSpacing: 48,
+      rowSpacing: 48,
+      rowJitter: 10,
+    })
+    positions.set(pubkey, [position.x, position.y])
+  })
+
+  buckets.centerRightPair.forEach((pubkey, index) => {
+    const position = getBucketGridPosition({
+      pubkey,
+      index,
+      centerX: (centerAnchorPosition[0] + rightAnchorPosition[0]) / 2,
+      startY: Math.min(centerAnchorPosition[1], rightAnchorPosition[1]) + 76,
+      columns: 3,
+      columnSpacing: 48,
+      rowSpacing: 48,
+      rowJitter: 10,
+    })
+    positions.set(pubkey, [position.x, position.y])
+  })
+
+  buckets.allShared.forEach((pubkey, index) => {
+    const position = getBucketGridPosition({
+      pubkey,
+      index,
+      centerX: centerAnchorPosition[0],
+      startY: centerAnchorPosition[1] + 56,
+      columns: 3,
+      columnSpacing: 46,
+      rowSpacing: 44,
+      rowJitter: 8,
+    })
+    positions.set(pubkey, [position.x, position.y])
+  })
+
+  buckets.context.forEach((pubkey, index) => {
+    const position = getBucketGridPosition({
+      pubkey,
+      index,
+      centerX: centerAnchorPosition[0],
+      startY: Math.max(leftAnchorPosition[1], rightAnchorPosition[1]) + 288,
+      columns: 6,
+      columnSpacing: 44,
+      rowSpacing: 40,
+      rowJitter: 8,
+    })
+    positions.set(pubkey, [position.x, position.y])
+  })
+
+  return positions
+}
+
 const buildSeedPositions = ({
   nodes,
   visiblePubkeys,
@@ -923,6 +1130,43 @@ export const runMultiCenterComparisonLayout = ({
 
   if (activeAnchorPubkeys.length === 2) {
     const positions = buildTwoAnchorPartitionPositions({
+      visiblePubkeys,
+      memberships,
+      activeAnchorPubkeys,
+      anchorSlots,
+    })
+
+    return {
+      activeAnchorPubkeys,
+      overflowAnchorPubkeys,
+      memberships,
+      positions,
+      snapshot: {
+        mode: 'multi-center-comparison',
+        comparison: {
+          mode: 'multi-center-comparison',
+          activeAnchorPubkeys: [...activeAnchorPubkeys],
+          comparisonAnchorOrder: [...comparisonAnchorOrder],
+          overflowAnchorPubkeys: [...overflowAnchorPubkeys],
+          membershipSignatureByPubkey: Object.fromEntries(
+            Array.from(memberships.entries()).map(([pubkey, membership]) => [
+              pubkey,
+              membership.membershipSignature,
+            ]),
+          ),
+          anchorSlots: Object.fromEntries(
+            Array.from(anchorSlots.entries()).map(([pubkey, slot]) => [
+              pubkey,
+              slot,
+            ]),
+          ),
+        },
+      },
+    }
+  }
+
+  if (activeAnchorPubkeys.length === 3) {
+    const positions = buildThreeAnchorPartitionPositions({
       visiblePubkeys,
       memberships,
       activeAnchorPubkeys,

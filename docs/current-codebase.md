@@ -319,6 +319,8 @@ Piezas clave del pipeline de comparacion:
 - cuando el root expande otro nodo, `buildGraphRenderModel.ts` mantiene explicitos los exclusivos del root, los exclusivos del nodo expandido y sus intersecciones compartidas en lugar de colapsar el root como contexto secundario
 - en compare mode con 2+ anchors, los nodos descubiertos/cargados que no pertenecen al subgrafo comparado vuelven como aggregate secundario (`compare-secondary-context`) que se puede expandir sin reintroducir el ruido completo del grafo
 - en el caso principal de 2 anchors (`root + expandido`), el layout ya no aplica el recorte `maxTargetsPerSignature` por bucket; solo conserva el cap total de targets comparativos para no achicar artificialmente los exclusivos del root o del anchor expandido
+- si ya existe un solo anchor de comparacion explicito y se expande otro nodo, `multiCenterComparisonLayout.ts` completa automaticamente el segundo anchor con el expandido mas reciente para facilitar el paso de `root + B` a `root + B + C`
+- con exactamente 3 anchors activos, `multiCenterComparisonLayout.ts` ya no cae en el solver generico: usa regiones deterministicas separadas para exclusivos, intersecciones de a 2 e interseccion total antes de cualquier refinamiento
 - `GraphSceneLayer.ts` y `labels.ts` mantienen anchors visibles, enfatizan nodos shared segun su firma de pertenencia y evitan que el focus-fade apague nodos explicitos del subgrafo comparativo
 
 ### Workers

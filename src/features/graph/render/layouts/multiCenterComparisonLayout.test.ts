@@ -148,6 +148,23 @@ test('activates a bridge layout for a single active anchor instead of falling ba
   )
 })
 
+test('fills a second expanded anchor when only one explicit compare anchor is set', () => {
+  const result = runMultiCenterComparisonLayout(
+    createLayoutInput({
+      comparedNodePubkeys: new Set(['anchor-a']),
+      activeComparisonAnchorPubkeys: ['anchor-a'],
+      comparisonAnchorOrder: ['anchor-a', 'anchor-b'],
+    }),
+  )
+
+  assert.ok(result)
+  assert.deepEqual(result.activeAnchorPubkeys, ['root', 'anchor-a', 'anchor-b'])
+  assert.deepEqual(
+    result.snapshot.comparison?.activeAnchorPubkeys,
+    ['root', 'anchor-a', 'anchor-b'],
+  )
+})
+
 test('caps explicit active anchors and records overflow deterministically', () => {
   const result = runMultiCenterComparisonLayout(
     createLayoutInput({
@@ -213,4 +230,56 @@ test('does not cap two-anchor exclusive buckets by maxTargetsPerSignature', () =
   ).length
 
   assert.ok(rootExclusiveCount >= 3)
+})
+
+test('partitions three-anchor subsets into stable semantic regions', () => {
+  const input = createLayoutInput()
+
+  input.nodes['exclusive-root'] = createNode('exclusive-root', { discoveredAt: 20 })
+  input.nodes['shared-root-a'] = createNode('shared-root-a', { discoveredAt: 21 })
+  input.nodes['shared-root-b'] = createNode('shared-root-b', { discoveredAt: 22 })
+  input.nodes['shared-all'] = createNode('shared-all', { discoveredAt: 23 })
+  input.visiblePubkeys.add('exclusive-root')
+  input.visiblePubkeys.add('shared-root-a')
+  input.visiblePubkeys.add('shared-root-b')
+  input.visiblePubkeys.add('shared-all')
+  input.links.push(
+    { source: 'root', target: 'exclusive-root', relation: 'follow' },
+    { source: 'root', target: 'shared-root-a', relation: 'follow' },
+    { source: 'anchor-a', target: 'shared-root-a', relation: 'follow' },
+    { source: 'root', target: 'shared-root-b', relation: 'follow' },
+    { source: 'anchor-b', target: 'shared-root-b', relation: 'follow' },
+    { source: 'root', target: 'shared-all', relation: 'follow' },
+    { source: 'anchor-a', target: 'shared-all', relation: 'follow' },
+    { source: 'anchor-b', target: 'shared-all', relation: 'follow' },
+  )
+  input.radiiByPubkey.set('exclusive-root', 12)
+  input.radiiByPubkey.set('shared-root-a', 12)
+  input.radiiByPubkey.set('shared-root-b', 12)
+  input.radiiByPubkey.set('shared-all', 12)
+
+  const result = runMultiCenterComparisonLayout(input)
+
+  assert.ok(result)
+  assert.deepEqual(result.activeAnchorPubkeys, ['root', 'anchor-a', 'anchor-b'])
+
+  const rootPosition = result.positions.get('root')!
+  const anchorAPosition = result.positions.get('anchor-a')!
+  const anchorBPosition = result.positions.get('anchor-b')!
+  const rootExclusivePosition = result.positions.get('exclusive-root')!
+  const rootAnchorAPairPosition = result.positions.get('shared-root-a')!
+  const rootAnchorBPairPosition = result.positions.get('shared-root-b')!
+  const allSharedPosition = result.positions.get('shared-all')!
+
+  assert.ok(rootPosition[0] < anchorAPosition[0])
+  assert.ok(anchorAPosition[0] < anchorBPosition[0])
+
+  assert.ok(rootExclusivePosition[0] < rootAnchorAPairPosition[0])
+  assert.ok(rootAnchorAPairPosition[0] < anchorAPosition[0])
+  assert.ok(rootAnchorAPairPosition[0] < allSharedPosition[0])
+  assert.ok(allSharedPosition[0] < rootAnchorBPairPosition[0])
+  assert.ok(rootAnchorBPairPosition[0] < anchorBPosition[0])
+
+  assert.ok(allSharedPosition[1] < rootAnchorBPairPosition[1])
+  assert.ok(allSharedPosition[1] < rootExclusivePosition[1])
 })

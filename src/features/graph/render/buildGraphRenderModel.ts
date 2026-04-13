@@ -88,6 +88,8 @@ const EMPTY_GRAPH_ANALYSIS: DiscoveredGraphAnalysisState = {
 }
 const AUTO_SIZE_DISTANCE_CLAMP_RATIO = 1.5
 const AUTO_SIZE_MIN_CELL_SIZE = 32
+const COMPARE_SIGNATURE_AGGREGATE_MIN_ANCHORS = 4
+const COMPARE_SIGNATURE_EXPLICIT_NODE_LIMIT = 8
 
 const blendChannel = (left: number, right: number, ratio: number) =>
   Math.round(left * (1 - ratio) + right * ratio)
@@ -1745,12 +1747,13 @@ export const buildGraphRenderModel = async ({
     comparedArray.length >= 2
       ? `aggregate:compare-secondary-context:${comparedArray.join('|')}`
       : null
+  let compareSyntheticEdges: GraphRenderEdge[] = []
   const displayedNodes =
     resolvedLayoutMode === 'multi-center-comparison' &&
     activeLayer === 'graph' &&
     comparedArray.length >= 2
       ? (() => {
-          const primaryCompareNodes = displayedNodesBase.filter(
+          const basePrimaryCompareNodes = displayedNodesBase.filter(
             (node) =>
               node.isRoot ||
               node.layoutRole === 'anchor' ||
@@ -1759,8 +1762,124 @@ export const buildGraphRenderModel = async ({
               node.pubkey === selectedNodePubkey,
           )
           const primaryCompareNodePubkeys = new Set(
-            primaryCompareNodes.map((node) => node.pubkey),
+            basePrimaryCompareNodes.map((node) => node.pubkey),
           )
+          let primaryCompareNodes = basePrimaryCompareNodes
+
+          if (comparedArray.length >= COMPARE_SIGNATURE_AGGREGATE_MIN_ANCHORS) {
+            const nextPrimaryCompareNodes: GraphRenderNode[] = []
+            const compareBuckets = new Map<string, GraphRenderNode[]>()
+
+            for (const node of basePrimaryCompareNodes) {
+              if (
+                node.isRoot ||
+                node.layoutRole === 'anchor' ||
+                node.ownerAnchorPubkeys.length === 0
+              ) {
+                nextPrimaryCompareNodes.push(node)
+                continue
+              }
+
+              const bucket = compareBuckets.get(node.membershipSignature) ?? []
+              bucket.push(node)
+              compareBuckets.set(node.membershipSignature, bucket)
+            }
+
+            Array.from(compareBuckets.entries())
+              .sort(([leftSignature], [rightSignature]) =>
+                leftSignature.localeCompare(rightSignature),
+              )
+              .forEach(([signature, bucket]) => {
+                const aggregateId = `aggregate:compare-signature:${signature}`
+                const isExpanded = expandedAggregateNodeIds.includes(aggregateId)
+                const sortedBucket = [...bucket].sort((left, right) => {
+                  if (left.pubkey === selectedNodePubkey) {
+                    return -1
+                  }
+                  if (right.pubkey === selectedNodePubkey) {
+                    return 1
+                  }
+                  const leftDiscoveredAt =
+                    left.discoveredAt ?? Number.MAX_SAFE_INTEGER
+                  const rightDiscoveredAt =
+                    right.discoveredAt ?? Number.MAX_SAFE_INTEGER
+
+                  if (leftDiscoveredAt !== rightDiscoveredAt) {
+                    return leftDiscoveredAt - rightDiscoveredAt
+                  }
+
+                  return left.pubkey.localeCompare(right.pubkey)
+                })
+
+                if (
+                  isExpanded ||
+                  sortedBucket.length <= COMPARE_SIGNATURE_EXPLICIT_NODE_LIMIT
+                ) {
+                  nextPrimaryCompareNodes.push(...sortedBucket)
+                  return
+                }
+
+                const explicitNodes = sortedBucket.slice(
+                  0,
+                  COMPARE_SIGNATURE_EXPLICIT_NODE_LIMIT,
+                )
+                const hiddenNodes = sortedBucket.slice(
+                  COMPARE_SIGNATURE_EXPLICIT_NODE_LIMIT,
+                )
+                const hiddenCentroid = hiddenNodes.reduce(
+                  (accumulator, node) => {
+                    accumulator.x += node.position[0]
+                    accumulator.y += node.position[1]
+                    return accumulator
+                  },
+                  { x: 0, y: 0 },
+                )
+                const aggregateX = hiddenCentroid.x / hiddenNodes.length
+                const aggregateY = hiddenCentroid.y / hiddenNodes.length
+                const templateNode = sortedBucket[0]
+
+                nextPrimaryCompareNodes.push(...explicitNodes)
+                nextPrimaryCompareNodes.push({
+                  ...templateNode,
+                  id: aggregateId,
+                  pubkey: aggregateId,
+                  displayLabel: `+${hiddenNodes.length}`,
+                  pictureUrl: null,
+                  position: [aggregateX, aggregateY],
+                  radius: Math.max(18, templateNode.radius + 2),
+                  comparisonContextRole: 'compare-signature-aggregate',
+                  isAggregate: true,
+                  aggregateCount: hiddenNodes.length,
+                  membershipSignature: `aggregate:${signature}`,
+                })
+
+                templateNode.ownerAnchorPubkeys.forEach((ownerPubkey) => {
+                  const ownerNode = nodeByPubkey.get(ownerPubkey)
+                  if (!ownerNode) {
+                    return
+                  }
+
+                  compareSyntheticEdges.push({
+                    id: `${ownerPubkey}->${aggregateId}:follow`,
+                    source: ownerPubkey,
+                    target: aggregateId,
+                    relation: 'follow',
+                    weight: 0,
+                    sourcePosition: ownerNode.position,
+                    targetPosition: [aggregateX, aggregateY],
+                    sourceRadius: ownerNode.radius,
+                    targetRadius: Math.max(18, templateNode.radius + 2),
+                    isPriority: true,
+                    targetSharedByExpandedCount: templateNode.sharedByExpandedCount,
+                    comparisonRole: 'compare-signature-aggregate',
+                    isSynthetic: true,
+                  })
+                })
+              })
+
+            primaryCompareNodes = nextPrimaryCompareNodes
+          }
+
           const primaryBounds = resolveGraphBounds(primaryCompareNodes)
           const discoveredSecondaryContextNodes = Object.values(nodes)
             .filter((node) => !primaryCompareNodePubkeys.has(node.pubkey))
@@ -1896,11 +2015,18 @@ export const buildGraphRenderModel = async ({
         })()
       : displayedNodesBase
   const displayedNodePubkeySet = new Set(displayedNodes.map((node) => node.pubkey))
-  const edges = thinnedEdges.filter(
-    (edge) =>
-      displayedNodePubkeySet.has(edge.source) &&
-      displayedNodePubkeySet.has(edge.target),
-  )
+  const edges = [
+    ...thinnedEdges.filter(
+      (edge) =>
+        displayedNodePubkeySet.has(edge.source) &&
+        displayedNodePubkeySet.has(edge.target),
+    ),
+    ...compareSyntheticEdges.filter(
+      (edge) =>
+        displayedNodePubkeySet.has(edge.source) &&
+        displayedNodePubkeySet.has(edge.target),
+    ),
+  ]
   const labelsSuppressedByBudget = renderNodes.length > GRAPH_LABEL_NODE_BUDGET
   const degradedReasons = [
     ...(edgesThinned ? (['edge-thinning'] as const) : []),

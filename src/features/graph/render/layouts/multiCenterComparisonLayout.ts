@@ -229,7 +229,7 @@ const buildComparisonMemberships = ({
 }) => {
   const activeAnchorSet = new Set(activeAnchorPubkeys)
   const effectiveMaxTargetsPerSignature =
-    activeAnchorPubkeys.length === 2
+    activeAnchorPubkeys.length <= 3
       ? maxComparisonTargets
       : maxTargetsPerSignature
   const ownerAnchorsByPubkey = new Map<string, Set<string>>()
@@ -754,6 +754,180 @@ const buildThreeAnchorPartitionPositions = ({
   return positions
 }
 
+const getSharedTierStartY = ({
+  anchorCount,
+  sharedCount,
+}: {
+  anchorCount: number
+  sharedCount: number
+}) => {
+  if (sharedCount <= 0) {
+    return ANCHOR_TARGET_Y + 308
+  }
+
+  if (sharedCount === 1) {
+    return ANCHOR_TARGET_Y + 156
+  }
+
+  if (sharedCount >= anchorCount) {
+    return ANCHOR_TARGET_Y + 44
+  }
+
+  const progress =
+    (sharedCount - 2) / Math.max(1, anchorCount - 2)
+
+  return ANCHOR_TARGET_Y + 108 - progress * 52
+}
+
+const buildMultiAnchorSignaturePositions = ({
+  nodes,
+  visiblePubkeys,
+  memberships,
+  activeAnchorPubkeys,
+  anchorSlots,
+}: {
+  nodes: BuildGraphRenderModelInput['nodes']
+  visiblePubkeys: ReadonlySet<string>
+  memberships: Map<string, ComparisonMembership>
+  activeAnchorPubkeys: readonly string[]
+  anchorSlots: ReadonlyMap<string, GraphComparisonAnchorSlot>
+}) => {
+  const positions = new Map<string, [number, number]>()
+
+  activeAnchorPubkeys.forEach((pubkey) => {
+    const anchorPosition =
+      anchorSlots.get(pubkey)?.position ?? [0, ANCHOR_TARGET_Y]
+    positions.set(pubkey, anchorPosition)
+  })
+
+  const activeAnchorSet = new Set(activeAnchorPubkeys)
+  const signatureBuckets = new Map<string, string[]>()
+  const contextPubkeys: string[] = []
+
+  Array.from(visiblePubkeys)
+    .filter((pubkey) => !activeAnchorSet.has(pubkey))
+    .sort((leftPubkey, rightPubkey) =>
+      compareNodesForBudget(nodes[leftPubkey], nodes[rightPubkey]),
+    )
+    .forEach((pubkey) => {
+      const membership = memberships.get(pubkey)
+      if (!membership || membership.ownerAnchorPubkeys.length === 0) {
+        contextPubkeys.push(pubkey)
+        return
+      }
+
+      const bucket =
+        signatureBuckets.get(membership.membershipSignature) ?? []
+      bucket.push(pubkey)
+      signatureBuckets.set(membership.membershipSignature, bucket)
+    })
+
+  const signaturesBySharedCount = new Map<number, string[]>()
+
+  Array.from(signatureBuckets.entries())
+    .sort(([leftSignature, leftPubkeys], [rightSignature, rightPubkeys]) => {
+      const leftMembership = memberships.get(leftPubkeys[0])
+      const rightMembership = memberships.get(rightPubkeys[0])
+      const sharedCountDelta =
+        (rightMembership?.sharedCount ?? 0) -
+        (leftMembership?.sharedCount ?? 0)
+
+      if (sharedCountDelta !== 0) {
+        return sharedCountDelta
+      }
+
+      return leftSignature.localeCompare(rightSignature)
+    })
+    .forEach(([signature, pubkeys]) => {
+      const membership = memberships.get(pubkeys[0])
+      const sharedCount = membership?.sharedCount ?? 0
+      const tierBucket = signaturesBySharedCount.get(sharedCount) ?? []
+      tierBucket.push(signature)
+      signaturesBySharedCount.set(sharedCount, tierBucket)
+    })
+
+  signaturesBySharedCount.forEach((signatures, sharedCount) => {
+    signatures.forEach((signature, signatureIndex) => {
+      const pubkeys = signatureBuckets.get(signature) ?? []
+      if (pubkeys.length === 0) {
+        return
+      }
+
+      const membership = memberships.get(pubkeys[0])
+      const owners = membership?.ownerAnchorPubkeys ?? []
+      const ownerPositions = owners
+        .map((ownerPubkey) => anchorSlots.get(ownerPubkey)?.position)
+        .filter((position): position is [number, number] => Boolean(position))
+
+      if (ownerPositions.length === 0) {
+        return
+      }
+
+      const barycenterX =
+        ownerPositions.reduce((sum, position) => sum + position[0], 0) /
+        ownerPositions.length
+      const minOwnerX = Math.min(...ownerPositions.map((position) => position[0]))
+      const maxOwnerX = Math.max(...ownerPositions.map((position) => position[0]))
+      const ownerSpan = maxOwnerX - minOwnerX
+      const signatureHash = normalizeHash(`${signature}:multi-anchor`)
+      const rowIndex = Math.floor(signatureIndex / 3)
+      const laneIndex = signatureIndex % 3
+      const laneOffsetX = (laneIndex - 1) * Math.max(42, Math.min(92, ownerSpan * 0.16))
+      const centerX =
+        barycenterX +
+        laneOffsetX +
+        (signatureHash - 0.5) * Math.min(46, Math.max(16, ownerSpan * 0.22))
+      const startY =
+        getSharedTierStartY({
+          anchorCount: activeAnchorPubkeys.length,
+          sharedCount,
+        }) + rowIndex * 62
+
+      pubkeys.forEach((pubkey, index) => {
+        const columns =
+          sharedCount === 1
+            ? 4
+            : sharedCount === 2
+              ? 3
+              : 3
+        const position = getBucketGridPosition({
+          pubkey,
+          index,
+          centerX,
+          startY,
+          columns,
+          columnSpacing: sharedCount === 1 ? 52 : 46,
+          rowSpacing: sharedCount === 1 ? 52 : 46,
+          rowJitter: 10,
+        })
+        positions.set(pubkey, [position.x, position.y])
+      })
+    })
+  })
+
+  const anchorXs = activeAnchorPubkeys
+    .map((pubkey) => anchorSlots.get(pubkey)?.position[0] ?? 0)
+  const minAnchorX = Math.min(...anchorXs)
+  const maxAnchorX = Math.max(...anchorXs)
+  const contextCenterX = (minAnchorX + maxAnchorX) / 2
+
+  contextPubkeys.forEach((pubkey, index) => {
+    const position = getBucketGridPosition({
+      pubkey,
+      index,
+      centerX: contextCenterX,
+      startY: ANCHOR_TARGET_Y + 324,
+      columns: 6,
+      columnSpacing: 42,
+      rowSpacing: 40,
+      rowJitter: 8,
+    })
+    positions.set(pubkey, [position.x, position.y])
+  })
+
+  return positions
+}
+
 const buildSeedPositions = ({
   nodes,
   visiblePubkeys,
@@ -1167,6 +1341,44 @@ export const runMultiCenterComparisonLayout = ({
 
   if (activeAnchorPubkeys.length === 3) {
     const positions = buildThreeAnchorPartitionPositions({
+      visiblePubkeys,
+      memberships,
+      activeAnchorPubkeys,
+      anchorSlots,
+    })
+
+    return {
+      activeAnchorPubkeys,
+      overflowAnchorPubkeys,
+      memberships,
+      positions,
+      snapshot: {
+        mode: 'multi-center-comparison',
+        comparison: {
+          mode: 'multi-center-comparison',
+          activeAnchorPubkeys: [...activeAnchorPubkeys],
+          comparisonAnchorOrder: [...comparisonAnchorOrder],
+          overflowAnchorPubkeys: [...overflowAnchorPubkeys],
+          membershipSignatureByPubkey: Object.fromEntries(
+            Array.from(memberships.entries()).map(([pubkey, membership]) => [
+              pubkey,
+              membership.membershipSignature,
+            ]),
+          ),
+          anchorSlots: Object.fromEntries(
+            Array.from(anchorSlots.entries()).map(([pubkey, slot]) => [
+              pubkey,
+              slot,
+            ]),
+          ),
+        },
+      },
+    }
+  }
+
+  if (activeAnchorPubkeys.length >= 4) {
+    const positions = buildMultiAnchorSignaturePositions({
+      nodes,
       visiblePubkeys,
       memberships,
       activeAnchorPubkeys,

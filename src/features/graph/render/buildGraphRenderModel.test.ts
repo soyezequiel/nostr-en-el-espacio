@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import type { GraphLink } from '../app/store/types'
 import type { BuildGraphRenderModelInput } from './types'
 import { buildGraphRenderModel } from './buildGraphRenderModel'
 
@@ -277,5 +278,118 @@ test('expanding the secondary compare aggregate reveals the other visible nodes'
         node.comparisonContextRole === 'compare-secondary-context-aggregate',
     ),
     false,
+  )
+})
+
+test('collapses dense membership signatures into expandable aggregates for many anchors', async () => {
+  const nodes: BuildGraphRenderModelInput['nodes'] = {
+    root: {
+      pubkey: 'root',
+      label: 'Root',
+      keywordHits: 0,
+      discoveredAt: 0,
+      source: 'root',
+    },
+    'anchor-a': {
+      pubkey: 'anchor-a',
+      label: 'Anchor A',
+      keywordHits: 0,
+      discoveredAt: 1,
+      source: 'follow',
+    },
+    'anchor-b': {
+      pubkey: 'anchor-b',
+      label: 'Anchor B',
+      keywordHits: 0,
+      discoveredAt: 2,
+      source: 'follow',
+    },
+    'anchor-c': {
+      pubkey: 'anchor-c',
+      label: 'Anchor C',
+      keywordHits: 0,
+      discoveredAt: 3,
+      source: 'follow',
+    },
+  }
+  const links: GraphLink[] = [
+    { source: 'root', target: 'anchor-a', relation: 'follow' },
+    { source: 'root', target: 'anchor-b', relation: 'follow' },
+    { source: 'root', target: 'anchor-c', relation: 'follow' },
+  ]
+
+  for (let index = 0; index < 12; index += 1) {
+    const pubkey = `shared-root-a-${index}`
+    nodes[pubkey] = {
+      pubkey,
+      label: `Shared ${index}`,
+      keywordHits: 0,
+      discoveredAt: 10 + index,
+      source: 'follow',
+    }
+    links.push(
+      { source: 'root', target: pubkey, relation: 'follow' },
+      { source: 'anchor-a', target: pubkey, relation: 'follow' },
+    )
+  }
+
+  const baseInput: BuildGraphRenderModelInput = {
+    nodes,
+    links,
+    inboundLinks: [],
+    connectionsLinks: [],
+    zapEdges: [],
+    activeLayer: 'graph',
+    connectionsSourceLayer: 'graph',
+    rootNodePubkey: 'root',
+    selectedNodePubkey: null,
+    expandedNodePubkeys: new Set(['anchor-a', 'anchor-b', 'anchor-c']),
+    comparedNodePubkeys: new Set(['anchor-a', 'anchor-b', 'anchor-c']),
+    activeComparisonAnchorPubkeys: ['anchor-a', 'anchor-b', 'anchor-c'],
+    expandedAggregateNodeIds: [],
+    comparisonAnchorOrder: ['anchor-a', 'anchor-b', 'anchor-c'],
+    layoutMode: 'multi-center-comparison',
+    comparisonLayoutBudgets: {
+      maxActiveAnchors: 4,
+      maxComparisonTargets: 350,
+      maxTargetsPerSignature: 24,
+    },
+    effectiveGraphCaps: DEFAULT_EFFECTIVE_GRAPH_CAPS,
+    renderConfig: DEFAULT_RENDER_CONFIG,
+  }
+
+  const collapsedModel = await buildGraphRenderModel(baseInput)
+  const signatureAggregate = collapsedModel.nodes.find(
+    (node) => node.comparisonContextRole === 'compare-signature-aggregate',
+  )
+
+  assert.ok(signatureAggregate)
+  assert.equal(signatureAggregate.isAggregate, true)
+  assert.equal(signatureAggregate.aggregateCount, 4)
+  assert.equal(
+    collapsedModel.edges.some(
+      (edge) =>
+        edge.target === signatureAggregate.pubkey &&
+        edge.comparisonRole === 'compare-signature-aggregate',
+    ),
+    true,
+  )
+
+  const expandedModel = await buildGraphRenderModel({
+    ...baseInput,
+    expandedAggregateNodeIds: ['aggregate:compare-signature:anchor-a|root'],
+  })
+
+  assert.equal(
+    expandedModel.nodes.some(
+      (node) => node.comparisonContextRole === 'compare-signature-aggregate',
+    ),
+    false,
+  )
+  assert.equal(
+    expandedModel.nodes.filter((node) =>
+      node.membershipSignature === 'anchor-a|root',
+    ).length >= 12,
+    true,
   )
 })

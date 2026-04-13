@@ -283,3 +283,105 @@ test('partitions three-anchor subsets into stable semantic regions', () => {
   assert.ok(allSharedPosition[1] < rootAnchorBPairPosition[1])
   assert.ok(allSharedPosition[1] < rootExclusivePosition[1])
 })
+
+test('does not cap three-anchor buckets by maxTargetsPerSignature', () => {
+  const input = createLayoutInput({
+    budgets: {
+      maxActiveAnchors: 4,
+      maxComparisonTargets: 16,
+      maxTargetsPerSignature: 1,
+    },
+  })
+
+  input.nodes['root-only-3a'] = createNode('root-only-3a', { discoveredAt: 40 })
+  input.nodes['root-only-3b'] = createNode('root-only-3b', { discoveredAt: 41 })
+  input.nodes['root-only-3c'] = createNode('root-only-3c', { discoveredAt: 42 })
+  input.visiblePubkeys.add('root-only-3a')
+  input.visiblePubkeys.add('root-only-3b')
+  input.visiblePubkeys.add('root-only-3c')
+  input.links.push(
+    { source: 'root', target: 'root-only-3a', relation: 'follow' },
+    { source: 'root', target: 'root-only-3b', relation: 'follow' },
+    { source: 'root', target: 'root-only-3c', relation: 'follow' },
+  )
+  input.radiiByPubkey.set('root-only-3a', 12)
+  input.radiiByPubkey.set('root-only-3b', 12)
+  input.radiiByPubkey.set('root-only-3c', 12)
+
+  const result = runMultiCenterComparisonLayout(input)
+
+  assert.ok(result)
+
+  const rootExclusiveCount = Array.from(result.memberships.entries()).filter(
+    ([, membership]) =>
+      membership.ownerAnchorPubkeys.length === 1 &&
+      membership.ownerAnchorPubkeys[0] === 'root',
+  ).length
+
+  assert.ok(rootExclusiveCount >= 3)
+})
+
+test('partitions four-anchor subsets without falling back to the soft solver', () => {
+  const input = createLayoutInput({
+    comparedNodePubkeys: new Set(['anchor-a', 'anchor-b', 'anchor-c']),
+    activeComparisonAnchorPubkeys: ['anchor-a', 'anchor-b', 'anchor-c'],
+    comparisonAnchorOrder: ['anchor-a', 'anchor-b', 'anchor-c'],
+  })
+
+  input.nodes['exclusive-root-4'] = createNode('exclusive-root-4', { discoveredAt: 30 })
+  input.nodes['exclusive-c'] = createNode('exclusive-c', { discoveredAt: 31 })
+  input.nodes['shared-root-a-4'] = createNode('shared-root-a-4', { discoveredAt: 32 })
+  input.nodes['shared-b-c-4'] = createNode('shared-b-c-4', { discoveredAt: 33 })
+  input.nodes['shared-all-4'] = createNode('shared-all-4', { discoveredAt: 34 })
+  input.visiblePubkeys.add('exclusive-root-4')
+  input.visiblePubkeys.add('exclusive-c')
+  input.visiblePubkeys.add('shared-root-a-4')
+  input.visiblePubkeys.add('shared-b-c-4')
+  input.visiblePubkeys.add('shared-all-4')
+  input.links.push(
+    { source: 'root', target: 'exclusive-root-4', relation: 'follow' },
+    { source: 'anchor-c', target: 'exclusive-c', relation: 'follow' },
+    { source: 'root', target: 'shared-root-a-4', relation: 'follow' },
+    { source: 'anchor-a', target: 'shared-root-a-4', relation: 'follow' },
+    { source: 'anchor-b', target: 'shared-b-c-4', relation: 'follow' },
+    { source: 'anchor-c', target: 'shared-b-c-4', relation: 'follow' },
+    { source: 'root', target: 'shared-all-4', relation: 'follow' },
+    { source: 'anchor-a', target: 'shared-all-4', relation: 'follow' },
+    { source: 'anchor-b', target: 'shared-all-4', relation: 'follow' },
+    { source: 'anchor-c', target: 'shared-all-4', relation: 'follow' },
+  )
+  input.radiiByPubkey.set('exclusive-root-4', 12)
+  input.radiiByPubkey.set('exclusive-c', 12)
+  input.radiiByPubkey.set('shared-root-a-4', 12)
+  input.radiiByPubkey.set('shared-b-c-4', 12)
+  input.radiiByPubkey.set('shared-all-4', 12)
+
+  const result = runMultiCenterComparisonLayout(input)
+
+  assert.ok(result)
+  assert.deepEqual(result.activeAnchorPubkeys, ['root', 'anchor-a', 'anchor-b', 'anchor-c'])
+
+  const rootPosition = result.positions.get('root')!
+  const anchorAPosition = result.positions.get('anchor-a')!
+  const anchorBPosition = result.positions.get('anchor-b')!
+  const anchorCPosition = result.positions.get('anchor-c')!
+  const rootExclusivePosition = result.positions.get('exclusive-root-4')!
+  const anchorCExclusivePosition = result.positions.get('exclusive-c')!
+  const rootAnchorAPairPosition = result.positions.get('shared-root-a-4')!
+  const anchorBAnchorCPairPosition = result.positions.get('shared-b-c-4')!
+  const allSharedPosition = result.positions.get('shared-all-4')!
+
+  assert.ok(rootPosition[0] < anchorAPosition[0])
+  assert.ok(anchorAPosition[0] < anchorBPosition[0])
+  assert.ok(anchorBPosition[0] < anchorCPosition[0])
+
+  assert.ok(rootExclusivePosition[0] < rootAnchorAPairPosition[0])
+  assert.ok(rootAnchorAPairPosition[0] < anchorAPosition[0])
+  assert.ok(anchorBPosition[0] < anchorBAnchorCPairPosition[0])
+  assert.ok(anchorBAnchorCPairPosition[0] < anchorCPosition[0])
+
+  assert.ok(allSharedPosition[0] > rootPosition[0])
+  assert.ok(allSharedPosition[0] < anchorCPosition[0])
+  assert.ok(allSharedPosition[1] < rootExclusivePosition[1])
+  assert.ok(allSharedPosition[1] < anchorCExclusivePosition[1])
+})

@@ -78,6 +78,7 @@ export interface GraphRenderNode {
     | 'root-follow-context-aggregate'
     | 'compare-secondary-context'
     | 'compare-secondary-context-aggregate'
+    | 'compare-signature-aggregate'
   isAggregate?: boolean
   aggregateCount?: number | null
   source: GraphNodeSource
@@ -106,6 +107,7 @@ export interface GraphRenderEdge {
   isPriority: boolean
   targetSharedByExpandedCount: number
   comparisonRole?: 'root-follow-context' | 'root-follow-context-aggregate'
+    | 'compare-signature-aggregate'
   isSynthetic?: boolean
   isPathEdge?: boolean
 }
@@ -124,6 +126,7 @@ export interface GraphRenderLabel {
     | 'root-follow-context-aggregate'
     | 'compare-secondary-context'
     | 'compare-secondary-context-aggregate'
+    | 'compare-signature-aggregate'
   isSelected: boolean
 }
 

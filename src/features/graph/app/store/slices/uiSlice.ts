@@ -171,7 +171,7 @@ export const createInitialUiSliceState = (): Pick<
     avatarHdZoomThreshold: DEFAULT_AVATAR_HD_ZOOM_THRESHOLD,
     avatarFullHdZoomThreshold: DEFAULT_AVATAR_FULL_HD_ZOOM_THRESHOLD,
     showDiscoveryState: true,
-    showSharedEmphasis: true,
+    showSharedEmphasis: false,
     showAvatarQualityGuide: false,
     showImageResidencyDebug: false,
     edgeColor: '#94a3b8',

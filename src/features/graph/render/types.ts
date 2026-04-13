@@ -5,7 +5,9 @@ import type {
   DiscoveredGraphAnalysisStatus,
 } from '@/features/graph/analysis/types'
 import type {
+  ComparisonLayoutBudgets,
   ConnectionsSourceLayer,
+  GraphLayoutMode,
   GraphLink,
   GraphLinkRelation,
   GraphNode,
@@ -32,6 +34,27 @@ export type GraphRenderDegradedReason =
 export type GraphRenderModelPhase = 'idle' | 'building' | 'ready' | 'error'
 
 export type GraphLabelPolicy = 'hover-selected-only' | 'hover-selected-or-zoom'
+export type GraphLayoutRole = 'root' | 'anchor' | 'target' | 'aggregate'
+
+export interface GraphComparisonAnchorSlot {
+  pubkey: string
+  slotIndex: number
+  position: [number, number]
+}
+
+export interface GraphComparisonLayoutSnapshot {
+  mode: 'multi-center-comparison'
+  activeAnchorPubkeys: string[]
+  comparisonAnchorOrder: string[]
+  overflowAnchorPubkeys: string[]
+  membershipSignatureByPubkey: Record<string, string>
+  anchorSlots: Record<string, GraphComparisonAnchorSlot>
+}
+
+export interface GraphLayoutSnapshot {
+  mode: GraphLayoutMode
+  comparison: GraphComparisonLayoutSnapshot | null
+}
 
 export interface GraphRenderNode {
   id: string
@@ -46,6 +69,17 @@ export interface GraphRenderNode {
   isExpanded: boolean
   isSelected: boolean
   isCommonFollow: boolean
+  layoutRole: GraphLayoutRole
+  ownerAnchorPubkeys: string[]
+  membershipSignature: string
+  sharedCount: number
+  comparisonContextRole?:
+    | 'root-follow-context'
+    | 'root-follow-context-aggregate'
+    | 'compare-secondary-context'
+    | 'compare-secondary-context-aggregate'
+  isAggregate?: boolean
+  aggregateCount?: number | null
   source: GraphNodeSource
   discoveredAt: number | null
   sharedByExpandedCount: number
@@ -71,6 +105,8 @@ export interface GraphRenderEdge {
   targetRadius: number
   isPriority: boolean
   targetSharedByExpandedCount: number
+  comparisonRole?: 'root-follow-context' | 'root-follow-context-aggregate'
+  isSynthetic?: boolean
   isPathEdge?: boolean
 }
 
@@ -81,6 +117,13 @@ export interface GraphRenderLabel {
   position: [number, number]
   radius: number
   isRoot: boolean
+  isAnchor?: boolean
+  isAggregate?: boolean
+  comparisonContextRole?:
+    | 'root-follow-context'
+    | 'root-follow-context-aggregate'
+    | 'compare-secondary-context'
+    | 'compare-secondary-context-aggregate'
   isSelected: boolean
 }
 
@@ -137,6 +180,8 @@ export interface GraphRenderModel {
   bounds: GraphBounds
   topologySignature: string
   layoutKey: string
+  layoutMode: GraphLayoutMode
+  layoutSnapshot: GraphLayoutSnapshot | null
   lod: GraphRenderLodSummary
   analysisOverlay: GraphRenderAnalysisOverlay
   activeLayer: UiLayer
@@ -157,6 +202,11 @@ export interface BuildGraphRenderModelInput {
   selectedNodePubkey: string | null
   expandedNodePubkeys: ReadonlySet<string>
   comparedNodePubkeys?: ReadonlySet<string>
+  activeComparisonAnchorPubkeys?: readonly string[]
+  expandedAggregateNodeIds?: readonly string[]
+  comparisonAnchorOrder?: readonly string[]
+  layoutMode?: GraphLayoutMode
+  comparisonLayoutBudgets?: ComparisonLayoutBudgets
   pathfinding?: {
     status: 'idle' | 'computing' | 'found' | 'not-found' | 'error'
     path: string[] | null
@@ -166,6 +216,7 @@ export interface BuildGraphRenderModelInput {
   renderConfig: RenderConfig
   previousPositions?: ReadonlyMap<string, [number, number]>
   previousLayoutKey?: string
+  previousLayoutSnapshot?: GraphLayoutSnapshot | null
 }
 
 export interface GraphRenderState {

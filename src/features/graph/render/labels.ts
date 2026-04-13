@@ -25,6 +25,9 @@ export const shouldShowGraphLabel = ({
   zoomLevel: number
   labelPolicy: GraphLabelPolicy
 }) =>
+  label.isRoot ||
+  label.isAnchor === true ||
+  label.isAggregate === true ||
   hoveredNodePubkey === label.pubkey ||
   label.isSelected ||
   (labelPolicy === 'hover-selected-or-zoom' &&

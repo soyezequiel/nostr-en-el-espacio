@@ -1,16 +1,20 @@
 import type {
   AppStateCreator,
+  ComparisonLayoutBudgets,
   DevicePerformanceProfile,
+  GraphLayoutMode,
   ImageQualityMode,
   SavedRootEntry,
   SavedRootProfileSnapshot,
   UiSlice,
 } from '@/features/graph/app/store/types'
 import {
+  DEFAULT_COMPARISON_LAYOUT_BUDGETS,
   DEFAULT_DEVICE_PERFORMANCE_PROFILE,
   DEFAULT_EFFECTIVE_GRAPH_CAPS,
   DEFAULT_EFFECTIVE_IMAGE_BUDGET,
   clampImageQualityModeForProfile,
+  getComparisonLayoutBudgetsForProfile,
   getDefaultImageQualityModeForProfile,
 } from '@/features/graph/devicePerformance'
 import {
@@ -87,10 +91,46 @@ const normalizeRenderConfig = (
   }
 }
 
+const normalizeComparisonAnchorPubkeys = (
+  pubkeys: readonly string[],
+): string[] =>
+  Array.from(
+    new Set(
+      pubkeys.filter(
+        (pubkey): pubkey is string =>
+          typeof pubkey === 'string' && pubkey.trim().length > 0,
+      ),
+    ),
+  )
+
+const mergeOrderedComparisonAnchors = ({
+  currentOrder,
+  nextSet,
+}: {
+  currentOrder: readonly string[]
+  nextSet: ReadonlySet<string>
+}) => {
+  const nextOrdered = currentOrder.filter((pubkey) => nextSet.has(pubkey))
+
+  Array.from(nextSet)
+    .sort()
+    .forEach((pubkey) => {
+      if (!nextOrdered.includes(pubkey)) {
+        nextOrdered.push(pubkey)
+      }
+    })
+
+  return nextOrdered
+}
+
 export const createInitialUiSliceState = (): Pick<
   UiSlice,
   | 'selectedNodePubkey'
   | 'comparedNodePubkeys'
+  | 'activeComparisonAnchorPubkeys'
+  | 'expandedAggregateNodeIds'
+  | 'layoutMode'
+  | 'comparisonLayoutBudgets'
   | 'activeLayer'
   | 'connectionsSourceLayer'
   | 'openPanel'
@@ -106,6 +146,10 @@ export const createInitialUiSliceState = (): Pick<
 > => ({
   selectedNodePubkey: null,
   comparedNodePubkeys: new Set<string>(),
+  activeComparisonAnchorPubkeys: [],
+  expandedAggregateNodeIds: [],
+  layoutMode: 'multi-center-comparison',
+  comparisonLayoutBudgets: DEFAULT_COMPARISON_LAYOUT_BUDGETS,
   activeLayer: 'graph',
   connectionsSourceLayer: 'graph',
   openPanel: 'overview',
@@ -153,10 +197,55 @@ export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
     set({ selectedNodePubkey: pubkey })
   },
   setComparedNodePubkeys: (pubkeys) => {
-    set({ comparedNodePubkeys: pubkeys })
+    set((state) => ({
+      comparedNodePubkeys: pubkeys,
+      activeComparisonAnchorPubkeys: mergeOrderedComparisonAnchors({
+        currentOrder: state.activeComparisonAnchorPubkeys,
+        nextSet: pubkeys,
+      }),
+    }))
   },
   clearComparedNodes: () => {
-    set({ comparedNodePubkeys: new Set<string>() })
+    set({
+      comparedNodePubkeys: new Set<string>(),
+      activeComparisonAnchorPubkeys: [],
+      expandedAggregateNodeIds: [],
+    })
+  },
+  setActiveComparisonAnchorPubkeys: (pubkeys) => {
+    const normalizedPubkeys = normalizeComparisonAnchorPubkeys(pubkeys)
+
+    set((state) => ({
+      activeComparisonAnchorPubkeys: normalizedPubkeys,
+      comparedNodePubkeys: new Set(
+        Array.from(state.comparedNodePubkeys).filter((pubkey) =>
+          normalizedPubkeys.includes(pubkey),
+        ),
+      ),
+    }))
+  },
+  clearActiveComparisonAnchors: () => {
+    set({ activeComparisonAnchorPubkeys: [] })
+  },
+  toggleExpandedAggregateNodeId: (id) => {
+    if (!id) {
+      return
+    }
+
+    set((state) => {
+      const exists = state.expandedAggregateNodeIds.includes(id)
+      return {
+        expandedAggregateNodeIds: exists
+          ? state.expandedAggregateNodeIds.filter((entry) => entry !== id)
+          : [...state.expandedAggregateNodeIds, id],
+      }
+    })
+  },
+  clearExpandedAggregateNodeIds: () => {
+    set({ expandedAggregateNodeIds: [] })
+  },
+  setLayoutMode: (mode) => {
+    set({ layoutMode: mode })
   },
   setActiveLayer: (layer) => {
     set({ activeLayer: layer })
@@ -205,6 +294,7 @@ export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
         devicePerformanceProfile: profile,
         effectiveGraphCaps: graphCaps,
         effectiveImageBudget: imageBudget,
+        comparisonLayoutBudgets: getComparisonLayoutBudgetsForProfile(profile),
         renderConfig: normalizeRenderConfig(
           profile,
           state.renderConfig,

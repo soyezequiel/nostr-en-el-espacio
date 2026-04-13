@@ -398,6 +398,7 @@ const getEdgeWidth = (
 
 const getNodeFillColor = (
   node: GraphRenderNode,
+  model: GraphRenderModel,
   activeLayer: GraphRenderModel['activeLayer'],
   hasPathHighlight: boolean,
 ) => {
@@ -406,6 +407,25 @@ const getNodeFillColor = (
   }
   if (node.isPathNode) {
     return node.fillColor ?? [100, 116, 139, 214]
+  }
+  if (model.layoutMode === 'multi-center-comparison' && activeLayer === 'graph') {
+    const baseColor = node.fillColor ?? [100, 116, 139, 214]
+
+    if (node.layoutRole === 'anchor') {
+      return mixColor(baseColor, [167, 243, 208, 248], 0.32)
+    }
+
+    if (node.sharedCount >= 2) {
+      return mixColor(
+        baseColor,
+        node.sharedCount >= 3 ? [196, 181, 253, 236] : [125, 211, 252, 232],
+        0.24,
+      )
+    }
+
+    if (node.sharedCount === 1) {
+      return mixColor(baseColor, [255, 255, 255, 220], 0.08)
+    }
   }
   if (
     node.isCommonFollow &&
@@ -421,7 +441,22 @@ const getNodeFillColor = (
   return node.fillColor ?? [100, 116, 139, 214]
 }
 
-const getNodeLineColor = (node: GraphRenderNode) => {
+const getNodeLineColor = (
+  node: GraphRenderNode,
+  model: GraphRenderModel,
+) => {
+  if (model.layoutMode === 'multi-center-comparison' && model.activeLayer === 'graph') {
+    if (node.layoutRole === 'anchor') {
+      return [167, 243, 208, 228] as const
+    }
+
+    if (node.sharedCount >= 2) {
+      return node.sharedCount >= 3
+        ? ([196, 181, 253, 214] as const)
+        : ([125, 211, 252, 210] as const)
+    }
+  }
+
   return node.lineColor ?? [226, 232, 240, 118]
 }
 
@@ -464,7 +499,7 @@ const getNodeGlassFillColor = (
   activeLayer: GraphRenderModel['activeLayer'],
   hasPathHighlight: boolean,
 ) => {
-  const tint = getNodeFillColor(node, activeLayer, hasPathHighlight)
+  const tint = getNodeFillColor(node, model, activeLayer, hasPathHighlight)
   const frosted = mixColor(tint, GLASS_FROST_COLOR, 0.72)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
   const color = shouldMuteKeywordMiss(model, node)
@@ -483,7 +518,7 @@ const getNodeGlassLineColor = (
   paintedAvatarPubkeySet: ReadonlySet<string>,
   model: GraphRenderModel,
 ) => {
-  const tint = getNodeLineColor(node)
+  const tint = getNodeLineColor(node, model)
   const edged = mixColor(tint, GLASS_EDGE_COLOR, 0.68)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
   const color = shouldMuteKeywordMiss(model, node)
@@ -504,7 +539,7 @@ const getNodeGlassHaloColor = (
   activeLayer: GraphRenderModel['activeLayer'],
   hasPathHighlight: boolean,
 ) => {
-  const tint = getNodeFillColor(node, activeLayer, hasPathHighlight)
+  const tint = getNodeFillColor(node, model, activeLayer, hasPathHighlight)
   const halo = mixColor(tint, GLASS_SHADOW_COLOR, 0.5)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
   const color = shouldMuteKeywordMiss(model, node)
@@ -525,7 +560,7 @@ const getNodeGlassHighlightColor = (
   activeLayer: GraphRenderModel['activeLayer'],
   hasPathHighlight: boolean,
 ) => {
-  const tint = getNodeFillColor(node, activeLayer, hasPathHighlight)
+  const tint = getNodeFillColor(node, model, activeLayer, hasPathHighlight)
   const highlight = mixColor(tint, GLASS_EDGE_COLOR, 0.88)
   const hasAvatarPainted = paintedAvatarPubkeySet.has(node.pubkey)
   const color = shouldMuteKeywordMiss(model, node)
@@ -553,10 +588,22 @@ const getEmphasisNodes = (
       hoveredEdgePubkeys.includes(node.pubkey),
   )
 
-const getSharedEmphasisNodes = (nodes: readonly GraphRenderNode[]) =>
+const getNodeSharedEmphasisCount = (
+  node: GraphRenderNode,
+  model: GraphRenderModel,
+) =>
+  model.layoutMode === 'multi-center-comparison' && model.activeLayer === 'graph'
+    ? Math.max(node.sharedCount, node.sharedByExpandedCount)
+    : node.sharedByExpandedCount
+
+const getSharedEmphasisNodes = (
+  model: GraphRenderModel,
+  nodes: readonly GraphRenderNode[],
+) =>
   nodes.filter(
     (node) =>
-      node.sharedByExpandedCount >= SHARED_NODE_THRESHOLD && !node.isRoot,
+      getNodeSharedEmphasisCount(node, model) >= SHARED_NODE_THRESHOLD &&
+      !node.isRoot,
   )
 
 const getCommonFollowNodes = (nodes: readonly GraphRenderNode[]) =>
@@ -577,6 +624,54 @@ const getFirstDegreeNeighborPubkeys = (
     }
   }
   return neighbors
+}
+
+export const shouldBypassCompareFocusFade = ({
+  model,
+  opMode,
+  pubkeyOrSource,
+  target,
+  comparisonRole,
+}: {
+  model: GraphRenderModel
+  opMode: 'node' | 'edge' | 'avatar'
+  pubkeyOrSource: string
+  target?: string
+  comparisonRole?:
+    | GraphRenderNode['comparisonContextRole']
+    | GraphRenderEdge['comparisonRole']
+}) => {
+  if (
+    model.layoutMode !== 'multi-center-comparison' ||
+    model.activeLayer !== 'graph'
+  ) {
+    return false
+  }
+
+  if (comparisonRole !== undefined) {
+    return true
+  }
+
+  const nodeByPubkey = new Map(model.nodes.map((node) => [node.pubkey, node]))
+  const isExemptNode = (pubkey: string | undefined) => {
+    if (!pubkey) {
+      return false
+    }
+    const node = nodeByPubkey.get(pubkey)
+    return (
+      node?.isRoot === true ||
+      node?.layoutRole === 'anchor' ||
+      (node?.ownerAnchorPubkeys.length ?? 0) > 0 ||
+      (node?.sharedCount ?? 0) > 0 ||
+      node?.comparisonContextRole !== undefined
+    )
+  }
+
+  if (opMode === 'edge') {
+    return isExemptNode(pubkeyOrSource) || isExemptNode(target)
+  }
+
+  return isExemptNode(pubkeyOrSource)
 }
 
 const getSharedRingScale = (sharedByExpandedCount: number) =>
@@ -663,7 +758,7 @@ const getGraphSceneTopologyData = (
       (maxWeight, edge) => Math.max(maxWeight, edge.weight),
       0,
     ),
-    sharedEmphasisNodes: getSharedEmphasisNodes(model.nodes),
+    sharedEmphasisNodes: getSharedEmphasisNodes(model, model.nodes),
     commonFollowNodes:
       model.activeLayer === 'connections' ||
       model.activeLayer === 'following' ||
@@ -1053,6 +1148,10 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       arrowData,
     } =
       topologyData
+    const comparisonAnchorNodes =
+      model.layoutMode === 'multi-center-comparison'
+        ? model.nodes.filter((node) => node.layoutRole === 'anchor')
+        : []
 
     const { segments } = topologyData.geometry
 
@@ -1132,9 +1231,24 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       opMode: 'node' | 'edge' | 'avatar',
       pubkeyOrSource: string,
       target?: string,
+      comparisonRole?:
+        | GraphRenderNode['comparisonContextRole']
+        | GraphRenderEdge['comparisonRole'],
     ): [number, number, number, number] => {
       const alpha = color[3] ?? 255
       if (focusNodePubkey === null) {
+        return [color[0], color[1], color[2], alpha]
+      }
+
+      if (
+        shouldBypassCompareFocusFade({
+          model,
+          opMode,
+          pubkeyOrSource,
+          target,
+          comparisonRole,
+        })
+      ) {
         return [color[0], color[1], color[2], alpha]
       }
 
@@ -1382,7 +1496,13 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             color = [baseColor[0], baseColor[1], baseColor[2], fadedAlpha]
           }
 
-          return applyFocusFade(color, 'edge', segment.source, segment.target)
+              return applyFocusFade(
+                color,
+                'edge',
+                segment.source,
+                segment.target,
+                segment.comparisonRole,
+              )
         },
         getWidth: (segment) =>
           (getEdgeWidth(
@@ -1422,7 +1542,10 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               data: visibleArrowData,
               pickable: false,
               sizeUnits: 'pixels',
-              iconAtlas: arrowAtlasAssets?.iconAtlas ?? undefined,
+              iconAtlas:
+                arrowAtlasAssets !== null
+                  ? coerceIconAtlasTexture(arrowAtlasAssets.iconAtlas)
+                  : undefined,
               iconMapping: arrowAtlasAssets?.iconMapping ?? undefined,
               getPosition: (segment) =>
                 getVisibleArrowPlacement({
@@ -1463,6 +1586,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
                   'edge',
                   segment.source,
                   segment.target,
+                  segment.comparisonRole,
                 )
               },
               getSize: (segment) =>
@@ -1549,6 +1673,33 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             }),
           ]
         : []),
+      ...(comparisonAnchorNodes.length > 0
+        ? [
+            new ScatterplotLayer<GraphRenderNode>({
+              id: `${this.props.id}-comparison-anchors`,
+              data: comparisonAnchorNodes,
+              pickable: false,
+              stroked: true,
+              filled: true,
+              radiusUnits: 'common',
+              lineWidthUnits: 'common',
+              getPosition: (node) => node.position,
+              getRadius: (node) => getWorldRadius(node.pubkey, node.radius) * 1.42,
+              getFillColor: (node) =>
+                applyFocusFade([167, 243, 208, 52], 'node', node.pubkey),
+              getLineColor: (node) =>
+                applyFocusFade([167, 243, 208, 214], 'node', node.pubkey),
+              getLineWidth: 2.8 / viewScale,
+              transitions: { getFillColor: 200, getLineColor: 200 },
+              updateTriggers: {
+                getRadius: [nodeScreenRadii, nodeSizeFactor, viewState.zoom],
+                getFillColor: [hoveredNodePubkey, selectedNodePubkey],
+                getLineColor: [hoveredNodePubkey, selectedNodePubkey],
+                getLineWidth: [viewState.zoom],
+              },
+            }),
+          ]
+        : []),
       new ScatterplotLayer<GraphRenderNode>({
         id: `${this.props.id}-emphasis`,
         data: emphasisNodes,
@@ -1572,6 +1723,8 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               : [148, 163, 184, 30],
             'node',
             node.pubkey,
+            undefined,
+            node.comparisonContextRole,
           ),
         getLineColor: (node) =>
           applyFocusFade(
@@ -1580,6 +1733,8 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               : EXPANDED_RING_COLOR,
             'node',
             node.pubkey,
+            undefined,
+            node.comparisonContextRole,
           ),
         getLineWidth: (node) =>
           (hoveredEdgePubkeys.includes(node.pubkey) ? 2.6 : 2) / viewScale,
@@ -1611,10 +1766,11 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
               getPosition: (node) => node.position,
               getRadius: (node) =>
                 getWorldRadius(node.pubkey, node.radius) *
-                getSharedRingScale(node.sharedByExpandedCount),
+                getSharedRingScale(getNodeSharedEmphasisCount(node, model)),
               getLineColor: (node) => applyFocusFade(SHARED_RING_COLOR, 'node', node.pubkey),
               getLineWidth: (node) =>
-                getSharedRingWidth(node.sharedByExpandedCount) / viewScale,
+                getSharedRingWidth(getNodeSharedEmphasisCount(node, model)) /
+                viewScale,
               transitions: { getLineColor: 200 },
               updateTriggers: {
                 getRadius: [nodeScreenRadii, nodeSizeFactor, viewState.zoom],
@@ -1635,7 +1791,14 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         getPosition: (node) => node.position,
         getRadius: (node) => getWorldRadius(node.pubkey, node.radius) * 1.2,
         getFillColor: (node) => applyFocusFade([167, 243, 208, 100], 'node', node.pubkey),
-        getLineColor: (node) => applyFocusFade([167, 243, 208, 220], 'node', node.pubkey),
+        getLineColor: (node) =>
+          applyFocusFade(
+            [167, 243, 208, 220],
+            'node',
+            node.pubkey,
+            undefined,
+            node.comparisonContextRole,
+          ),
         getLineWidth: 3 / viewScale,
         transitions: { getFillColor: 200, getLineColor: 200 },
         updateTriggers: {
@@ -1699,12 +1862,16 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             ),
             'node',
             node.pubkey,
+            undefined,
+            node.comparisonContextRole,
           ),
         getLineColor: (node) =>
           applyFocusFade(
             getNodeGlassLineColor(node, paintedAvatarPubkeySet, model),
             'node',
             node.pubkey,
+            undefined,
+            node.comparisonContextRole,
           ),
         getLineWidth: (node) =>
           (node.isRoot
@@ -1751,6 +1918,8 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             ),
             'node',
             node.pubkey,
+            undefined,
+            node.comparisonContextRole,
           ),
         transitions: { getFillColor: 200 },
         updateTriggers: {
@@ -1817,7 +1986,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         getPosition: (label) => label.position,
         getText: (label) => label.text,
         getColor: (label) => applyFocusFade(LABEL_TEXT_COLOR, 'node', label.pubkey),
-        getSize: (label) => (label.isRoot ? 14 : 13),
+        getSize: (label) => (label.isRoot ? 14 : label.isAnchor ? 13.5 : 13),
         getPixelOffset: (label) => [
           0,
           getScreenRadius(label.pubkey, label.radius) + 8,
@@ -1827,7 +1996,13 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         getBackgroundColor: (label) =>
           applyFocusFade(LABEL_BACKGROUND_COLOR, 'node', label.pubkey),
         getBorderColor: (label) =>
-          applyFocusFade(LABEL_BORDER_COLOR, 'node', label.pubkey),
+          applyFocusFade(
+            LABEL_BORDER_COLOR,
+            'node',
+            label.pubkey,
+            undefined,
+            label.comparisonContextRole,
+          ),
         getBorderWidth: 0.8,
         backgroundBorderRadius: 8,
         backgroundPadding: [6, 3],

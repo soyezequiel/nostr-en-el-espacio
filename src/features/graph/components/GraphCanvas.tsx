@@ -61,6 +61,7 @@ import {
 } from '@/features/graph/render/nodeSizing'
 import { deriveGraphRenderState } from '@/features/graph/render/status'
 import type {
+  GraphLayoutSnapshot,
   GraphRenderLabel,
   GraphRenderModel,
   GraphRenderModelPhase,
@@ -95,6 +96,10 @@ const selectGraphCanvasRenderState = (state: AppStore) => ({
   rootNodePubkey: state.rootNodePubkey,
   selectedNodePubkey: state.selectedNodePubkey,
   comparedNodePubkeys: state.comparedNodePubkeys,
+  activeComparisonAnchorPubkeys: state.activeComparisonAnchorPubkeys,
+  expandedAggregateNodeIds: state.expandedAggregateNodeIds,
+  layoutMode: state.layoutMode,
+  comparisonLayoutBudgets: state.comparisonLayoutBudgets,
   expandedNodePubkeys: state.expandedNodePubkeys,
   graphAnalysis: state.graphAnalysis,
   pathfinding: state.pathfinding,
@@ -340,6 +345,10 @@ const createBuildRenderModelJobKey = ({
   selectedNodePubkey,
   expandedNodePubkeys,
   comparedNodePubkeys,
+  activeComparisonAnchorPubkeys,
+  expandedAggregateNodeIds,
+  layoutMode,
+  comparisonLayoutBudgets,
   pathfinding,
   graphAnalysis,
   effectiveGraphCaps,
@@ -356,6 +365,10 @@ const createBuildRenderModelJobKey = ({
   selectedNodePubkey: string | null
   expandedNodePubkeys: ReadonlySet<string>
   comparedNodePubkeys?: ReadonlySet<string>
+  activeComparisonAnchorPubkeys?: readonly string[]
+  expandedAggregateNodeIds?: readonly string[]
+  layoutMode: AppStore['layoutMode']
+  comparisonLayoutBudgets: AppStore['comparisonLayoutBudgets']
   pathfinding?: Pick<AppStore['pathfinding'], 'status' | 'path'>
   graphAnalysis?: AppStore['graphAnalysis']
   effectiveGraphCaps: AppStore['effectiveGraphCaps']
@@ -373,6 +386,11 @@ const createBuildRenderModelJobKey = ({
     selectedNodePubkey,
     expandedNodePubkeys: createSortedCollectionSignature(expandedNodePubkeys),
     comparedNodePubkeys: createSortedCollectionSignature(comparedNodePubkeys),
+    activeComparisonAnchorPubkeys:
+      activeComparisonAnchorPubkeys?.join(',') ?? '',
+    expandedAggregateNodeIds: expandedAggregateNodeIds?.join(',') ?? '',
+    layoutMode,
+    comparisonLayoutBudgets,
     pathfinding: createPathfindingSignature(pathfinding),
     graphAnalysis: createGraphAnalysisSignature(graphAnalysis),
     effectiveGraphCaps,
@@ -825,7 +843,11 @@ export const GraphCanvas = memo(function GraphCanvas({
     keywordMatchNodeCount,
     rootNodePubkey,
     selectedNodePubkey,
-    comparedNodePubkeys,
+  comparedNodePubkeys,
+  activeComparisonAnchorPubkeys,
+  expandedAggregateNodeIds,
+  layoutMode,
+    comparisonLayoutBudgets,
     expandedNodePubkeys,
     graphAnalysis,
     pathfinding,
@@ -876,6 +898,7 @@ export const GraphCanvas = memo(function GraphCanvas({
   )
   const previousPositionsRef = useRef<Map<string, [number, number]>>(new Map())
   const previousLayoutKeyRef = useRef<string | undefined>(undefined)
+  const previousLayoutSnapshotRef = useRef<GraphLayoutSnapshot | null>(null)
   const renderRequestSequenceRef = useRef(0)
   const [model, setModel] = useState<GraphRenderModel>(() =>
     createEmptyGraphRenderModel(activeLayer, renderConfig),
@@ -1275,6 +1298,14 @@ export const GraphCanvas = memo(function GraphCanvas({
       selectedNodePubkey,
       expandedNodePubkeys,
       comparedNodePubkeys,
+      activeComparisonAnchorPubkeys,
+      expandedAggregateNodeIds,
+      comparisonAnchorOrder:
+        activeComparisonAnchorPubkeys.length > 0
+          ? activeComparisonAnchorPubkeys
+          : Array.from(expandedNodePubkeys),
+      layoutMode,
+      comparisonLayoutBudgets,
       pathfinding: {
         status: pathfinding.status,
         path: pathfinding.path,
@@ -1304,6 +1335,7 @@ export const GraphCanvas = memo(function GraphCanvas({
         ...input,
         previousPositions: previousPositionsRef.current,
         previousLayoutKey: previousLayoutKeyRef.current,
+        previousLayoutSnapshot: previousLayoutSnapshotRef.current,
       }
 
       const isCurrentRequest = () =>
@@ -1328,6 +1360,7 @@ export const GraphCanvas = memo(function GraphCanvas({
           nextModel.nodes.map((node) => [node.pubkey, node.position]),
         )
         previousLayoutKeyRef.current = nextModel.layoutKey
+        previousLayoutSnapshotRef.current = nextModel.layoutSnapshot
 
         // setModel fuera de startTransition: React 19 difiere las transiciones
         // hasta que el usuario interactúa, lo que dejaba model.nodes vacío y
@@ -1380,6 +1413,10 @@ export const GraphCanvas = memo(function GraphCanvas({
         selectedNodePubkey: input.selectedNodePubkey,
         expandedNodePubkeys: input.expandedNodePubkeys,
         comparedNodePubkeys: input.comparedNodePubkeys,
+        activeComparisonAnchorPubkeys: input.activeComparisonAnchorPubkeys,
+        expandedAggregateNodeIds: input.expandedAggregateNodeIds ?? [],
+        layoutMode: input.layoutMode ?? 'legacy-force',
+        comparisonLayoutBudgets: input.comparisonLayoutBudgets ?? comparisonLayoutBudgets,
         pathfinding: input.pathfinding,
         graphAnalysis: input.graphAnalysis,
         effectiveGraphCaps: input.effectiveGraphCaps,
@@ -1423,6 +1460,8 @@ export const GraphCanvas = memo(function GraphCanvas({
     }
   }, [
     activeLayer,
+    activeComparisonAnchorPubkeys,
+    comparisonLayoutBudgets,
     connectionsSourceLayer,
     connectionsLinks,
     connectionsLinksRevision,
@@ -1437,6 +1476,7 @@ export const GraphCanvas = memo(function GraphCanvas({
     nodes,
     pathfinding.path,
     pathfinding.status,
+    layoutMode,
     rootNodePubkey,
     selectedNodePubkey,
     zapEdges,
@@ -1941,6 +1981,13 @@ export const GraphCanvas = memo(function GraphCanvas({
       const state = appStore.getState()
 
       if (
+        pubkey?.startsWith('aggregate:')
+      ) {
+        state.toggleExpandedAggregateNodeId(pubkey)
+        return
+      }
+
+      if (
         pubkey &&
         state.openPanel === 'pathfinding' &&
         state.pathfinding.selectionMode !== 'idle'
@@ -1957,6 +2004,9 @@ export const GraphCanvas = memo(function GraphCanvas({
 
       if (effectiveShift && pubkey) {
         const current = new Set(state.comparedNodePubkeys)
+        const nextAnchorOrder = state.activeComparisonAnchorPubkeys.filter(
+          (anchorPubkey) => current.has(anchorPubkey),
+        )
 
         if (!state.expandedNodePubkeys.has(pubkey)) {
           runtime.selectNode(pubkey)
@@ -1968,21 +2018,39 @@ export const GraphCanvas = memo(function GraphCanvas({
           state.selectedNodePubkey !== pubkey
         ) {
           current.add(state.selectedNodePubkey)
+          if (!nextAnchorOrder.includes(state.selectedNodePubkey)) {
+            nextAnchorOrder.push(state.selectedNodePubkey)
+          }
         }
 
         if (current.has(pubkey)) {
           current.delete(pubkey)
+          const existingIndex = nextAnchorOrder.indexOf(pubkey)
+          if (existingIndex >= 0) {
+            nextAnchorOrder.splice(existingIndex, 1)
+          }
         } else if (current.size < 4) {
           current.add(pubkey)
+          if (!nextAnchorOrder.includes(pubkey)) {
+            nextAnchorOrder.push(pubkey)
+          }
         } else {
           const first = current.values().next().value
           if (first !== undefined) {
             current.delete(first)
+            const firstIndex = nextAnchorOrder.indexOf(first)
+            if (firstIndex >= 0) {
+              nextAnchorOrder.splice(firstIndex, 1)
+            }
           }
           current.add(pubkey)
+          if (!nextAnchorOrder.includes(pubkey)) {
+            nextAnchorOrder.push(pubkey)
+          }
         }
 
         state.setComparedNodePubkeys(current)
+        state.setActiveComparisonAnchorPubkeys(nextAnchorOrder)
         return
       }
 
@@ -1993,6 +2061,39 @@ export const GraphCanvas = memo(function GraphCanvas({
     },
     [runtime, isShiftPressed],
   )
+
+  const aggregateContextResetSignature = useMemo(
+    () =>
+      JSON.stringify({
+        rootNodePubkey,
+        layoutMode,
+        activeComparisonAnchorPubkeys:
+          activeComparisonAnchorPubkeys.length > 0
+            ? activeComparisonAnchorPubkeys
+            : Array.from(expandedNodePubkeys),
+      }),
+    [
+      activeComparisonAnchorPubkeys,
+      expandedNodePubkeys,
+      layoutMode,
+      rootNodePubkey,
+    ],
+  )
+  const previousAggregateContextResetSignatureRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const previousSignature = previousAggregateContextResetSignatureRef.current
+    previousAggregateContextResetSignatureRef.current = aggregateContextResetSignature
+
+    if (previousSignature === null || previousSignature === aggregateContextResetSignature) {
+      return
+    }
+
+    const state = appStore.getState()
+    if (state.expandedAggregateNodeIds.length > 0) {
+      state.clearExpandedAggregateNodeIds()
+    }
+  }, [aggregateContextResetSignature])
 
   const handleHoverGraph = useCallback(
     (

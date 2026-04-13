@@ -578,6 +578,7 @@ function validateRenderConfig(input: unknown, path: string): RenderConfig {
       `${path}.imageQualityMode`,
     ) as RenderConfig['imageQualityMode'],
     showSharedEmphasis: config.showSharedEmphasis === true,
+    showFocusFade: config.showFocusFade !== false,
   }
 }
 
@@ -604,6 +605,36 @@ function validateEffectiveGraphCaps(
     warmStartLayoutTicks: expectFiniteNumber(
       caps.warmStartLayoutTicks,
       `${path}.warmStartLayoutTicks`,
+    ),
+  }
+}
+
+function validateComparisonLayoutBudgets(
+  input: unknown,
+  path: string,
+): NonNullable<BuildRenderModelRequest['comparisonLayoutBudgets']> {
+  if (typeof input === 'undefined') {
+    return {
+      maxActiveAnchors: 4,
+      maxComparisonTargets: 350,
+      maxTargetsPerSignature: 24,
+    }
+  }
+
+  const budgets = expectRecord(input, path)
+
+  return {
+    maxActiveAnchors: expectFiniteNumber(
+      budgets.maxActiveAnchors,
+      `${path}.maxActiveAnchors`,
+    ),
+    maxComparisonTargets: expectFiniteNumber(
+      budgets.maxComparisonTargets,
+      `${path}.maxComparisonTargets`,
+    ),
+    maxTargetsPerSignature: expectFiniteNumber(
+      budgets.maxTargetsPerSignature,
+      `${path}.maxTargetsPerSignature`,
     ),
   }
 }
@@ -689,6 +720,43 @@ function validateBuildRenderModelRequest(
           expectString(pubkey, `payload.comparedNodePubkeys[${index}]`),
         )
       : [],
+    activeComparisonAnchorPubkeys: Array.isArray(
+      request.activeComparisonAnchorPubkeys,
+    )
+      ? expectArray(
+          request.activeComparisonAnchorPubkeys,
+          'payload.activeComparisonAnchorPubkeys',
+        ).map((pubkey, index) =>
+          expectString(
+            pubkey,
+            `payload.activeComparisonAnchorPubkeys[${index}]`,
+          ),
+        )
+      : [],
+    expandedAggregateNodeIds: Array.isArray(request.expandedAggregateNodeIds)
+      ? expectArray(
+          request.expandedAggregateNodeIds,
+          'payload.expandedAggregateNodeIds',
+        ).map((id, index) =>
+          expectString(id, `payload.expandedAggregateNodeIds[${index}]`),
+        )
+      : [],
+    comparisonAnchorOrder: Array.isArray(request.comparisonAnchorOrder)
+      ? expectArray(
+          request.comparisonAnchorOrder,
+          'payload.comparisonAnchorOrder',
+        ).map((pubkey, index) =>
+          expectString(pubkey, `payload.comparisonAnchorOrder[${index}]`),
+        )
+      : [],
+    layoutMode:
+      request.layoutMode === 'multi-center-comparison'
+        ? 'multi-center-comparison'
+        : 'legacy-force',
+    comparisonLayoutBudgets: validateComparisonLayoutBudgets(
+      request.comparisonLayoutBudgets,
+      'payload.comparisonLayoutBudgets',
+    ),
     previousPositions: previousPositionsRecord
       ? Object.fromEntries(
           Object.entries(previousPositionsRecord).map(([pubkey, position]) => [
@@ -704,6 +772,11 @@ function validateBuildRenderModelRequest(
       typeof request.previousLayoutKey === 'undefined'
         ? undefined
         : expectString(request.previousLayoutKey, 'payload.previousLayoutKey'),
+    previousLayoutSnapshot:
+      request.previousLayoutSnapshot === null ||
+      typeof request.previousLayoutSnapshot === 'undefined'
+        ? null
+        : (request.previousLayoutSnapshot as BuildRenderModelRequest['previousLayoutSnapshot']),
     graphAnalysis: validateGraphAnalysisState(
       request.graphAnalysis ?? {},
       'payload.graphAnalysis',

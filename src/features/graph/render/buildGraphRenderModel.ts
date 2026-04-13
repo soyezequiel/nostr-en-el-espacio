@@ -18,6 +18,7 @@ import {
   type GraphPhysicsLink,
   type GraphPhysicsNode,
 } from '@/features/graph/render/graphPhysics'
+import { runMultiCenterComparisonLayout } from '@/features/graph/render/layouts/multiCenterComparisonLayout'
 import type {
   AccessibleNodeSummary,
   BuildGraphRenderModelInput,
@@ -512,6 +513,30 @@ const getInitialNodePosition = (index: number) => {
   }
 }
 
+const getSecondaryContextBankPosition = ({
+  index,
+  total,
+  bounds,
+}: {
+  index: number
+  total: number
+  bounds: GraphBounds
+}) => {
+  const columns = Math.max(4, Math.min(10, Math.ceil(Math.sqrt(total))))
+  const columnIndex = index % columns
+  const rowIndex = Math.floor(index / columns)
+  const horizontalStep = 54
+  const verticalStep = 54
+  const totalWidth = (Math.max(0, columns - 1) * horizontalStep)
+  const originX = (bounds.minX + bounds.maxX) / 2 - totalWidth / 2
+  const originY = bounds.maxY + 144
+
+  return {
+    x: originX + columnIndex * horizontalStep,
+    y: originY + rowIndex * verticalStep,
+  }
+}
+
 const buildVisibleDegreeByPubkey = ({
   renderedLinks,
   visiblePubkeys,
@@ -832,6 +857,8 @@ const buildLayoutKey = (
   activeLayer: BuildGraphRenderModelInput['activeLayer'],
   sharedByExpandedCount: ReadonlyMap<string, number>,
   comparedNodePubkeys: ReadonlySet<string>,
+  activeComparisonAnchorPubkeys: readonly string[],
+  layoutMode: NonNullable<BuildGraphRenderModelInput['layoutMode']>,
   nodeSpacingFactor: number,
 ) => {
   let hash = 2166136261
@@ -868,6 +895,11 @@ const buildLayoutKey = (
 
   const sortedCompared = Array.from(comparedNodePubkeys).sort()
   for (const pubkey of sortedCompared) {
+    feed(pubkey)
+  }
+
+  feed(layoutMode)
+  for (const pubkey of activeComparisonAnchorPubkeys) {
     feed(pubkey)
   }
 
@@ -1106,12 +1138,22 @@ export const buildGraphRenderModel = async ({
   selectedNodePubkey,
   expandedNodePubkeys,
   comparedNodePubkeys = new Set<string>(),
+  activeComparisonAnchorPubkeys = [],
+  expandedAggregateNodeIds = [],
+  comparisonAnchorOrder = [],
+  layoutMode = 'legacy-force',
+  comparisonLayoutBudgets = {
+    maxActiveAnchors: 4,
+    maxComparisonTargets: 350,
+    maxTargetsPerSignature: 24,
+  },
   pathfinding,
   graphAnalysis = EMPTY_GRAPH_ANALYSIS,
   effectiveGraphCaps,
   renderConfig,
   previousPositions,
   previousLayoutKey,
+  previousLayoutSnapshot = null,
 }: BuildGraphRenderModelInput): Promise<GraphRenderModel> => {
   const evidence = deriveDirectedEvidence({
     links,
@@ -1348,6 +1390,8 @@ export const buildGraphRenderModel = async ({
     activeLayer,
     sharedByExpandedCount,
     comparedNodePubkeys,
+    activeComparisonAnchorPubkeys,
+    layoutMode,
     renderConfig.nodeSpacingFactor,
   )
   const topologyUnchanged =
@@ -1355,14 +1399,12 @@ export const buildGraphRenderModel = async ({
     previousPositions !== undefined &&
     previousPositions.size > 0
 
-  const layoutNodes: GraphPhysicsNode[] = []
-  let nonRootIndex = 0
-  let warmStartedCount = 0
   const communitySeedPositions = buildCommunitySeedPositions({
     orderedNodes,
     rootNodePubkey,
     graphAnalysis,
   })
+  const nodeRadiusByPubkey = new Map<string, number>()
 
   for (const node of orderedNodes) {
     const isRoot = node.pubkey === rootNodePubkey
@@ -1382,13 +1424,49 @@ export const buildGraphRenderModel = async ({
           (analysisNode?.leaderQuantile ?? 0) * 0.35,
         )
     const radius = roundRadius(baseRadius * analysisRadiusMultiplier)
+    nodeRadiusByPubkey.set(node.pubkey, radius)
+  }
+
+  const shouldUseMultiCenterComparisonLayout =
+    layoutMode === 'multi-center-comparison' && activeLayer === 'graph'
+  const multiCenterComparisonLayout = shouldUseMultiCenterComparisonLayout
+    ? runMultiCenterComparisonLayout({
+        nodes,
+        visiblePubkeys,
+        links,
+        rootNodePubkey,
+        expandedNodePubkeys,
+        comparedNodePubkeys,
+        activeComparisonAnchorPubkeys,
+        comparisonAnchorOrder,
+        comparisonLayoutBudgets,
+        previousPositions,
+        previousLayoutSnapshot,
+        radiiByPubkey: nodeRadiusByPubkey,
+        ticks:
+          previousPositions !== undefined && previousPositions.size > 0
+            ? effectiveGraphCaps.warmStartLayoutTicks
+            : effectiveGraphCaps.coldStartLayoutTicks,
+      })
+    : null
+
+  const layoutNodes: GraphPhysicsNode[] = []
+  let nonRootIndex = 0
+  let warmStartedCount = 0
+
+  for (const node of orderedNodes) {
+    const isRoot = node.pubkey === rootNodePubkey
+    const radius = nodeRadiusByPubkey.get(node.pubkey) ?? FOLLOW_NODE_RADIUS
     const previousPosition = previousPositions?.get(node.pubkey)
-    const startPosition = isRoot
-      ? { x: 0, y: 0 }
-      : previousPosition
-        ? { x: previousPosition[0], y: previousPosition[1] }
-        : communitySeedPositions.get(node.pubkey) ??
-          getInitialNodePosition(nonRootIndex)
+    const comparisonPosition = multiCenterComparisonLayout?.positions.get(node.pubkey)
+    const startPosition = comparisonPosition
+      ? { x: comparisonPosition[0], y: comparisonPosition[1] }
+      : isRoot
+        ? { x: 0, y: 0 }
+        : previousPosition
+          ? { x: previousPosition[0], y: previousPosition[1] }
+          : communitySeedPositions.get(node.pubkey) ??
+            getInitialNodePosition(nonRootIndex)
 
     if (previousPosition && !isRoot) {
       warmStartedCount += 1
@@ -1401,7 +1479,9 @@ export const buildGraphRenderModel = async ({
       isRoot,
       x: startPosition.x,
       y: startPosition.y,
-      ...(isRoot
+      ...(comparisonPosition && !isRoot
+        ? {}
+        : isRoot
         ? {
             fx: 0,
             fy: 0,
@@ -1430,7 +1510,11 @@ export const buildGraphRenderModel = async ({
       relation: link.relation,
     }))
 
-  if (layoutNodes.length > 0 && !topologyUnchanged) {
+  if (
+    multiCenterComparisonLayout === null &&
+    layoutNodes.length > 0 &&
+    !topologyUnchanged
+  ) {
     const isWarmStart =
       warmStartedCount > 0 &&
       warmStartedCount >= Math.floor(layoutNodes.length * 0.5)
@@ -1448,7 +1532,17 @@ export const buildGraphRenderModel = async ({
     })
   }
 
-  const comparedArray = Array.from(comparedNodePubkeys)
+  const comparedArray =
+    multiCenterComparisonLayout?.activeAnchorPubkeys.length
+      ? multiCenterComparisonLayout.activeAnchorPubkeys
+      : activeComparisonAnchorPubkeys.length > 0
+        ? [...activeComparisonAnchorPubkeys]
+        : Array.from(comparedNodePubkeys)
+  const comparisonAnchorSet = new Set(comparedArray)
+  const resolvedLayoutMode = multiCenterComparisonLayout
+    ? 'multi-center-comparison'
+    : 'legacy-force'
+  const layoutSnapshot = multiCenterComparisonLayout?.snapshot ?? null
   const commonFollowPubkeys = new Set<string>()
 
   if (
@@ -1457,21 +1551,19 @@ export const buildGraphRenderModel = async ({
     activeLayer !== 'connections'
   ) {
     const followsBySource = new Map<string, Set<string>>()
-    
-    // Group follows by their expanded source
+
     for (const link of links) {
-      if (link.relation === 'follow' && comparedNodePubkeys.has(link.source)) {
+      if (link.relation === 'follow' && comparisonAnchorSet.has(link.source)) {
         const set = followsBySource.get(link.source) ?? new Set()
         set.add(link.target)
         followsBySource.set(link.source, set)
       }
     }
 
-    // Intersection of all available sets (must have at least 2 to be a comparison)
     if (followsBySource.size >= 2) {
       const sets = Array.from(followsBySource.values())
       const firstSet = sets[0]
-      
+
       for (const target of firstSet) {
         let isCommon = true
         for (let i = 1; i < sets.length; i++) {
@@ -1489,6 +1581,8 @@ export const buildGraphRenderModel = async ({
 
   const renderNodes: GraphRenderNode[] = orderedNodes.map((node) => {
     const layoutNode = layoutNodeByPubkey.get(node.pubkey)
+    const comparisonMembership =
+      multiCenterComparisonLayout?.memberships.get(node.pubkey) ?? null
     const position = {
       x: layoutNode?.x ?? 0,
       y: layoutNode?.y ?? 0,
@@ -1530,6 +1624,16 @@ export const buildGraphRenderModel = async ({
       isExpanded: expandedNodePubkeys.has(node.pubkey),
       isSelected: node.pubkey === selectedNodePubkey,
       isCommonFollow: commonFollowPubkeys.has(node.pubkey),
+      layoutRole:
+        comparisonMembership?.role ??
+        (node.pubkey === rootNodePubkey ? 'root' : 'target'),
+      ownerAnchorPubkeys: comparisonMembership?.ownerAnchorPubkeys ?? [],
+      membershipSignature:
+        comparisonMembership?.membershipSignature ??
+        (node.pubkey === rootNodePubkey ? 'root' : 'legacy'),
+      sharedCount: comparisonMembership?.sharedCount ?? 0,
+      isAggregate: false,
+      aggregateCount: null,
       source: node.source,
       discoveredAt: node.discoveredAt,
       sharedByExpandedCount: sharedByExpandedCount.get(node.pubkey) ?? 0,
@@ -1550,9 +1654,44 @@ export const buildGraphRenderModel = async ({
   }
 
   const nodeByPubkey = new Map(renderNodes.map((node) => [node.pubkey, node]))
+
   const candidateEdges = renderedLinks
     .filter(
-      (link) => nodeByPubkey.has(link.source) && nodeByPubkey.has(link.target),
+      (link) => {
+        if (
+          !nodeByPubkey.has(link.source) ||
+          !nodeByPubkey.has(link.target)
+        ) {
+          return false
+        }
+
+        if (multiCenterComparisonLayout === null) {
+          return true
+        }
+
+        if (link.relation !== 'follow') {
+          return false
+        }
+
+        if (
+          rootNodePubkey !== null &&
+          link.source === rootNodePubkey &&
+          comparisonAnchorSet.has(link.target)
+        ) {
+          return true
+        }
+
+        if (!comparisonAnchorSet.has(link.source)) {
+          return false
+        }
+
+        const targetMembership =
+          multiCenterComparisonLayout.memberships.get(link.target)
+
+        return (
+          targetMembership?.ownerAnchorPubkeys.includes(link.source) ?? false
+        )
+      },
     )
     .map((link) => {
       const sourceNode = nodeByPubkey.get(link.source)!
@@ -1583,19 +1722,185 @@ export const buildGraphRenderModel = async ({
       } satisfies GraphRenderEdge
     })
 
-  const { edges, edgesThinned, thinnedEdgeCount } = thinCandidateEdges({
+  const {
+    edges: thinnedEdges,
+    edgesThinned,
+    thinnedEdgeCount,
+  } = thinCandidateEdges({
     candidateEdges,
     rootNodePubkey,
     selectedNodePubkey,
   })
   const displayedNodePubkeys =
     activeLayer === 'connections'
-      ? createVisiblePubkeysFromRenderEdges(edges)
+      ? createVisiblePubkeysFromRenderEdges(thinnedEdges)
       : null
-  const displayedNodes =
+  const displayedNodesBase =
     displayedNodePubkeys === null
       ? renderNodes
       : renderNodes.filter((node) => displayedNodePubkeys.has(node.pubkey))
+  const secondaryContextAggregateId =
+    resolvedLayoutMode === 'multi-center-comparison' &&
+    activeLayer === 'graph' &&
+    comparedArray.length >= 2
+      ? `aggregate:compare-secondary-context:${comparedArray.join('|')}`
+      : null
+  const displayedNodes =
+    resolvedLayoutMode === 'multi-center-comparison' &&
+    activeLayer === 'graph' &&
+    comparedArray.length >= 2
+      ? (() => {
+          const primaryCompareNodes = displayedNodesBase.filter(
+            (node) =>
+              node.isRoot ||
+              node.layoutRole === 'anchor' ||
+              node.ownerAnchorPubkeys.length > 0 ||
+              node.sharedCount > 0 ||
+              node.pubkey === selectedNodePubkey,
+          )
+          const primaryCompareNodePubkeys = new Set(
+            primaryCompareNodes.map((node) => node.pubkey),
+          )
+          const primaryBounds = resolveGraphBounds(primaryCompareNodes)
+          const discoveredSecondaryContextNodes = Object.values(nodes)
+            .filter((node) => !primaryCompareNodePubkeys.has(node.pubkey))
+            .sort((left, right) => compareNodes(left, right, rootNodePubkey))
+          const secondaryContextNodes = discoveredSecondaryContextNodes.map(
+            (node, index) => {
+              const existingRenderNode = nodeByPubkey.get(node.pubkey)
+
+              if (existingRenderNode) {
+                return {
+                  ...existingRenderNode,
+                  comparisonContextRole:
+                    'compare-secondary-context' as const,
+                }
+              }
+
+              const visualState = resolveNodeVisuals({
+                node,
+                rootNodePubkey,
+                graphAnalysis,
+                communityColorMap,
+              })
+              const bankPosition = getSecondaryContextBankPosition({
+                index,
+                total: discoveredSecondaryContextNodes.length,
+                bounds: primaryBounds,
+              })
+
+              return {
+                id: node.pubkey,
+                pubkey: node.pubkey,
+                displayLabel: getNodeDisplayLabel(node),
+                pictureUrl: isSafeAvatarUrl(node.picture) ? node.picture : null,
+                position: [bankPosition.x, bankPosition.y],
+                radius:
+                  nodeRadiusByPubkey.get(node.pubkey) ??
+                  getNodeRadius(
+                    node,
+                    false,
+                    visibleDegreeByPubkey.get(node.pubkey) ?? 0,
+                    sharedByExpandedCount.get(node.pubkey) ?? 0,
+                    nodeRadiusContext,
+                  ),
+                visibleDegree: visibleDegreeByPubkey.get(node.pubkey) ?? 0,
+                keywordHits: node.keywordHits,
+                isRoot: false,
+                isExpanded: expandedNodePubkeys.has(node.pubkey),
+                isSelected: node.pubkey === selectedNodePubkey,
+                isCommonFollow: commonFollowPubkeys.has(node.pubkey),
+                layoutRole: 'target',
+                ownerAnchorPubkeys: [],
+                membershipSignature: 'compare-secondary-context',
+                sharedCount: 0,
+                comparisonContextRole: 'compare-secondary-context',
+                isAggregate: false,
+                aggregateCount: null,
+                source: node.source,
+                discoveredAt: node.discoveredAt,
+                sharedByExpandedCount:
+                  sharedByExpandedCount.get(node.pubkey) ?? 0,
+                fillColor: visualState.fillColor,
+                lineColor: visualState.lineColor,
+                bridgeHaloColor: visualState.bridgeHaloColor,
+                analysisCommunityId: visualState.analysisCommunityId,
+              } satisfies GraphRenderNode
+            },
+          )
+
+          if (
+            secondaryContextNodes.length === 0 ||
+            secondaryContextAggregateId === null
+          ) {
+            return primaryCompareNodes
+          }
+
+          const secondaryContextExpanded = expandedAggregateNodeIds.includes(
+            secondaryContextAggregateId,
+          )
+
+          if (secondaryContextExpanded) {
+            return [...primaryCompareNodes, ...secondaryContextNodes]
+          }
+
+          const secondaryCentroid = secondaryContextNodes.reduce(
+            (accumulator, node) => {
+              accumulator.x += node.position[0]
+              accumulator.y += node.position[1]
+              return accumulator
+            },
+            { x: 0, y: 0 },
+          )
+          const secondaryAverageX =
+            secondaryCentroid.x / secondaryContextNodes.length
+          const secondaryAverageY =
+            secondaryCentroid.y / secondaryContextNodes.length
+
+          return [
+            ...primaryCompareNodes,
+            {
+              id: secondaryContextAggregateId,
+              pubkey: secondaryContextAggregateId,
+              displayLabel: `+${secondaryContextNodes.length} otros`,
+              pictureUrl: null,
+              position: [
+                Number.isFinite(secondaryAverageX)
+                  ? secondaryAverageX
+                  : (primaryBounds.minX + primaryBounds.maxX) / 2,
+                Math.max(primaryBounds.maxY + 144, secondaryAverageY),
+              ],
+              radius: 18,
+              visibleDegree: 0,
+              keywordHits: 0,
+              isRoot: false,
+              isExpanded: false,
+              isSelected: false,
+              isCommonFollow: false,
+              layoutRole: 'aggregate',
+              ownerAnchorPubkeys: [],
+              membershipSignature: 'compare-secondary-context-aggregate',
+              sharedCount: 0,
+              comparisonContextRole: 'compare-secondary-context-aggregate',
+              isAggregate: true,
+              aggregateCount: secondaryContextNodes.length,
+              source: 'follow',
+              discoveredAt: null,
+              sharedByExpandedCount: 0,
+              fillColor: [71, 85, 105, 232],
+              lineColor: [148, 163, 184, 220],
+              bridgeHaloColor: null,
+              analysisCommunityId: null,
+            } satisfies GraphRenderNode,
+          ]
+        })()
+      : displayedNodesBase
+  const displayedNodePubkeySet = new Set(displayedNodes.map((node) => node.pubkey))
+  const edges = thinnedEdges.filter(
+    (edge) =>
+      displayedNodePubkeySet.has(edge.source) &&
+      displayedNodePubkeySet.has(edge.target),
+  )
   const labelsSuppressedByBudget = renderNodes.length > GRAPH_LABEL_NODE_BUDGET
   const degradedReasons = [
     ...(edgesThinned ? (['edge-thinning'] as const) : []),
@@ -1608,6 +1913,9 @@ export const buildGraphRenderModel = async ({
     position: node.position,
     radius: node.radius,
     isRoot: node.isRoot,
+    isAnchor: node.layoutRole === 'anchor',
+    isAggregate: node.isAggregate === true,
+    comparisonContextRole: node.comparisonContextRole,
     isSelected: node.isSelected,
   }))
   const accessibleNodes: AccessibleNodeSummary[] = displayedNodes.map((node) => ({
@@ -1626,6 +1934,8 @@ export const buildGraphRenderModel = async ({
     bounds: resolveGraphBounds(displayedNodes),
     topologySignature: createTopologySignature(displayedNodes, edges, activeLayer),
     layoutKey,
+    layoutMode: resolvedLayoutMode,
+    layoutSnapshot,
     lod: {
       labelPolicy: labelsSuppressedByBudget
         ? 'hover-selected-only'

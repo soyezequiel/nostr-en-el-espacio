@@ -1,4 +1,5 @@
 import type {
+  ComparisonLayoutBudgets,
   DevicePerformanceProfile,
   EffectiveGraphCaps,
   EffectiveImageBudget,
@@ -35,6 +36,24 @@ const LOW_END_MOBILE_GRAPH_CAPS: EffectiveGraphCaps = {
   maxNodes: 250,
   coldStartLayoutTicks: 32,
   warmStartLayoutTicks: 14,
+}
+
+const DESKTOP_COMPARISON_LAYOUT_BUDGETS: ComparisonLayoutBudgets = {
+  maxActiveAnchors: 4,
+  maxComparisonTargets: 350,
+  maxTargetsPerSignature: 24,
+}
+
+const MOBILE_COMPARISON_LAYOUT_BUDGETS: ComparisonLayoutBudgets = {
+  maxActiveAnchors: 3,
+  maxComparisonTargets: 140,
+  maxTargetsPerSignature: 12,
+}
+
+const LOW_END_MOBILE_COMPARISON_LAYOUT_BUDGETS: ComparisonLayoutBudgets = {
+  maxActiveAnchors: 2,
+  maxComparisonTargets: 84,
+  maxTargetsPerSignature: 8,
 }
 
 const DESKTOP_IMAGE_BUDGET: EffectiveImageBudget = {
@@ -85,6 +104,8 @@ export const DEFAULT_DEVICE_PERFORMANCE_PROFILE: DevicePerformanceProfile =
   'desktop'
 export const DEFAULT_EFFECTIVE_GRAPH_CAPS = DESKTOP_GRAPH_CAPS
 export const DEFAULT_EFFECTIVE_IMAGE_BUDGET = DESKTOP_IMAGE_BUDGET
+export const DEFAULT_COMPARISON_LAYOUT_BUDGETS =
+  DESKTOP_COMPARISON_LAYOUT_BUDGETS
 
 export const detectDevicePerformance = ({
   isPointerCoarse,
@@ -138,6 +159,15 @@ export const getEffectiveImageBudgetForProfile = (
     : profile === 'low-end-mobile'
       ? LOW_END_MOBILE_IMAGE_BUDGET
       : DESKTOP_IMAGE_BUDGET
+
+export const getComparisonLayoutBudgetsForProfile = (
+  profile: DevicePerformanceProfile,
+): ComparisonLayoutBudgets =>
+  profile === 'mobile'
+    ? MOBILE_COMPARISON_LAYOUT_BUDGETS
+    : profile === 'low-end-mobile'
+      ? LOW_END_MOBILE_COMPARISON_LAYOUT_BUDGETS
+      : DESKTOP_COMPARISON_LAYOUT_BUDGETS
 
 export const getDefaultImageQualityModeForProfile = (
   profile: DevicePerformanceProfile,

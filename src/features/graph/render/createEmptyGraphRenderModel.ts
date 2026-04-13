@@ -17,6 +17,8 @@ export const createEmptyGraphRenderModel = (
   },
   topologySignature: 'empty',
   layoutKey: 'empty',
+  layoutMode: 'legacy-force',
+  layoutSnapshot: null,
   lod: {
     labelPolicy: 'hover-selected-or-zoom',
     labelsSuppressedByBudget: false,

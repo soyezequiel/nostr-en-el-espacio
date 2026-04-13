@@ -79,6 +79,7 @@ export type DevicePerformanceProfile =
   | 'desktop'
   | 'mobile'
   | 'low-end-mobile'
+export type GraphLayoutMode = 'legacy-force' | 'multi-center-comparison'
 
 export interface GraphNode {
   pubkey: string
@@ -162,6 +163,12 @@ export interface EffectiveGraphCaps {
   maxNodes: number
   coldStartLayoutTicks: number
   warmStartLayoutTicks: number
+}
+
+export interface ComparisonLayoutBudgets {
+  maxActiveAnchors: number
+  maxComparisonTargets: number
+  maxTargetsPerSignature: number
 }
 
 export interface EffectiveImageBudget {
@@ -406,6 +413,10 @@ export interface ViewportInteractionState {
 export interface UiSlice {
   selectedNodePubkey: string | null
   comparedNodePubkeys: ReadonlySet<string>
+  activeComparisonAnchorPubkeys: readonly string[]
+  expandedAggregateNodeIds: readonly string[]
+  layoutMode: GraphLayoutMode
+  comparisonLayoutBudgets: ComparisonLayoutBudgets
   activeLayer: UiLayer
   connectionsSourceLayer: ConnectionsSourceLayer
   openPanel: UiPanel
@@ -421,6 +432,11 @@ export interface UiSlice {
   setSelectedNodePubkey: (pubkey: string | null) => void
   setComparedNodePubkeys: (pubkeys: ReadonlySet<string>) => void
   clearComparedNodes: () => void
+  setActiveComparisonAnchorPubkeys: (pubkeys: readonly string[]) => void
+  clearActiveComparisonAnchors: () => void
+  toggleExpandedAggregateNodeId: (id: string) => void
+  clearExpandedAggregateNodeIds: () => void
+  setLayoutMode: (mode: GraphLayoutMode) => void
   setActiveLayer: (layer: UiLayer) => void
   setConnectionsSourceLayer: (layer: ConnectionsSourceLayer) => void
   setOpenPanel: (panel: UiPanel) => void

@@ -3,7 +3,9 @@ import type {
   DiscoveredGraphAnalysisState,
 } from '@/features/graph/analysis/types'
 import type {
+  ComparisonLayoutBudgets,
   ConnectionsSourceLayer,
+  GraphLayoutMode,
   GraphLink,
   GraphNodeSource,
   UiLayer,
@@ -36,6 +38,11 @@ export interface BuildRenderModelRequest {
   selectedNodePubkey: string | null
   expandedNodePubkeys: string[]
   comparedNodePubkeys?: string[]
+  activeComparisonAnchorPubkeys?: string[]
+  expandedAggregateNodeIds?: string[]
+  comparisonAnchorOrder?: string[]
+  layoutMode?: GraphLayoutMode
+  comparisonLayoutBudgets?: ComparisonLayoutBudgets
   pathfinding?: {
     status: 'idle' | 'computing' | 'found' | 'not-found' | 'error'
     path: string[] | null
@@ -45,6 +52,7 @@ export interface BuildRenderModelRequest {
   renderConfig: RenderConfig
   previousPositions?: Record<string, [number, number]>
   previousLayoutKey?: string
+  previousLayoutSnapshot?: BuildGraphRenderModelInput['previousLayoutSnapshot']
 }
 
 const isNonEmptyString = (value: unknown): value is string =>
@@ -85,6 +93,9 @@ const isUiLayer = (value: unknown): value is UiLayer =>
 const isConnectionsSourceLayer = (
   value: unknown,
 ): value is ConnectionsSourceLayer => isUiLayer(value) && value !== 'connections'
+
+const isGraphLayoutMode = (value: unknown): value is GraphLayoutMode =>
+  value === 'legacy-force' || value === 'multi-center-comparison'
 
 const isGraphLinkRelation = (
   value: unknown,
@@ -186,6 +197,29 @@ const sanitizeOrderedPubkeyList = (pubkeys: readonly string[]) => {
 
   return ordered
 }
+
+const DEFAULT_COMPARISON_LAYOUT_BUDGETS: ComparisonLayoutBudgets = {
+  maxActiveAnchors: 4,
+  maxComparisonTargets: 350,
+  maxTargetsPerSignature: 24,
+}
+
+const sanitizeComparisonLayoutBudgets = (
+  budgets: BuildGraphRenderModelInput['comparisonLayoutBudgets'] | undefined,
+): ComparisonLayoutBudgets => ({
+  maxActiveAnchors: sanitizeFiniteNumber(
+    budgets?.maxActiveAnchors,
+    DEFAULT_COMPARISON_LAYOUT_BUDGETS.maxActiveAnchors,
+  ),
+  maxComparisonTargets: sanitizeFiniteNumber(
+    budgets?.maxComparisonTargets,
+    DEFAULT_COMPARISON_LAYOUT_BUDGETS.maxComparisonTargets,
+  ),
+  maxTargetsPerSignature: sanitizeFiniteNumber(
+    budgets?.maxTargetsPerSignature,
+    DEFAULT_COMPARISON_LAYOUT_BUDGETS.maxTargetsPerSignature,
+  ),
+})
 
 const sanitizePathfindingState = (
   pathfinding: BuildGraphRenderModelInput['pathfinding'],
@@ -366,12 +400,18 @@ export const serializeBuildGraphRenderModelInput = ({
   selectedNodePubkey,
   expandedNodePubkeys,
   comparedNodePubkeys,
+  activeComparisonAnchorPubkeys,
+  expandedAggregateNodeIds,
+  comparisonAnchorOrder,
+  layoutMode,
+  comparisonLayoutBudgets,
   pathfinding,
   graphAnalysis,
   effectiveGraphCaps,
   renderConfig,
   previousPositions,
   previousLayoutKey,
+  previousLayoutSnapshot,
 }: BuildGraphRenderModelInput & { jobKey?: string }): BuildRenderModelRequest => ({
   ...(isNonEmptyString(jobKey)
     ? {
@@ -392,6 +432,21 @@ export const serializeBuildGraphRenderModelInput = ({
   selectedNodePubkey: sanitizeString(selectedNodePubkey),
   expandedNodePubkeys: sanitizeExpandedNodePubkeys(expandedNodePubkeys),
   comparedNodePubkeys: sanitizeExpandedNodePubkeys(comparedNodePubkeys ?? new Set()),
+  activeComparisonAnchorPubkeys: sanitizeOrderedPubkeyList(
+    activeComparisonAnchorPubkeys ?? [],
+  ),
+  expandedAggregateNodeIds: sanitizeOrderedPubkeyList(
+    expandedAggregateNodeIds ?? [],
+  ),
+  comparisonAnchorOrder: sanitizeOrderedPubkeyList(
+    comparisonAnchorOrder ?? [],
+  ),
+  layoutMode: isGraphLayoutMode(layoutMode)
+    ? layoutMode
+    : 'legacy-force',
+  comparisonLayoutBudgets: sanitizeComparisonLayoutBudgets(
+    comparisonLayoutBudgets,
+  ),
   pathfinding: sanitizePathfindingState(pathfinding),
   graphAnalysis: sanitizeGraphAnalysisState(graphAnalysis),
   effectiveGraphCaps: sanitizeEffectiveGraphCaps(effectiveGraphCaps),
@@ -404,11 +459,13 @@ export const serializeBuildGraphRenderModelInput = ({
     autoSizeNodes: renderConfig.autoSizeNodes === true,
     imageQualityMode: renderConfig.imageQualityMode ?? 'adaptive',
     showSharedEmphasis: renderConfig.showSharedEmphasis === true,
+    showFocusFade: renderConfig.showFocusFade !== false,
   },
   previousPositions: sanitizePreviousPositions(previousPositions),
   ...(isNonEmptyString(previousLayoutKey)
     ? { previousLayoutKey: previousLayoutKey.trim() }
     : {}),
+  previousLayoutSnapshot: previousLayoutSnapshot ?? null,
 })
 
 export const deserializeBuildGraphRenderModelInput = ({
@@ -424,12 +481,18 @@ export const deserializeBuildGraphRenderModelInput = ({
   selectedNodePubkey,
   expandedNodePubkeys,
   comparedNodePubkeys,
+  activeComparisonAnchorPubkeys,
+  expandedAggregateNodeIds,
+  comparisonAnchorOrder,
+  layoutMode,
+  comparisonLayoutBudgets,
   pathfinding,
   graphAnalysis,
   effectiveGraphCaps,
   renderConfig,
   previousPositions,
   previousLayoutKey,
+  previousLayoutSnapshot,
 }: BuildRenderModelRequest): BuildGraphRenderModelInput => ({
   nodes: Object.fromEntries(
     Object.entries(nodes).map(([pubkey, node]) => [
@@ -456,6 +519,13 @@ export const deserializeBuildGraphRenderModelInput = ({
   selectedNodePubkey,
   expandedNodePubkeys: new Set(expandedNodePubkeys),
   comparedNodePubkeys: new Set(comparedNodePubkeys ?? []),
+  activeComparisonAnchorPubkeys: activeComparisonAnchorPubkeys ?? [],
+  expandedAggregateNodeIds: expandedAggregateNodeIds ?? [],
+  comparisonAnchorOrder: comparisonAnchorOrder ?? [],
+  layoutMode: isGraphLayoutMode(layoutMode) ? layoutMode : 'legacy-force',
+  comparisonLayoutBudgets: sanitizeComparisonLayoutBudgets(
+    comparisonLayoutBudgets,
+  ),
   pathfinding: pathfinding
     ? {
         status: pathfinding.status,
@@ -469,5 +539,6 @@ export const deserializeBuildGraphRenderModelInput = ({
     ? new Map(Object.entries(previousPositions))
     : undefined,
   previousLayoutKey,
+  previousLayoutSnapshot: previousLayoutSnapshot ?? null,
   ...(typeof jobKey === 'string' ? { jobKey } : {}),
 })

@@ -306,9 +306,20 @@ Esta capa maneja:
 - viewport y logica de fit
 - generacion del render model apoyada en workers
 - fisicas de layout separadas en `src/features/graph/render/graphPhysics.ts`, con factory async-friendly para el worker y tickeo manual hasta convergencia
+- modo de layout `multi-center-comparison` para comparar follows salientes entre anchors activos, incluyendo al root como anchor por defecto cuando se expande otro nodo, con orden explicito de anchors, snapshots de layout y solver local en `src/features/graph/render/layouts/multiCenterComparisonLayout.ts`
 - runtime de avatares e imagenes con umbrales segun zoom
 - seleccion de labels y geometria de escena
 - resaltado de comparacion y transformaciones visuales por capa
+
+Piezas clave del pipeline de comparacion:
+
+- `GraphCanvas.tsx` conserva `previousPositions` y ahora tambien `previousLayoutSnapshot`
+- `uiSlice.ts` mantiene `activeComparisonAnchorPubkeys` en orden estable, separado del `Set` de comparados
+- `buildGraphRenderModel.ts` elige entre `legacy-force` y `multi-center-comparison`
+- cuando el root expande otro nodo, `buildGraphRenderModel.ts` mantiene explicitos los exclusivos del root, los exclusivos del nodo expandido y sus intersecciones compartidas en lugar de colapsar el root como contexto secundario
+- en compare mode con 2+ anchors, los nodos descubiertos/cargados que no pertenecen al subgrafo comparado vuelven como aggregate secundario (`compare-secondary-context`) que se puede expandir sin reintroducir el ruido completo del grafo
+- en el caso principal de 2 anchors (`root + expandido`), el layout ya no aplica el recorte `maxTargetsPerSignature` por bucket; solo conserva el cap total de targets comparativos para no achicar artificialmente los exclusivos del root o del anchor expandido
+- `GraphSceneLayer.ts` y `labels.ts` mantienen anchors visibles, enfatizan nodos shared segun su firma de pertenencia y evitan que el focus-fade apague nodos explicitos del subgrafo comparativo
 
 ### Workers
 
@@ -366,6 +377,7 @@ El repo ya es fuerte en:
 - exploracion de grafo con degradacion controlada
 - expansion de nodos sin perder la sesion en curso
 - comparacion visual entre identidades seleccionadas
+- comparacion multi-centro de vecindarios salientes con estabilidad incremental
 - analisis del grafo descubierto para comunidades, lideres y puentes
 - lectura del grafo con soporte para zaps
 - export orientado a evidencia para investigacion o demos

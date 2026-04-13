@@ -39,6 +39,7 @@ const DEFAULT_RENDER_CONFIG = {
   autoSizeNodes: true,
   imageQualityMode: 'adaptive' as const,
   showSharedEmphasis: false,
+  showFocusFade: true,
 }
 
 const runSimulation = async ({

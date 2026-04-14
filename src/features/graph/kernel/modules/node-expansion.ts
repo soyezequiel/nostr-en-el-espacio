@@ -7,7 +7,7 @@ import type {
   NodeExpansionState,
 } from '@/features/graph/app/store'
 import type { ExpandNodeResult } from '@/features/graph/kernel/runtime'
-import type { KernelContext } from '@/features/graph/kernel/modules/context'
+import type { KernelContext, RelayAdapterInstance } from '@/features/graph/kernel/modules/context'
 import {
   MAX_SESSION_RELAYS,
   NODE_EXPAND_CONNECT_TIMEOUT_MS,
@@ -21,7 +21,6 @@ import {
   collectRelayEvents,
   collectTargetedReciprocalFollowerEvidence,
   mergeBoundedRelayUrlSets,
-  mergeInboundFollowerEvidence,
   selectLatestReplaceableEvent,
   selectLatestReplaceableEventsByPubkey,
   serializeContactListEvent,
@@ -52,9 +51,47 @@ export function createNodeExpansionModule(
     keywordLayer: KeywordLayerModule
     zapLayer: ZapLayerModule
     nodeDetail: NodeDetailModule
+    loadDirectInboundFollowerEvidence?: (input: {
+      adapter: RelayAdapterInstance
+      pubkey: string
+    }) => Promise<{
+      followerPubkeys: string[]
+      partial: boolean
+    }>
+    loadTargetedReciprocalFollowerEvidence?: (
+      input: Parameters<typeof collectTargetedReciprocalFollowerEvidence>[0],
+    ) => ReturnType<typeof collectTargetedReciprocalFollowerEvidence>
   },
 ) {
   const activeNodeExpansionRequests = new Map<string, Promise<ExpandNodeResult>>()
+  const activeInboundEnrichmentRequests = new Map<string, Promise<void>>()
+  const activeReciprocalEnrichmentRequests = new Map<string, Promise<void>>()
+  const loadDirectInboundFollowerEvidence =
+    collaborators.loadDirectInboundFollowerEvidence ??
+    (async ({ adapter, pubkey }) => {
+      const inboundFollowerResult = await collectRelayEvents(adapter, [
+        {
+          kinds: [3],
+          '#p': [pubkey],
+          limit: NODE_EXPAND_INBOUND_QUERY_LIMIT,
+        } satisfies Filter & { '#p': string[] },
+      ])
+
+      const inboundFollowerEvidence = await collectInboundFollowerEvidence(
+        ctx.eventsWorker,
+        selectLatestReplaceableEventsByPubkey(inboundFollowerResult.events),
+        pubkey,
+      )
+
+      return {
+        followerPubkeys: inboundFollowerEvidence.followerPubkeys,
+        partial:
+          inboundFollowerEvidence.partial || inboundFollowerResult.error !== null,
+      }
+    })
+  const loadTargetedReciprocalFollowerEvidence =
+    collaborators.loadTargetedReciprocalFollowerEvidence ??
+    collectTargetedReciprocalFollowerEvidence
 
   const buildNodeExpansionState = (
     state: Partial<NodeExpansionState> & Pick<NodeExpansionState, 'status' | 'message'>,
@@ -101,6 +138,216 @@ export function createNodeExpansionModule(
         startedAt,
       }),
     )
+  }
+
+  const applySupplementalInboundFollowerEvidence = (
+    pubkey: string,
+    inboundFollowerPubkeys: readonly string[],
+    options: {
+      relayUrls: readonly string[]
+    },
+  ) => {
+    const uniqueInboundFollowerPubkeys = Array.from(
+      new Set(
+        inboundFollowerPubkeys.filter(
+          (followerPubkey) => followerPubkey && followerPubkey !== pubkey,
+        ),
+      ),
+    )
+
+    if (uniqueInboundFollowerPubkeys.length === 0) {
+      return
+    }
+
+    const state = ctx.store.getState()
+    if (!state.nodes[pubkey] || !state.expandedNodePubkeys.has(pubkey)) {
+      return
+    }
+
+    const discoveredAt = ctx.now()
+    const inboundNewNodes: GraphNode[] = uniqueInboundFollowerPubkeys
+      .filter((followerPubkey) => !state.nodes[followerPubkey])
+      .map((followerPubkey) => ({
+        pubkey: followerPubkey,
+        keywordHits: 0,
+        discoveredAt,
+        profileState: 'loading',
+        source: 'inbound' as const,
+      }))
+
+    const inboundNodeResult =
+      inboundNewNodes.length > 0
+        ? state.upsertNodes(inboundNewNodes)
+        : { acceptedPubkeys: [], rejectedPubkeys: [] }
+
+    const freshState = ctx.store.getState()
+    if (!freshState.nodes[pubkey] || !freshState.expandedNodePubkeys.has(pubkey)) {
+      return
+    }
+
+    const existingInboundFollowers = new Set(
+      freshState.inboundAdjacency[pubkey] ?? [],
+    )
+    const supplementalInboundLinks: GraphLink[] = uniqueInboundFollowerPubkeys
+      .filter((followerPubkey) => freshState.nodes[followerPubkey])
+      .filter((followerPubkey) => !existingInboundFollowers.has(followerPubkey))
+      .map((followerPubkey) => ({
+        source: followerPubkey,
+        target: pubkey,
+        relation: 'inbound' as const,
+      }))
+
+    if (supplementalInboundLinks.length > 0) {
+      freshState.upsertInboundLinks(supplementalInboundLinks)
+    }
+
+    if (
+      inboundNodeResult.acceptedPubkeys.length === 0 &&
+      supplementalInboundLinks.length === 0
+    ) {
+      return
+    }
+
+    collaborators.analysis.schedule()
+
+    const loadSequence = collaborators.rootLoader.getLoadSequence()
+    const profileHydrationRelayUrls = mergeBoundedRelayUrlSets(
+      MAX_PROFILE_HYDRATION_RELAY_URLS,
+      options.relayUrls,
+    )
+
+    if (inboundNodeResult.acceptedPubkeys.length > 0) {
+      void collaborators.profileHydration.hydrateNodeProfiles(
+        inboundNodeResult.acceptedPubkeys,
+        profileHydrationRelayUrls,
+        () => collaborators.rootLoader.isStaleLoad(loadSequence),
+        {
+          persistProfileEvent: collaborators.persistence.persistProfileEvent,
+        },
+      ).catch((error) => {
+        console.warn(
+          'Profile hydration failed after reciprocal node expansion enrichment:',
+          error,
+        )
+      })
+    }
+
+    void collaborators.zapLayer.prefetchZapLayer(
+      collaborators.zapLayer.getZapTargetPubkeys(),
+      options.relayUrls.slice(),
+    ).catch((error) => {
+      console.warn('Zap layer prefetch failed after reciprocal enrichment:', error)
+    })
+
+    void collaborators.keywordLayer.prefetchKeywordCorpus(
+      collaborators.keywordLayer.getKeywordCorpusTargetPubkeys(),
+      options.relayUrls.slice(),
+    ).catch((error) => {
+      console.warn(
+        'Keyword corpus prefetch failed after reciprocal enrichment:',
+        error,
+      )
+    })
+  }
+
+  const scheduleReciprocalInboundEnrichment = (
+    pubkey: string,
+    followPubkeys: readonly string[],
+    relayUrls: readonly string[],
+  ) => {
+    const candidatePubkeys = Array.from(
+      new Set(
+        followPubkeys.filter(
+          (followPubkey) => followPubkey && followPubkey !== pubkey,
+        ),
+      ),
+    )
+
+    if (
+      candidatePubkeys.length === 0 ||
+      activeReciprocalEnrichmentRequests.has(pubkey)
+    ) {
+      return
+    }
+
+    const adapter = ctx.createRelayAdapter({
+      relayUrls: relayUrls.slice(),
+      connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
+      pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
+      retryCount: NODE_EXPAND_RETRY_COUNT,
+      stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+    })
+
+    const request = loadTargetedReciprocalFollowerEvidence({
+      adapter,
+      eventsWorker: ctx.eventsWorker,
+      followPubkeys: candidatePubkeys,
+      targetPubkey: pubkey,
+    })
+      .then((reciprocalEvidence) => {
+        applySupplementalInboundFollowerEvidence(
+          pubkey,
+          reciprocalEvidence.followerPubkeys,
+          {
+            relayUrls,
+          },
+        )
+      })
+      .catch((error) => {
+        console.warn(
+          'Background targeted reciprocal follower evidence failed during expansion:',
+          error,
+        )
+      })
+      .finally(() => {
+        adapter.close()
+        activeReciprocalEnrichmentRequests.delete(pubkey)
+      })
+
+    activeReciprocalEnrichmentRequests.set(pubkey, request)
+  }
+
+  const scheduleDirectInboundEnrichment = (
+    pubkey: string,
+    relayUrls: readonly string[],
+  ) => {
+    if (activeInboundEnrichmentRequests.has(pubkey)) {
+      return
+    }
+
+    const adapter = ctx.createRelayAdapter({
+      relayUrls: relayUrls.slice(),
+      connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
+      pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
+      retryCount: NODE_EXPAND_RETRY_COUNT,
+      stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+    })
+
+    const request = loadDirectInboundFollowerEvidence({
+      adapter,
+      pubkey,
+    })
+      .then((inboundEvidence) => {
+        applySupplementalInboundFollowerEvidence(
+          pubkey,
+          inboundEvidence.followerPubkeys,
+          {
+            relayUrls,
+          },
+        )
+      })
+      .catch((error) => {
+        console.warn(
+          'Background direct inbound follower evidence failed during expansion:',
+          error,
+        )
+      })
+      .finally(() => {
+        adapter.close()
+        activeInboundEnrichmentRequests.delete(pubkey)
+      })
+
+    activeInboundEnrichmentRequests.set(pubkey, request)
   }
 
   async function expandNode(pubkey: string): Promise<ExpandNodeResult> {
@@ -208,12 +455,12 @@ export function createNodeExpansionModule(
           'Integrando follows recuperados desde cache local...',
           startedAt,
         )
-        return applyExpandedStructureEvidence(
+        const result = applyExpandedStructureEvidence(
           pubkey,
           cachedContactList.follows,
           [],
           {
-            relayUrls: state.relayUrls,
+            relayUrls,
             relayHints: cachedContactList.relayHints,
             authoredHasPartialSignals: true,
             inboundHasPartialSignals: false,
@@ -225,6 +472,13 @@ export function createNodeExpansionModule(
                 : `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
           },
         )
+        scheduleReciprocalInboundEnrichment(
+          pubkey,
+          cachedContactList.follows,
+          relayUrls,
+        )
+        scheduleDirectInboundEnrichment(pubkey, relayUrls)
+        return result
       }
     }
 
@@ -244,15 +498,8 @@ export function createNodeExpansionModule(
         'Consultando relays activos para recuperar follows y followers...',
         startedAt,
       )
-      const [contactListResult, inboundFollowerResult] = await Promise.all([
-        collectRelayEvents(adapter, [{ authors: [pubkey], kinds: [3] } satisfies Filter]),
-        collectRelayEvents(adapter, [
-          {
-            kinds: [3],
-            '#p': [pubkey],
-            limit: NODE_EXPAND_INBOUND_QUERY_LIMIT,
-          } satisfies Filter & { '#p': string[] },
-        ]),
+      const contactListResult = await collectRelayEvents(adapter, [
+        { authors: [pubkey], kinds: [3] } satisfies Filter,
       ])
 
       setLoadingState(
@@ -262,35 +509,7 @@ export function createNodeExpansionModule(
         'Correlacionando followers entrantes y validando evidencia...',
         startedAt,
       )
-      let inboundFollowerEvidence = await collectInboundFollowerEvidence(
-        ctx.eventsWorker,
-        selectLatestReplaceableEventsByPubkey(inboundFollowerResult.events),
-        pubkey,
-      )
       const latestContactListEvent = selectLatestReplaceableEvent(contactListResult.events)
-      let reciprocalEvidencePartial = false
-      const augmentReciprocalEvidence = async (followPubkeys: readonly string[]) => {
-        try {
-          const targetedReciprocalFollowerEvidence =
-            await collectTargetedReciprocalFollowerEvidence({
-              adapter,
-              eventsWorker: ctx.eventsWorker,
-              followPubkeys,
-              targetPubkey: pubkey,
-            })
-
-          inboundFollowerEvidence = mergeInboundFollowerEvidence(
-            inboundFollowerEvidence,
-            targetedReciprocalFollowerEvidence,
-          )
-        } catch (error) {
-          reciprocalEvidencePartial = true
-          console.warn(
-            'Targeted reciprocal follower evidence failed during expansion:',
-            error,
-          )
-        }
-      }
 
       if (!latestContactListEvent) {
         let cachedContactList = await ctx.repositories.contactLists.get(pubkey)
@@ -303,7 +522,6 @@ export function createNodeExpansionModule(
         }
 
         if (cachedContactList) {
-          await augmentReciprocalEvidence(cachedContactList.follows)
           const cachePreviewMessage =
             buildContactListPartialMessage({
               discoveredFollowCount: cachedContactList.follows.length,
@@ -319,28 +537,36 @@ export function createNodeExpansionModule(
             'Integrando evidencia estructural recuperada...',
             startedAt,
           )
-          return applyExpandedStructureEvidence(
+          const result = applyExpandedStructureEvidence(
             pubkey,
             cachedContactList.follows,
-            inboundFollowerEvidence.followerPubkeys,
+            [],
             {
               relayUrls,
-            relayHints: cachedContactList.relayHints,
-            authoredHasPartialSignals: true,
-            inboundHasPartialSignals:
-              reciprocalEvidencePartial ||
-              inboundFollowerEvidence.partial ||
-              inboundFollowerResult.error !== null,
-            authoredDiagnostics: [],
-            authoredLoadedFromCache: true,
-            previewMessage:
+              relayHints: cachedContactList.relayHints,
+              authoredHasPartialSignals: true,
+              inboundHasPartialSignals: false,
+              authoredDiagnostics: [],
+              authoredLoadedFromCache: true,
+              previewMessage:
                 cachedContactList.follows.length > 0
                   ? cachePreviewMessage
                   : `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
             },
           )
+          scheduleReciprocalInboundEnrichment(
+            pubkey,
+            cachedContactList.follows,
+            relayUrls,
+          )
+          scheduleDirectInboundEnrichment(pubkey, relayUrls)
+          return result
         }
 
+        const inboundFollowerEvidence = await loadDirectInboundFollowerEvidence({
+          adapter,
+          pubkey,
+        })
         setLoadingState(
           pubkey,
           'merging',
@@ -355,8 +581,7 @@ export function createNodeExpansionModule(
           {
             relayUrls,
             authoredHasPartialSignals: false,
-            inboundHasPartialSignals:
-              inboundFollowerEvidence.partial || inboundFollowerResult.error !== null,
+            inboundHasPartialSignals: inboundFollowerEvidence.partial,
             previewMessage: `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
           },
         )
@@ -381,7 +606,6 @@ export function createNodeExpansionModule(
         cachedContactListBeforePersist &&
         cachedContactListBeforePersist.follows.length > 0
       ) {
-        await augmentReciprocalEvidence(cachedContactListBeforePersist.follows)
         const cachePreviewMessage =
           buildContactListPartialMessage({
             discoveredFollowCount: cachedContactListBeforePersist.follows.length,
@@ -401,24 +625,29 @@ export function createNodeExpansionModule(
           'Integrando evidencia estructural recuperada...',
           startedAt,
         )
-        return applyExpandedStructureEvidence(
+        const result = applyExpandedStructureEvidence(
           pubkey,
           cachedContactListBeforePersist.follows,
-          inboundFollowerEvidence.followerPubkeys,
+          [],
           {
             relayUrls,
             relayHints: cachedContactListBeforePersist.relayHints,
             authoredHasPartialSignals: true,
-            inboundHasPartialSignals:
-              inboundFollowerEvidence.partial || inboundFollowerResult.error !== null,
+            inboundHasPartialSignals: false,
             authoredDiagnostics: [],
             authoredLoadedFromCache: true,
             previewMessage: cachePreviewMessage,
           },
         )
+        scheduleReciprocalInboundEnrichment(
+          pubkey,
+          cachedContactListBeforePersist.follows,
+          relayUrls,
+        )
+        scheduleDirectInboundEnrichment(pubkey, relayUrls)
+        return result
       }
 
-      await augmentReciprocalEvidence(parsedContactList.followPubkeys)
       setLoadingState(
         pubkey,
         'merging',
@@ -426,21 +655,25 @@ export function createNodeExpansionModule(
         'Integrando nodos y conexiones al grafo...',
         startedAt,
       )
-      return applyExpandedStructureEvidence(
+      const result = applyExpandedStructureEvidence(
         pubkey,
         parsedContactList.followPubkeys,
-        inboundFollowerEvidence.followerPubkeys,
+        [],
         {
           relayUrls,
           relayHints: parsedContactList.relayHints,
           authoredHasPartialSignals: parsedContactList.diagnostics.length > 0,
-          inboundHasPartialSignals:
-            reciprocalEvidencePartial ||
-            inboundFollowerEvidence.partial ||
-            inboundFollowerResult.error !== null,
+          inboundHasPartialSignals: false,
           authoredDiagnostics: parsedContactList.diagnostics,
         },
       )
+      scheduleDirectInboundEnrichment(pubkey, relayUrls)
+      scheduleReciprocalInboundEnrichment(
+        pubkey,
+        parsedContactList.followPubkeys,
+        relayUrls,
+      )
+      return result
     } catch (error) {
       setTerminalState(
         pubkey,

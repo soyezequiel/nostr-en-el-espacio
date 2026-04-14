@@ -248,6 +248,39 @@ const sortAndDedupeGraphLinks = (links: readonly GraphLink[]) => {
   return Array.from(linksById.values()).sort(compareGraphLinks)
 }
 
+const createGraphLayerLinks = ({
+  links,
+  inboundLinks,
+}: Pick<BuildGraphRenderModelInput, 'links' | 'inboundLinks'>) => {
+  const linksByDirectedPair = new Map<string, GraphLink>()
+
+  for (const link of inboundLinks) {
+    if (link.relation !== 'inbound') {
+      continue
+    }
+
+    linksByDirectedPair.set(`${link.source}->${link.target}`, {
+      source: link.source,
+      target: link.target,
+      relation: 'inbound',
+    })
+  }
+
+  for (const link of links) {
+    if (link.relation !== 'follow') {
+      continue
+    }
+
+    linksByDirectedPair.set(`${link.source}->${link.target}`, {
+      source: link.source,
+      target: link.target,
+      relation: 'follow',
+    })
+  }
+
+  return Array.from(linksByDirectedPair.values()).sort(compareGraphLinks)
+}
+
 const isRelationshipLayer = (layer: BuildGraphRenderModelInput['activeLayer']) =>
   layer === 'following' ||
   layer === 'following-non-followers' ||
@@ -265,7 +298,6 @@ const resolveConnectionsVisiblePubkeys = ({
   nonReciprocalFollowerLayerLinks,
   nodes,
   rootNodePubkey,
-  selectedNodePubkey,
   expandedNodePubkeys,
 }: {
   connectionsSourceLayer: BuildGraphRenderModelInput['connectionsSourceLayer']
@@ -277,7 +309,6 @@ const resolveConnectionsVisiblePubkeys = ({
   nonReciprocalFollowerLayerLinks: readonly GraphLink[]
   nodes: BuildGraphRenderModelInput['nodes']
   rootNodePubkey: string | null
-  selectedNodePubkey: string | null
   expandedNodePubkeys: ReadonlySet<string>
 }) => {
   const removeRootPubkey = (visiblePubkeys: Set<string>) => {
@@ -294,7 +325,6 @@ const resolveConnectionsVisiblePubkeys = ({
       layerLinks: followingLayerLinks,
       nodes,
       rootNodePubkey,
-      selectedNodePubkey,
       expandedNodePubkeys,
     }))
   }
@@ -305,7 +335,6 @@ const resolveConnectionsVisiblePubkeys = ({
       layerLinks: nonReciprocalFollowingLayerLinks,
       nodes,
       rootNodePubkey,
-      selectedNodePubkey,
       expandedNodePubkeys,
     }))
   }
@@ -316,7 +345,6 @@ const resolveConnectionsVisiblePubkeys = ({
       layerLinks: mutualLayerLinks,
       nodes,
       rootNodePubkey,
-      selectedNodePubkey,
       expandedNodePubkeys,
     }))
   }
@@ -327,7 +355,6 @@ const resolveConnectionsVisiblePubkeys = ({
       layerLinks: followerLayerLinks,
       nodes,
       rootNodePubkey,
-      selectedNodePubkey,
       expandedNodePubkeys,
     }))
   }
@@ -338,7 +365,6 @@ const resolveConnectionsVisiblePubkeys = ({
       layerLinks: nonReciprocalFollowerLayerLinks,
       nodes,
       rootNodePubkey,
-      selectedNodePubkey,
       expandedNodePubkeys,
     }))
   }
@@ -377,14 +403,12 @@ const buildVisiblePubkeysForLayer = ({
   layerLinks,
   nodes,
   rootNodePubkey,
-  selectedNodePubkey,
   expandedNodePubkeys,
 }: {
   layer: VisibleLayer
   layerLinks: readonly VisibleLink[]
   nodes: BuildGraphRenderModelInput['nodes']
   rootNodePubkey: string | null
-  selectedNodePubkey: string | null
   expandedNodePubkeys: ReadonlySet<string>
 }) => {
   const visiblePubkeys = new Set<string>()
@@ -392,10 +416,6 @@ const buildVisiblePubkeysForLayer = ({
 
   if (rootNodePubkey) {
     visiblePubkeys.add(rootNodePubkey)
-  }
-
-  if (selectedNodePubkey && !layerIsRelationship) {
-    visiblePubkeys.add(selectedNodePubkey)
   }
 
   if (!layerIsRelationship) {
@@ -712,20 +732,10 @@ const buildSharedByExpandedCount = ({
 
 const thinCandidateEdges = ({
   candidateEdges,
-  rootNodePubkey,
-  selectedNodePubkey,
 }: {
   candidateEdges: GraphRenderEdge[]
-  rootNodePubkey: string | null
-  selectedNodePubkey: string | null
 }) => {
-  const prioritizedEdges = candidateEdges.filter(
-    (edge) =>
-      edge.source === rootNodePubkey ||
-      edge.target === rootNodePubkey ||
-      edge.source === selectedNodePubkey ||
-      edge.target === selectedNodePubkey,
-  )
+  const prioritizedEdges = candidateEdges.filter((edge) => edge.isPriority)
   const nonPriorityEdges = candidateEdges.filter((edge) => !edge.isPriority)
 
   if (nonPriorityEdges.length === 0) {
@@ -1209,7 +1219,10 @@ export const buildGraphRenderModel = async ({
       (edge) => !evidence.combinedAdjacency[edge.target]?.includes(edge.source),
     ),
   )
-  const graphLayerLinks = [...links]
+  const graphLayerLinks = createGraphLayerLinks({
+    links,
+    inboundLinks,
+  })
   const zapLayerLinks = [...links, ...zapEdges]
   const currentGraphNodePubkeys = new Set(Object.keys(nodes))
   const connectionsVisiblePubkeys = resolveConnectionsVisiblePubkeys({
@@ -1222,7 +1235,6 @@ export const buildGraphRenderModel = async ({
     nonReciprocalFollowerLayerLinks,
     nodes,
     rootNodePubkey,
-    selectedNodePubkey,
     expandedNodePubkeys,
   })
   const internalConnectionLinksByKey = new Map<string, GraphLink>()
@@ -1284,7 +1296,6 @@ export const buildGraphRenderModel = async ({
           layerLinks: renderedLinks,
           nodes,
           rootNodePubkey,
-          selectedNodePubkey,
           expandedNodePubkeys,
         })
 
@@ -1434,7 +1445,6 @@ export const buildGraphRenderModel = async ({
     const isWarmStart =
       warmStartedCount > 0 &&
       warmStartedCount >= Math.floor(layoutNodes.length * 0.5)
-
     await graphPhysicsSimulation.run({
       nodes: layoutNodes,
       links: layoutLinks,
@@ -1563,8 +1573,6 @@ export const buildGraphRenderModel = async ({
       const isPriority =
         sourceNode.pubkey === rootNodePubkey ||
         targetNode.pubkey === rootNodePubkey ||
-        sourceNode.pubkey === selectedNodePubkey ||
-        targetNode.pubkey === selectedNodePubkey ||
         isPathEdge
 
       return {
@@ -1585,8 +1593,6 @@ export const buildGraphRenderModel = async ({
 
   const { edges, edgesThinned, thinnedEdgeCount } = thinCandidateEdges({
     candidateEdges,
-    rootNodePubkey,
-    selectedNodePubkey,
   })
   const displayedNodePubkeys =
     activeLayer === 'connections'

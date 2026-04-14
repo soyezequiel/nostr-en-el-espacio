@@ -7,6 +7,18 @@ import {
   type GraphPhysicsLink,
   type GraphPhysicsNode,
 } from './graphPhysics'
+import {
+  createFixtureEdgeIds,
+  createFiveExpandersSharedHubsFixture,
+  createPhysicsJobFromFixture,
+  createPositionMapFromPhysicsNodes,
+  createSyntheticExpandedIntersectionFixture,
+  createThreeExpandersPartialOverlapFixture,
+  createTwoExpandersStrongOverlapFixture,
+  formatFixtureLayoutMetrics,
+  measureFixtureLayoutMetrics,
+  roundFixtureLayoutMetrics,
+} from './graphRenderBaselineTestUtils'
 
 const createNode = ({
   id,
@@ -59,6 +71,19 @@ const runSimulation = async ({
     activeLayer: 'graph',
     ticks,
   })
+
+const runFixtureSimulation = async (
+  fixture:
+    | ReturnType<typeof createTwoExpandersStrongOverlapFixture>
+    | ReturnType<typeof createThreeExpandersPartialOverlapFixture>
+    | ReturnType<typeof createFiveExpandersSharedHubsFixture>
+    | ReturnType<typeof createSyntheticExpandedIntersectionFixture>,
+  ticks = DEFAULT_DENSE_GRAPH_PHYSICS_CONFIG.ticks,
+) => {
+  const job = createPhysicsJobFromFixture(fixture, { ticks })
+  await createGraphPhysicsSimulation().run(job)
+  return job
+}
 
 test('exposes dense-graph defaults tuned for fast settling and Barnes-Hut', () => {
   assert.equal(DEFAULT_DENSE_GRAPH_PHYSICS_CONFIG.nBodyTheta, 0.9)
@@ -122,5 +147,100 @@ test('collision radius uses node size to break up overlapping dense clusters', a
   assert.ok(
     distanceAB >= nodes[1].radius + nodes[2].radius,
     `expected separated nodes, got distance ${distanceAB}`,
+  )
+})
+
+test('physics baseline keeps shared targets tighter than unique targets across deterministic overlap fixtures', async (suite) => {
+  const fixtures = [
+    createTwoExpandersStrongOverlapFixture(),
+    createThreeExpandersPartialOverlapFixture(),
+    createFiveExpandersSharedHubsFixture(),
+  ]
+  const expectedMetricsByFixture = new Map([
+    [
+      'two-expanders-strong-overlap',
+      {
+        fixtureName: 'two-expanders-strong-overlap',
+        avgSharedTargetDistanceToExpanders: 224.1,
+        avgUniqueTargetDistanceToExpander: 190.92,
+        sharedEdgeSurvivalRatio: 1,
+        survivedSharedEdgeCount: 4,
+        expectedSharedEdgeCount: 4,
+        radialLegibilityScore: 0.01,
+      },
+    ],
+    [
+      'three-expanders-partial-overlap',
+      {
+        fixtureName: 'three-expanders-partial-overlap',
+        avgSharedTargetDistanceToExpanders: 212.04,
+        avgUniqueTargetDistanceToExpander: 173.99,
+        sharedEdgeSurvivalRatio: 1,
+        survivedSharedEdgeCount: 7,
+        expectedSharedEdgeCount: 7,
+        radialLegibilityScore: -0.24,
+      },
+    ],
+    [
+      'five-expanders-shared-hubs',
+      {
+        fixtureName: 'five-expanders-shared-hubs',
+        avgSharedTargetDistanceToExpanders: 222.69,
+        avgUniqueTargetDistanceToExpander: 227.73,
+        sharedEdgeSurvivalRatio: 1,
+        survivedSharedEdgeCount: 11,
+        expectedSharedEdgeCount: 11,
+        radialLegibilityScore: -0.08,
+      },
+    ],
+  ])
+
+  for (const fixture of fixtures) {
+    await suite.test(fixture.name, async () => {
+      const job = await runFixtureSimulation(fixture, 120)
+      const metrics = measureFixtureLayoutMetrics({
+        fixture,
+        positionsByPubkey: createPositionMapFromPhysicsNodes(job.nodes),
+        visibleEdgeIds: createFixtureEdgeIds(job.links),
+      })
+      const metricsMessage = formatFixtureLayoutMetrics(metrics)
+
+      assert.deepEqual(
+        roundFixtureLayoutMetrics(metrics),
+        expectedMetricsByFixture.get(fixture.name),
+        metricsMessage,
+      )
+    })
+  }
+})
+
+test('physics baseline stays outward-radial under synthetic n-expander overlap with noisy inbound edges', async () => {
+  const fixture = createSyntheticExpandedIntersectionFixture({
+    expandedCount: 8,
+    sharedHubCount: 5,
+    pairwiseSharedTargetsPerAdjacentPair: 2,
+    uniqueTargetsPerExpander: 4,
+    inboundNoisePerExpander: 3,
+  })
+  const job = await runFixtureSimulation(fixture, 140)
+  const metrics = measureFixtureLayoutMetrics({
+    fixture,
+    positionsByPubkey: createPositionMapFromPhysicsNodes(job.nodes),
+    visibleEdgeIds: createFixtureEdgeIds(job.links),
+  })
+  const metricsMessage = formatFixtureLayoutMetrics(metrics)
+
+  assert.deepEqual(
+    roundFixtureLayoutMetrics(metrics),
+    {
+      fixtureName: 'synthetic-8-expanders-mixed-overlap',
+      avgSharedTargetDistanceToExpanders: 261.37,
+      avgUniqueTargetDistanceToExpander: 430.48,
+      sharedEdgeSurvivalRatio: 1,
+      survivedSharedEdgeCount: 72,
+      expectedSharedEdgeCount: 72,
+      radialLegibilityScore: 0.14,
+    },
+    metricsMessage,
   )
 })

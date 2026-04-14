@@ -1479,23 +1479,13 @@ export const GraphCanvas = memo(function GraphCanvas({
       () =>
         size.width > 0 && size.height > 0
           ? createGraphFitSignature({
-            topologySignature:
-              model.activeLayer === 'connections'
-                ? [
-                    model.activeLayer,
-                    connectionsSourceLayer,
-                    rootNodePubkey ?? 'none',
-                  ].join('|')
-                : model.topologySignature,
+              topologySignature: model.topologySignature,
               width: size.width,
               height: size.height,
             })
           : 'empty',
     [
-      connectionsSourceLayer,
-      model.activeLayer,
       model.topologySignature,
-      rootNodePubkey,
       size.height,
       size.width,
     ],

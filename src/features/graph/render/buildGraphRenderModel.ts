@@ -823,6 +823,47 @@ const resolveGraphBounds = (nodes: readonly GraphRenderNode[]): GraphBounds => {
   return { minX, maxX, minY, maxY }
 }
 
+const resolveExportGraphBounds = ({
+  nodes,
+  layoutMode,
+  layoutSnapshot,
+}: {
+  nodes: readonly GraphRenderNode[]
+  layoutMode: GraphRenderModel['layoutMode']
+  layoutSnapshot: GraphRenderModel['layoutSnapshot']
+}): GraphBounds => {
+  const rawBounds = resolveGraphBounds(nodes)
+
+  if (nodes.length === 0 || layoutMode !== 'multi-center-comparison') {
+    return rawBounds
+  }
+
+  const maxRadius = nodes.reduce((maximum, node) => Math.max(maximum, node.radius), 0)
+  const spanX = rawBounds.maxX - rawBounds.minX
+  const spanY = rawBounds.maxY - rawBounds.minY
+  const comparisonSnapshot = layoutSnapshot?.comparison ?? null
+  const anchorSlots = comparisonSnapshot
+    ? Object.values(comparisonSnapshot.anchorSlots)
+    : []
+  const anchorXs = anchorSlots.map((slot) => slot.position[0])
+  const anchorYs = anchorSlots.map((slot) => slot.position[1])
+  const anchorMinX =
+    anchorXs.length > 0 ? Math.min(...anchorXs) - maxRadius : rawBounds.minX
+  const anchorMaxX =
+    anchorXs.length > 0 ? Math.max(...anchorXs) + maxRadius : rawBounds.maxX
+  const anchorMinY =
+    anchorYs.length > 0 ? Math.min(...anchorYs) - maxRadius : rawBounds.minY
+  const paddingX = Math.max(48, maxRadius * 2.4, spanX * 0.08)
+  const paddingY = Math.max(36, maxRadius * 2, spanY * 0.08)
+
+  return {
+    minX: Math.min(rawBounds.minX, anchorMinX) - paddingX,
+    maxX: Math.max(rawBounds.maxX, anchorMaxX) + paddingX,
+    minY: Math.min(rawBounds.minY, anchorMinY) - paddingY,
+    maxY: rawBounds.maxY + paddingY,
+  }
+}
+
 const createTopologySignature = (
   nodes: readonly GraphRenderNode[],
   edges: readonly GraphRenderEdge[],
@@ -1949,7 +1990,7 @@ export const buildGraphRenderModel = async ({
           )
 
           if (
-            secondaryContextNodes.length === 0 ||
+            secondaryContextNodes.length <= 1 ||
             secondaryContextAggregateId === null
           ) {
             return primaryCompareNodes
@@ -2051,13 +2092,18 @@ export const buildGraphRenderModel = async ({
     isRoot: node.isRoot,
     source: node.source,
   }))
+  const bounds = resolveExportGraphBounds({
+    nodes: displayedNodes,
+    layoutMode: resolvedLayoutMode,
+    layoutSnapshot,
+  })
 
   return {
     nodes: displayedNodes,
     edges,
     labels,
     accessibleNodes,
-    bounds: resolveGraphBounds(displayedNodes),
+    bounds,
     topologySignature: createTopologySignature(displayedNodes, edges, activeLayer),
     layoutKey,
     layoutMode: resolvedLayoutMode,

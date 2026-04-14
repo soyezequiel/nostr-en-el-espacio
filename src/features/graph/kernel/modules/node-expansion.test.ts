@@ -203,13 +203,18 @@ test('expandNode resolves after visible merge and then completes reciprocity in 
   assert.deepEqual(store.getState().adjacency[ROOT], [FOLLOW_A, FOLLOW_B])
   assert.deepEqual(store.getState().inboundAdjacency[ROOT], [BASIC_INBOUND])
   assert.equal(store.getState().expandedNodePubkeys.has(ROOT), true)
-  assert.equal(store.getState().nodeExpansionStates[ROOT].phase, 'enriching-reciprocity')
+  assert.equal(store.getState().nodeExpansionStates[ROOT].phase, 'idle')
+  assert.equal(store.getState().nodeExpansionStates[ROOT].visibleStatus, 'ready')
+  assert.equal(store.getState().nodeExpansionStates[ROOT].backgroundStatus, 'loading')
+  assert.equal(typeof store.getState().nodeExpansionStates[ROOT].visibleAppliedAt, 'number')
 
   reciprocalGate.resolve()
   await flushAsync()
 
   assert.deepEqual(store.getState().inboundAdjacency[ROOT].sort(), [BASIC_INBOUND, FOLLOW_A].sort())
   assert.equal(store.getState().nodeExpansionStates[ROOT].status, 'ready')
+  assert.equal(store.getState().nodeExpansionStates[ROOT].visibleStatus, 'ready')
+  assert.equal(store.getState().nodeExpansionStates[ROOT].backgroundStatus, 'ready')
   assert.equal(store.getState().nodeExpansionStates[ROOT].enrichmentStatus, 'ready')
 })
 
@@ -225,6 +230,8 @@ test('background reciprocity failures keep the node partial without reverting vi
 
   assert.deepEqual(store.getState().adjacency[ROOT], [FOLLOW_A])
   assert.equal(store.getState().nodeExpansionStates[ROOT].status, 'partial')
+  assert.equal(store.getState().nodeExpansionStates[ROOT].visibleStatus, 'ready')
+  assert.equal(store.getState().nodeExpansionStates[ROOT].backgroundStatus, 'error')
   assert.equal(store.getState().nodeExpansionStates[ROOT].enrichmentStatus, 'error')
   assert.match(store.getState().nodeExpansionStates[ROOT].message, /Reciprocidad parcial/i)
 })
@@ -266,6 +273,8 @@ test('adaptive capped reciprocity finishes as partial with an explicit capped st
   await flushAsync()
 
   assert.equal(store.getState().nodeExpansionStates[ROOT].status, 'partial')
+  assert.equal(store.getState().nodeExpansionStates[ROOT].visibleStatus, 'ready')
+  assert.equal(store.getState().nodeExpansionStates[ROOT].backgroundStatus, 'capped')
   assert.equal(store.getState().nodeExpansionStates[ROOT].enrichmentStatus, 'capped')
   assert.ok((store.getState().nodeExpansionStates[ROOT].enrichmentTotalCandidates ?? 0) < followPubkeys.length)
 })

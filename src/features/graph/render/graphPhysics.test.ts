@@ -125,3 +125,31 @@ test('collision radius uses node size to break up overlapping dense clusters', a
     `expected separated nodes, got distance ${distanceAB}`,
   )
 })
+
+test('dense follow neighborhoods keep a meaningful lateral footprint after simulation', async () => {
+  const nodes = [
+    createNode({ id: 'root', x: 0, y: 0, radius: 24, isRoot: true }),
+    ...Array.from({ length: 10 }, (_, index) =>
+      createNode({
+        id: `n-${index + 1}`,
+        x: 12 + index * 2,
+        y: 18 + index * 2,
+      }),
+    ),
+  ]
+  const links: GraphPhysicsLink[] = nodes
+    .slice(1)
+    .map((node) => ({
+      id: `root-${node.id}`,
+      source: 'root',
+      target: node.id,
+      relation: 'follow' as const,
+    }))
+
+  await runSimulation({ nodes, links, ticks: 60 })
+
+  const nonRootXs = nodes.slice(1).map((node) => node.x)
+  const lateralSpan = Math.max(...nonRootXs) - Math.min(...nonRootXs)
+
+  assert.ok(lateralSpan > 220, `expected lateral span > 220, got ${lateralSpan}`)
+})

@@ -24,6 +24,9 @@ const createInitialNodeExpansionState = (): NodeExpansionState => ({
   startedAt: null,
   updatedAt: null,
   runId: null,
+  visibleStatus: 'idle',
+  backgroundStatus: 'idle',
+  visibleAppliedAt: null,
   enrichmentStatus: 'idle',
   enrichmentProcessedBatches: null,
   enrichmentTotalBatches: null,
@@ -336,6 +339,9 @@ export const createGraphSlice: AppStateCreator<GraphSlice> = (set, get) => ({
         currentState.startedAt === nextState.startedAt &&
         currentState.updatedAt === nextState.updatedAt &&
         currentState.runId === nextState.runId &&
+        currentState.visibleStatus === nextState.visibleStatus &&
+        currentState.backgroundStatus === nextState.backgroundStatus &&
+        currentState.visibleAppliedAt === nextState.visibleAppliedAt &&
         currentState.enrichmentStatus === nextState.enrichmentStatus &&
         currentState.enrichmentProcessedBatches ===
           nextState.enrichmentProcessedBatches &&

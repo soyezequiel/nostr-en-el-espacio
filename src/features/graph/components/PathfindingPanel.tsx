@@ -316,7 +316,7 @@ export function PathfindingPanel({ runtime }: PathfindingPanelProps) {
 
   return (
     <aside
-      className="node-detail-panel pathfinding-panel"
+      className="node-detail-panel node-detail-panel--pathfinding pathfinding-panel"
       data-pathfinding-panel
       aria-label="Panel de pathfinding"
     >

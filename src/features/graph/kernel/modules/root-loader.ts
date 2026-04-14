@@ -1179,6 +1179,16 @@ export function createRootLoaderModule(
       totalSteps: null,
       startedAt: null,
       updatedAt: ctx.now(),
+      runId: null,
+      visibleStatus: 'ready',
+      backgroundStatus: 'idle',
+      visibleAppliedAt: ctx.now(),
+      enrichmentStatus: 'idle',
+      enrichmentProcessedBatches: null,
+      enrichmentTotalBatches: null,
+      enrichmentProcessedCandidates: null,
+      enrichmentTotalCandidates: null,
+      enrichmentNewInboundCount: null,
     })
     collaborators.analysis.schedule()
     return {

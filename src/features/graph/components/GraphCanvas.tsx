@@ -25,6 +25,7 @@ import type {
   AppStore,
   NodeExpansionState,
   RootCollectionProgress,
+  UiPanel,
 } from '@/features/graph/app/store/types'
 import {
   clearAvatarPipelineProbe,
@@ -38,6 +39,7 @@ import { createEmptyGraphRenderModel } from '@/features/graph/render/createEmpty
 import {
   createFittedGraphViewState,
   createGraphFitSignature,
+  type GraphViewInsets,
   type GraphViewState,
 } from '@/features/graph/render/graphViewState'
 import {
@@ -53,6 +55,7 @@ import {
 } from '@/features/graph/render/imageRuntime'
 import {
   selectVisibleGraphLabels,
+  selectDeclutteredGraphLabels,
   truncatePubkey,
 } from '@/features/graph/render/labels'
 import {
@@ -106,6 +109,7 @@ const selectGraphCanvasRenderState = (state: AppStore) => ({
   rootLoadStatus: state.rootLoad.status,
   rootLoadMessage: state.rootLoad.message,
   rootVisibleLinkProgress: state.rootLoad.visibleLinkProgress,
+  openPanel: state.openPanel,
   activeLayer: state.activeLayer,
   connectionsSourceLayer: state.connectionsSourceLayer,
   capReached: state.graphCaps.capReached,
@@ -242,6 +246,88 @@ const getRelationshipToggleState = (activeLayer: AppStore['activeLayer']) => ({
     activeLayer === 'nonreciprocal-followers',
 })
 
+const GRAPH_DESKTOP_DRAWER_BREAKPOINT_PX = 1024
+const GRAPH_DETAIL_PANEL_MIN_WIDTH_PX = 24 * 16
+const GRAPH_DETAIL_PANEL_MAX_WIDTH_PX = 29.75 * 16
+const GRAPH_PATHFINDING_PANEL_MIN_WIDTH_PX = 25 * 16
+const GRAPH_PATHFINDING_PANEL_MAX_WIDTH_PX = 31 * 16
+const GRAPH_SETTINGS_PANEL_MIN_WIDTH_PX = 48 * 16
+const GRAPH_SETTINGS_PANEL_MAX_WIDTH_PX = 50 * 16
+const GRAPH_GUTTER_MIN_PX = 0.75 * 16
+const GRAPH_GUTTER_MAX_PX = 1.25 * 16
+
+const clampGraphValue = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value))
+
+const resolveGraphGutterPx = (width: number) =>
+  clampGraphValue(width * 0.018, GRAPH_GUTTER_MIN_PX, GRAPH_GUTTER_MAX_PX)
+
+const resolveDrawerWidthPx = (input: {
+  openPanel: UiPanel
+  width: number
+}) => {
+  if (input.width <= GRAPH_DESKTOP_DRAWER_BREAKPOINT_PX) {
+    return 0
+  }
+
+  switch (input.openPanel) {
+    case 'node-detail':
+      return clampGraphValue(
+        input.width * 0.27,
+        GRAPH_DETAIL_PANEL_MIN_WIDTH_PX,
+        GRAPH_DETAIL_PANEL_MAX_WIDTH_PX,
+      )
+    case 'pathfinding':
+      return clampGraphValue(
+        input.width * 0.29,
+        GRAPH_PATHFINDING_PANEL_MIN_WIDTH_PX,
+        GRAPH_PATHFINDING_PANEL_MAX_WIDTH_PX,
+      )
+    case 'relay-config':
+    case 'render-config':
+    case 'export':
+      return clampGraphValue(
+        input.width >= 1200
+          ? GRAPH_SETTINGS_PANEL_MAX_WIDTH_PX
+          : GRAPH_SETTINGS_PANEL_MIN_WIDTH_PX,
+        GRAPH_SETTINGS_PANEL_MIN_WIDTH_PX,
+        Math.max(
+          GRAPH_SETTINGS_PANEL_MIN_WIDTH_PX,
+          input.width - GRAPH_GUTTER_MAX_PX * 2,
+        ),
+      )
+    default:
+      return 0
+  }
+}
+
+const resolveGraphCanvasInsets = (input: {
+  openPanel: UiPanel
+  width: number
+}): GraphViewInsets | undefined => {
+  const drawerWidth = resolveDrawerWidthPx(input)
+  if (drawerWidth <= 0) {
+    return undefined
+  }
+
+  return {
+    right: Math.round(drawerWidth + resolveGraphGutterPx(input.width)),
+  }
+}
+
+const isNodeExpansionVisibleLoading = (state: NodeExpansionState) =>
+  state.visibleStatus === 'loading' || state.status === 'loading'
+
+const isNodeExpansionBackgroundLoading = (state: NodeExpansionState) =>
+  state.visibleStatus === 'ready' &&
+  (state.backgroundStatus === 'loading' || state.enrichmentStatus === 'loading')
+
+const isNodeExpansionActivelyStreaming = (expansionState: NodeExpansionState) =>
+  isNodeExpansionVisibleLoading(expansionState) ||
+  isNodeExpansionBackgroundLoading(expansionState) ||
+  expansionState.status === 'loading' ||
+  expansionState.enrichmentStatus === 'loading'
+
 const formatNodeExpansionPhaseLabel = (phase: NodeExpansionState['phase']) => {
   switch (phase) {
     case 'preparing':
@@ -259,10 +345,77 @@ const formatNodeExpansionPhaseLabel = (phase: NodeExpansionState['phase']) => {
   }
 }
 
-const isNodeExpansionActivelyStreaming = (expansionState: NodeExpansionState) =>
-  expansionState.status === 'loading' ||
-  (expansionState.phase === 'enriching-reciprocity' &&
-    expansionState.enrichmentStatus === 'loading')
+
+type NodeExpansionStreamMode = 'none' | 'visible' | 'background' | 'idle'
+
+interface NodeExpansionStreamCopy {
+  label: string
+  meta: string
+  detail: string
+}
+
+export const resolveNodeExpansionStreamCopy = ({
+  activeExpansion,
+  expansionMode,
+}: {
+  activeExpansion: ActiveNodeExpansion
+  expansionMode: NodeExpansionStreamMode
+}): NodeExpansionStreamCopy => {
+  const sharedMessage =
+    activeExpansion.state.message ?? `Trabajando sobre ${activeExpansion.nodeLabel}`
+
+  if (expansionMode === 'visible') {
+    return {
+      label: 'Expandiendo nodo',
+      meta: [
+        `Paso ${activeExpansion.state.step ?? '-'} de ${
+          activeExpansion.state.totalSteps ?? '-'
+        }`,
+        activeExpansion.state.phase === 'enriching-reciprocity' &&
+        activeExpansion.state.enrichmentProcessedCandidates !== null &&
+        activeExpansion.state.enrichmentTotalCandidates !== null
+          ? `Candidatos ${activeExpansion.state.enrichmentProcessedCandidates}/${activeExpansion.state.enrichmentTotalCandidates}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' / '),
+      detail: `${sharedMessage} Fase: ${formatNodeExpansionPhaseLabel(
+        activeExpansion.state.phase,
+      )}. El grafo visible se mantiene usable mientras se integra el nodo.`,
+    }
+  }
+
+  if (expansionMode === 'background') {
+    return {
+      label: 'Enriqueciendo reciprocidad',
+      meta: [
+        activeExpansion.state.enrichmentProcessedBatches !== null &&
+        activeExpansion.state.enrichmentTotalBatches !== null
+          ? `Batches ${activeExpansion.state.enrichmentProcessedBatches}/${activeExpansion.state.enrichmentTotalBatches}`
+          : null,
+        activeExpansion.state.enrichmentProcessedCandidates !== null &&
+        activeExpansion.state.enrichmentTotalCandidates !== null
+          ? `Candidatos ${activeExpansion.state.enrichmentProcessedCandidates}/${activeExpansion.state.enrichmentTotalCandidates}`
+          : null,
+        activeExpansion.state.enrichmentNewInboundCount !== null
+          ? `+${activeExpansion.state.enrichmentNewInboundCount} inbound`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' / '),
+      detail: `${sharedMessage} El grafo visible ya quedo aplicado y ahora solo se integra evidencia de reciprocidad en background.`,
+    }
+  }
+
+  return {
+    label: 'Procesando nodo',
+    meta: `Paso ${activeExpansion.state.step ?? '-'} de ${
+      activeExpansion.state.totalSteps ?? '-'
+    }`,
+    detail: `${sharedMessage} El vecindario visible ya quedo integrado.`,
+  }
+}
+
 
 const equalStringLists = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&
@@ -470,7 +623,10 @@ const equalGraphLabels = (
         label.text === candidate.text &&
         label.radius === candidate.radius &&
         label.isRoot === candidate.isRoot &&
+        label.isAnchor === candidate.isAnchor &&
+        label.isAggregate === candidate.isAggregate &&
         label.isSelected === candidate.isSelected &&
+        label.comparisonContextRole === candidate.comparisonContextRole &&
         label.position[0] === candidate.position[0] &&
         label.position[1] === candidate.position[1])
     )
@@ -854,6 +1010,7 @@ export const GraphCanvas = memo(function GraphCanvas({
     rootLoadStatus,
     rootLoadMessage,
     rootVisibleLinkProgress,
+    openPanel,
     activeLayer,
     connectionsSourceLayer,
     capReached,
@@ -1497,6 +1654,15 @@ export const GraphCanvas = memo(function GraphCanvas({
     maxY: boundsMaxY,
   } = model.bounds
 
+  const graphCanvasInsets = useMemo(
+    () =>
+      resolveGraphCanvasInsets({
+        openPanel,
+        width: size.width,
+      }),
+    [openPanel, size.width],
+  )
+
   const fittedViewState = useMemo(() => {
     if (size.width === 0 || size.height === 0 || model.nodes.length === 0) {
       return null
@@ -1511,12 +1677,14 @@ export const GraphCanvas = memo(function GraphCanvas({
       },
       width: size.width,
       height: size.height,
+      insets: graphCanvasInsets,
     })
   }, [
     boundsMaxX,
     boundsMaxY,
     boundsMinX,
     boundsMinY,
+    graphCanvasInsets,
     model.nodes.length,
     size.height,
     size.width,
@@ -1526,23 +1694,17 @@ export const GraphCanvas = memo(function GraphCanvas({
       () =>
         size.width > 0 && size.height > 0
           ? createGraphFitSignature({
-            topologySignature:
-              model.activeLayer === 'connections'
-                ? [
-                    model.activeLayer,
-                    connectionsSourceLayer,
-                    rootNodePubkey ?? 'none',
-                  ].join('|')
-                : model.topologySignature,
+            layoutKey: model.layoutKey,
+            bounds: model.bounds,
               width: size.width,
               height: size.height,
+              insets: graphCanvasInsets,
             })
           : 'empty',
     [
-      connectionsSourceLayer,
-      model.activeLayer,
-      model.topologySignature,
-      rootNodePubkey,
+      graphCanvasInsets,
+      model.bounds,
+      model.layoutKey,
       size.height,
       size.width,
     ],
@@ -1551,6 +1713,10 @@ export const GraphCanvas = memo(function GraphCanvas({
   const resolvedViewState = useMemo(() => {
     if (!fittedViewState) {
       return null
+    }
+
+    if (isViewportActive && interactionViewState) {
+      return interactionViewState.viewState
     }
 
     if (interactionViewState?.signature === fitSignature) {
@@ -1735,15 +1901,6 @@ export const GraphCanvas = memo(function GraphCanvas({
     [hoveredNodePubkey, model.labels, model.lod.labelPolicy, viewState?.zoom],
   )
 
-  const stableVisibleLabels = useMemo(() => {
-    if (equalGraphLabels(stableVisibleLabelsRef.current, visibleLabels)) {
-      return stableVisibleLabelsRef.current
-    }
-
-    stableVisibleLabelsRef.current = visibleLabels
-    return visibleLabels
-  }, [visibleLabels])
-
   const nodeScreenRadii = useMemo(() => {
     if (!viewState || size.width === 0 || size.height === 0) {
       return EMPTY_NODE_SCREEN_RADII
@@ -1789,6 +1946,40 @@ export const GraphCanvas = memo(function GraphCanvas({
     stableNodeScreenRadiiRef.current = nodeScreenRadii
     return nodeScreenRadii
   }, [nodeScreenRadii])
+
+  const declutteredVisibleLabels = useMemo(
+    () =>
+      viewState && size.width > 0 && size.height > 0
+        ? selectDeclutteredGraphLabels({
+            labels: visibleLabels,
+            hoveredNodePubkey,
+            zoomLevel: viewState.zoom,
+            labelPolicy: model.lod.labelPolicy,
+            viewState,
+            width: size.width,
+            height: size.height,
+            nodeScreenRadii: stableNodeScreenRadii,
+          })
+        : visibleLabels,
+    [
+      hoveredNodePubkey,
+      model.lod.labelPolicy,
+      size.height,
+      size.width,
+      stableNodeScreenRadii,
+      visibleLabels,
+      viewState,
+    ],
+  )
+
+  const stableVisibleLabels = useMemo(() => {
+    if (equalGraphLabels(stableVisibleLabelsRef.current, declutteredVisibleLabels)) {
+      return stableVisibleLabelsRef.current
+    }
+
+    stableVisibleLabelsRef.current = declutteredVisibleLabels
+    return declutteredVisibleLabels
+  }, [declutteredVisibleLabels])
 
   refreshImageFrameRef.current = () => {
     const runtimeInstance = imageRuntimeRef.current
@@ -2357,7 +2548,14 @@ export const GraphCanvas = memo(function GraphCanvas({
         })),
     [nodeExpansionStates, nodes],
   )
-  const primaryActiveExpansion = activeNodeExpansions[0] ?? null
+  const primaryVisibleExpansion =
+    activeNodeExpansions.find(({ state }) => isNodeExpansionVisibleLoading(state)) ??
+    null
+  const primaryBackgroundExpansion =
+    activeNodeExpansions.find(({ state }) => isNodeExpansionBackgroundLoading(state)) ??
+    null
+  const primaryActiveExpansion =
+    primaryVisibleExpansion ?? primaryBackgroundExpansion ?? activeNodeExpansions[0] ?? null
   const shouldMountRenderer =
     model.nodes.length > 0 &&
     size.width > 0 &&
@@ -2418,27 +2616,34 @@ export const GraphCanvas = memo(function GraphCanvas({
     [inboundLinks, rootNodePubkey],
   )
   const progressMetrics = useMemo<ProgressMetric[]>(() => {
+    const reciprocityExpansion =
+      primaryBackgroundExpansion ??
+      (primaryActiveExpansion &&
+      isNodeExpansionBackgroundLoading(primaryActiveExpansion.state)
+        ? primaryActiveExpansion
+        : null)
     const enrichmentProcessedCandidates =
-      primaryActiveExpansion?.state.enrichmentProcessedCandidates ?? null
+      reciprocityExpansion?.state.enrichmentProcessedCandidates ?? null
     const enrichmentTotalCandidates =
-      primaryActiveExpansion?.state.enrichmentTotalCandidates ?? null
+      reciprocityExpansion?.state.enrichmentTotalCandidates ?? null
     const primaryExpansionReciprocityMetric =
-      primaryActiveExpansion?.state.phase === 'enriching-reciprocity' &&
+      reciprocityExpansion !== null &&
+      isNodeExpansionBackgroundLoading(reciprocityExpansion.state) &&
       enrichmentTotalCandidates !== null &&
       enrichmentProcessedCandidates !== null
         ? {
-            id: `node-expansion-reciprocity:${primaryActiveExpansion.pubkey}`,
+            id: `node-expansion-reciprocity:${reciprocityExpansion.pubkey}`,
             label: 'Reciprocidad',
             summary: `${enrichmentProcessedCandidates}/${enrichmentTotalCandidates} candidatos`,
             detail: [
-              primaryActiveExpansion.state.enrichmentProcessedBatches !== null &&
-              primaryActiveExpansion.state.enrichmentTotalBatches !== null
-                ? `${primaryActiveExpansion.state.enrichmentProcessedBatches}/${primaryActiveExpansion.state.enrichmentTotalBatches} batches`
+              reciprocityExpansion.state.enrichmentProcessedBatches !== null &&
+              reciprocityExpansion.state.enrichmentTotalBatches !== null
+                ? `${reciprocityExpansion.state.enrichmentProcessedBatches}/${reciprocityExpansion.state.enrichmentTotalBatches} batches`
                 : null,
-              primaryActiveExpansion.state.enrichmentNewInboundCount !== null
-                ? `+${primaryActiveExpansion.state.enrichmentNewInboundCount} inbound`
+              reciprocityExpansion.state.enrichmentNewInboundCount !== null
+                ? `+${reciprocityExpansion.state.enrichmentNewInboundCount} inbound`
                 : null,
-              primaryActiveExpansion.state.message,
+              reciprocityExpansion.state.message,
             ]
               .filter(Boolean)
               .join(' / '),
@@ -2592,10 +2797,11 @@ export const GraphCanvas = memo(function GraphCanvas({
     }
 
     return primaryExpansionReciprocityMetric
-      ? [primaryExpansionReciprocityMetric, followingMetric, followersMetric, imageMetric]
+        ? [primaryExpansionReciprocityMetric, followingMetric, followersMetric, imageMetric]
       : [followingMetric, followersMetric, imageMetric]
   }, [
     primaryActiveExpansion,
+    primaryBackgroundExpansion,
     imageDiagnosticsSnapshot,
     rootFollowCount,
     rootInboundCount,
@@ -2706,44 +2912,38 @@ export const GraphCanvas = memo(function GraphCanvas({
         : keywordLayerStatus === 'disabled'
           ? keywordLayerMessage ?? 'La capa de keywords todavia no esta lista.'
           : ''
+  const primaryExpansionMode = primaryActiveExpansion
+    ? isNodeExpansionVisibleLoading(primaryActiveExpansion.state)
+      ? 'visible'
+      : isNodeExpansionBackgroundLoading(primaryActiveExpansion.state)
+        ? 'background'
+        : 'idle'
+    : 'none'
+  const expansionStreamCopy = primaryActiveExpansion
+    ? resolveNodeExpansionStreamCopy({
+        activeExpansion: primaryActiveExpansion,
+        expansionMode: primaryExpansionMode,
+      })
+    : null
   const streamLabel =
     pathfinding.status === 'computing'
       ? 'Calculando camino'
-      : primaryActiveExpansion
-        ? 'Expandiendo nodo'
-      : isRootDiscoveryProgressActive || rootLoadStatus === 'loading'
-        ? 'Descubriendo'
-        : rootLoadStatus === 'partial'
-          ? 'Evidencia parcial'
-          : rootLoadStatus === 'ready'
-            ? 'Viewport listo'
-            : rootLoadStatus === 'error'
-              ? 'Error de carga'
-              : rootLoadStatus === 'empty'
-                ? 'Sin follows'
-                : 'Esperando root'
-  const streamMeta = primaryActiveExpansion
+      : expansionStreamCopy !== null
+        ? expansionStreamCopy.label
+        : isRootDiscoveryProgressActive || rootLoadStatus === 'loading'
+          ? 'Descubriendo'
+          : rootLoadStatus === 'partial'
+            ? 'Evidencia parcial'
+            : rootLoadStatus === 'ready'
+              ? 'Viewport listo'
+              : rootLoadStatus === 'error'
+                ? 'Error de carga'
+                : rootLoadStatus === 'empty'
+                  ? 'Sin follows'
+                  : 'Esperando root'
+  const streamMeta = expansionStreamCopy
     ? [
-        primaryActiveExpansion.state.phase === 'enriching-reciprocity' &&
-        primaryActiveExpansion.state.enrichmentProcessedBatches !== null &&
-        primaryActiveExpansion.state.enrichmentTotalBatches !== null
-          ? `Batches ${primaryActiveExpansion.state.enrichmentProcessedBatches}/${
-              primaryActiveExpansion.state.enrichmentTotalBatches
-            }`
-          : `Paso ${primaryActiveExpansion.state.step ?? '-'} de ${
-              primaryActiveExpansion.state.totalSteps ?? '-'
-            }`,
-        primaryActiveExpansion.state.phase === 'enriching-reciprocity' &&
-        primaryActiveExpansion.state.enrichmentProcessedCandidates !== null &&
-        primaryActiveExpansion.state.enrichmentTotalCandidates !== null
-          ? `Candidatos ${
-              primaryActiveExpansion.state.enrichmentProcessedCandidates
-            }/${primaryActiveExpansion.state.enrichmentTotalCandidates}`
-          : null,
-        primaryActiveExpansion.state.phase === 'enriching-reciprocity' &&
-        primaryActiveExpansion.state.enrichmentNewInboundCount !== null
-          ? `+${primaryActiveExpansion.state.enrichmentNewInboundCount} inbound`
-          : null,
+        expansionStreamCopy.meta,
         activeNodeExpansions.length > 1
           ? `+${activeNodeExpansions.length - 1} expansiones`
           : null,
@@ -2751,13 +2951,8 @@ export const GraphCanvas = memo(function GraphCanvas({
         .filter(Boolean)
         .join(' / ')
     : statusCopy
-  const streamDetail = primaryActiveExpansion
-    ? `${
-        primaryActiveExpansion.state.message ??
-        `Trabajando sobre ${primaryActiveExpansion.nodeLabel}`
-      } Fase: ${formatNodeExpansionPhaseLabel(
-        primaryActiveExpansion.state.phase,
-      )}. El grafo visible se mantiene usable mientras se integra el nodo.`
+  const streamDetail = expansionStreamCopy
+    ? expansionStreamCopy.detail
     : pathfinding.status === 'computing'
       ? pathfinding.message ?? 'Recorriendo el grafo mutuo descubierto.'
       : isRootDiscoveryProgressActive || rootLoadStatus === 'loading'

@@ -205,6 +205,58 @@ test('root-only and shared follows stay explicit instead of collapsing into a ro
   )
 })
 
+test('exports widened compare bounds for the root plus one expanded layout', async () => {
+  const input = createSingleAnchorComparisonInput()
+
+  input.nodes['root-only-1'] = {
+    pubkey: 'root-only-1',
+    label: 'Root Only 1',
+    keywordHits: 0,
+    discoveredAt: 10,
+    source: 'follow',
+  }
+  input.nodes['root-only-2'] = {
+    pubkey: 'root-only-2',
+    label: 'Root Only 2',
+    keywordHits: 0,
+    discoveredAt: 11,
+    source: 'follow',
+  }
+  input.nodes['anchor-only-1'] = {
+    pubkey: 'anchor-only-1',
+    label: 'Anchor Only 1',
+    keywordHits: 0,
+    discoveredAt: 12,
+    source: 'follow',
+  }
+  input.nodes['anchor-only-2'] = {
+    pubkey: 'anchor-only-2',
+    label: 'Anchor Only 2',
+    keywordHits: 0,
+    discoveredAt: 13,
+    source: 'follow',
+  }
+  input.links = [
+    ...input.links,
+    { source: 'root', target: 'root-only-1', relation: 'follow' },
+    { source: 'root', target: 'root-only-2', relation: 'follow' },
+    { source: 'anchor', target: 'anchor-only-1', relation: 'follow' },
+    { source: 'anchor', target: 'anchor-only-2', relation: 'follow' },
+  ]
+
+  const model = await buildGraphRenderModel(input)
+  const rawNodeMinX = Math.min(
+    ...model.nodes.map((node) => node.position[0] - node.radius),
+  )
+  const rawNodeMaxX = Math.max(
+    ...model.nodes.map((node) => node.position[0] + node.radius),
+  )
+
+  assert.ok(model.bounds.minX < rawNodeMinX)
+  assert.ok(model.bounds.maxX > rawNodeMaxX)
+  assert.ok(model.bounds.maxX - model.bounds.minX > 700)
+})
+
 test('no aggregate is created when root follows only the anchor-owned target', async () => {
   const input = createSingleAnchorComparisonInput()
   const model = await buildGraphRenderModel({

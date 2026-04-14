@@ -67,12 +67,22 @@ const LOCAL_CLUSTER_X = 72
 const LOCAL_CLUSTER_Y = 30
 const SLOT_TEMPLATES: Record<number, number[]> = {
   1: [0],
-  2: [-220, 220],
+  2: [-280, 280],
   3: [-300, 0, 300],
   4: [-390, -130, 130, 390],
   5: [-460, -230, 0, 230, 460],
   6: [-540, -324, -108, 108, 324, 540],
 }
+const TWO_ANCHOR_EXCLUSIVE_BASE_RADIUS = 164
+const TWO_ANCHOR_EXCLUSIVE_BAND_RADIUS_STEP = 78
+const TWO_ANCHOR_EXCLUSIVE_SWEEP_RADIANS = 0.92
+const TWO_ANCHOR_EXCLUSIVE_BASE_ANGLE = Math.PI * 0.25
+const TWO_ANCHOR_SHARED_BASE_COLUMNS = 5
+const TWO_ANCHOR_SHARED_COLUMN_SPACING = 64
+const TWO_ANCHOR_SHARED_ROW_SPACING = 52
+const TWO_ANCHOR_CONTEXT_BASE_COLUMNS = 7
+const TWO_ANCHOR_CONTEXT_COLUMN_SPACING = 56
+const TWO_ANCHOR_CONTEXT_ROW_SPACING = 46
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
@@ -159,7 +169,6 @@ const selectComparisonAnchors = ({
             pubkey !== explicitAnchor &&
             expandedNodePubkeys.has(pubkey),
         ),
-        ...expandedOrdered.filter((pubkey) => pubkey !== explicitAnchor),
       ]),
     ).slice(0, Math.max(0, nonRootAnchorBudget - 1))
 
@@ -366,6 +375,65 @@ const getSignatureLocalOffset = ({
 
 const getSingleAnchorGridRowCapacity = (row: number) => 10 + row * 4
 
+const getTwoAnchorExclusiveBandCapacity = (band: number) => 4 + band * 3
+
+const getTwoAnchorExclusivePosition = ({
+  pubkey,
+  index,
+  total,
+  ownerX,
+  ownerY,
+  side,
+}: {
+  pubkey: string
+  index: number
+  total: number
+  ownerX: number
+  ownerY: number
+  side: 'left' | 'right'
+}) => {
+  let band = 0
+  let remainingIndex = index
+
+  while (remainingIndex >= getTwoAnchorExclusiveBandCapacity(band)) {
+    remainingIndex -= getTwoAnchorExclusiveBandCapacity(band)
+    band += 1
+  }
+
+  const capacity = getTwoAnchorExclusiveBandCapacity(band)
+  const normalizedIndex =
+    capacity <= 1 ? 0.5 : remainingIndex / Math.max(1, capacity - 1)
+  const signedIndex = normalizedIndex - 0.5
+  const hash = normalizeHash(`${pubkey}:two-anchor-exclusive:${side}`)
+  const direction = side === 'left' ? -1 : 1
+  const baseAngle =
+    side === 'left'
+      ? Math.PI - TWO_ANCHOR_EXCLUSIVE_BASE_ANGLE
+      : TWO_ANCHOR_EXCLUSIVE_BASE_ANGLE
+  const angle =
+    baseAngle +
+    signedIndex * TWO_ANCHOR_EXCLUSIVE_SWEEP_RADIANS * direction
+  const radius =
+    TWO_ANCHOR_EXCLUSIVE_BASE_RADIUS +
+    band * TWO_ANCHOR_EXCLUSIVE_BAND_RADIUS_STEP +
+    Math.min(12, total) * 4
+
+  return {
+    x:
+      ownerX +
+      Math.cos(angle) * radius +
+      direction * band * 18 +
+      (hash - 0.5) * 18,
+    y:
+      ownerY +
+      38 +
+      Math.sin(angle) * radius +
+      band * 18 +
+      Math.abs(signedIndex) * 14 +
+      (hash - 0.5) * 14,
+  }
+}
+
 const getSingleAnchorOwnedPosition = ({
   pubkey,
   index,
@@ -506,14 +574,13 @@ const buildTwoAnchorPartitionPositions = ({
     })
 
   leftExclusivePubkeys.forEach((pubkey, index) => {
-    const position = getBucketGridPosition({
+    const position = getTwoAnchorExclusivePosition({
       pubkey,
       index,
-      centerX: leftAnchorPosition[0] - 108,
-      startY: leftAnchorPosition[1] + 116,
-      columns: 5,
-      columnSpacing: 54,
-      rowSpacing: 54,
+      total: leftExclusivePubkeys.length,
+      ownerX: leftAnchorPosition[0],
+      ownerY: leftAnchorPosition[1],
+      side: 'left',
     })
     positions.set(pubkey, [position.x, position.y])
   })
@@ -523,24 +590,26 @@ const buildTwoAnchorPartitionPositions = ({
       pubkey,
       index,
       centerX,
-      startY: Math.min(leftAnchorPosition[1], rightAnchorPosition[1]) + 74,
-      columns: 4,
-      columnSpacing: 48,
-      rowSpacing: 48,
+      startY: Math.min(leftAnchorPosition[1], rightAnchorPosition[1]) + 90,
+      columns: Math.max(
+        TWO_ANCHOR_SHARED_BASE_COLUMNS,
+        Math.min(8, Math.ceil(Math.sqrt(sharedPubkeys.length)) + 2),
+      ),
+      columnSpacing: TWO_ANCHOR_SHARED_COLUMN_SPACING,
+      rowSpacing: TWO_ANCHOR_SHARED_ROW_SPACING,
       rowJitter: 10,
     })
     positions.set(pubkey, [position.x, position.y])
   })
 
   rightExclusivePubkeys.forEach((pubkey, index) => {
-    const position = getBucketGridPosition({
+    const position = getTwoAnchorExclusivePosition({
       pubkey,
       index,
-      centerX: rightAnchorPosition[0] + 108,
-      startY: rightAnchorPosition[1] + 116,
-      columns: 5,
-      columnSpacing: 54,
-      rowSpacing: 54,
+      total: rightExclusivePubkeys.length,
+      ownerX: rightAnchorPosition[0],
+      ownerY: rightAnchorPosition[1],
+      side: 'right',
     })
     positions.set(pubkey, [position.x, position.y])
   })
@@ -550,10 +619,13 @@ const buildTwoAnchorPartitionPositions = ({
       pubkey,
       index,
       centerX,
-      startY: Math.max(leftAnchorPosition[1], rightAnchorPosition[1]) + 244,
-      columns: 6,
-      columnSpacing: 44,
-      rowSpacing: 40,
+      startY: Math.max(leftAnchorPosition[1], rightAnchorPosition[1]) + 268,
+      columns: Math.max(
+        TWO_ANCHOR_CONTEXT_BASE_COLUMNS,
+        Math.min(10, Math.ceil(Math.sqrt(contextPubkeys.length)) + 3),
+      ),
+      columnSpacing: TWO_ANCHOR_CONTEXT_COLUMN_SPACING,
+      rowSpacing: TWO_ANCHOR_CONTEXT_ROW_SPACING,
       rowJitter: 8,
     })
     positions.set(pubkey, [position.x, position.y])
@@ -727,7 +799,7 @@ const buildThreeAnchorPartitionPositions = ({
     const position = getBucketGridPosition({
       pubkey,
       index,
-      centerX: centerAnchorPosition[0],
+      centerX: centerAnchorPosition[0] - 48,
       startY: centerAnchorPosition[1] + 56,
       columns: 3,
       columnSpacing: 46,

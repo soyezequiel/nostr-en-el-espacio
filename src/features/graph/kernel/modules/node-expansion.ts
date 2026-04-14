@@ -3,8 +3,10 @@ import type { Filter } from 'nostr-tools'
 import type {
   GraphLink,
   GraphNode,
+  NodeExpansionEnrichmentStatus,
   NodeExpansionPhase,
   NodeExpansionState,
+  NodeExpansionStatus,
 } from '@/features/graph/app/store'
 import type { ExpandNodeResult } from '@/features/graph/kernel/runtime'
 import type {
@@ -46,7 +48,6 @@ import {
 
 const NODE_EXPANSION_TOTAL_STEPS = 5
 const NODE_EXPANSION_VISIBLE_MERGE_STEP = 4
-const NODE_EXPANSION_ENRICHMENT_STEP = 5
 const MAX_PROFILE_HYDRATION_RELAY_URLS = MAX_SESSION_RELAYS
 
 interface ExpansionStructurePayload {
@@ -96,6 +97,9 @@ export function createNodeExpansionModule(
     startedAt: null,
     updatedAt: ctx.now(),
     runId: null,
+    visibleStatus: 'idle',
+    backgroundStatus: 'idle',
+    visibleAppliedAt: null,
     enrichmentStatus: 'idle',
     enrichmentProcessedBatches: null,
     enrichmentTotalBatches: null,
@@ -109,12 +113,36 @@ export function createNodeExpansionModule(
     pubkey: string,
     state: Partial<NodeExpansionState> & Pick<NodeExpansionState, 'status' | 'message'>,
   ) => {
-    ctx.store.getState().setNodeExpansionState(pubkey, buildNodeExpansionState(state))
+    const currentState = ctx.store.getState().nodeExpansionStates[pubkey]
+    const backgroundStatus =
+      state.backgroundStatus ??
+      state.enrichmentStatus ??
+      currentState?.backgroundStatus ??
+      currentState?.enrichmentStatus ??
+      'idle'
+
+    ctx.store.getState().setNodeExpansionState(
+      pubkey,
+      buildNodeExpansionState({
+        ...currentState,
+        ...state,
+        visibleStatus:
+          state.visibleStatus ??
+          currentState?.visibleStatus ??
+          (state.status === 'loading' ? 'loading' : 'idle'),
+        backgroundStatus,
+        enrichmentStatus: backgroundStatus,
+        visibleAppliedAt:
+          state.visibleAppliedAt === undefined
+            ? currentState?.visibleAppliedAt ?? null
+            : state.visibleAppliedAt,
+      }),
+    )
   }
 
   const setLoadingState = (
     pubkey: string,
-    phase: Exclude<NodeExpansionPhase, 'idle' | 'enriching-reciprocity'>,
+    phase: Exclude<NodeExpansionPhase, 'idle'>,
     step: number,
     message: string,
     startedAt: number,
@@ -128,6 +156,9 @@ export function createNodeExpansionModule(
       totalSteps: NODE_EXPANSION_TOTAL_STEPS,
       startedAt,
       runId,
+      visibleStatus: 'loading',
+      backgroundStatus: 'idle',
+      visibleAppliedAt: null,
       enrichmentStatus: 'idle',
       enrichmentProcessedBatches: null,
       enrichmentTotalBatches: null,
@@ -139,11 +170,11 @@ export function createNodeExpansionModule(
 
   const setTerminalState = (
     pubkey: string,
-    status: Exclude<NodeExpansionState['status'], 'loading'>,
+    status: Exclude<NodeExpansionStatus, 'loading'>,
     message: string | null,
     startedAt: number | null = null,
     runId: string | null = null,
-    enrichmentStatus: NodeExpansionState['enrichmentStatus'] = 'idle',
+    backgroundStatus: NodeExpansionEnrichmentStatus | 'idle' = 'idle',
     enrichment: Partial<
       Pick<
         NodeExpansionState,
@@ -154,13 +185,29 @@ export function createNodeExpansionModule(
         | 'enrichmentNewInboundCount'
       >
     > = {},
+    options: Partial<
+      Pick<NodeExpansionState, 'visibleStatus' | 'visibleAppliedAt'>
+    > = {},
   ) => {
+    const currentState = ctx.store.getState().nodeExpansionStates[pubkey]
     setNodeExpansionState(pubkey, {
       status,
       message,
+      phase: 'idle',
+      step: null,
+      totalSteps: null,
       startedAt,
       runId,
-      enrichmentStatus,
+      visibleStatus:
+        options.visibleStatus ??
+        currentState?.visibleStatus ??
+        (status === 'error' ? 'error' : 'idle'),
+      backgroundStatus,
+      enrichmentStatus: backgroundStatus,
+      visibleAppliedAt:
+        options.visibleAppliedAt === undefined
+          ? currentState?.visibleAppliedAt ?? null
+          : options.visibleAppliedAt,
       ...enrichment,
     })
   }
@@ -436,6 +483,7 @@ export function createNodeExpansionModule(
     pubkey: string
     runId: string
     startedAt: number
+    visibleAppliedAt: number
     adapter: RelayAdapterInstance
     relayUrls: string[]
     structure: ExpansionStructurePayload
@@ -468,11 +516,14 @@ export function createNodeExpansionModule(
         progress: candidatePlan,
         newlyAddedInboundCount: 0,
       }),
-      phase: 'enriching-reciprocity',
-      step: NODE_EXPANSION_ENRICHMENT_STEP,
-      totalSteps: NODE_EXPANSION_TOTAL_STEPS,
+      phase: 'idle',
+      step: null,
+      totalSteps: null,
       startedAt: input.startedAt,
       runId: input.runId,
+      visibleStatus: 'ready',
+      backgroundStatus: 'loading',
+      visibleAppliedAt: input.visibleAppliedAt,
       enrichmentStatus: 'loading',
       enrichmentProcessedBatches: 0,
       enrichmentTotalBatches: candidatePlan.totalBatches,
@@ -527,11 +578,14 @@ export function createNodeExpansionModule(
                 progress,
                 newlyAddedInboundCount,
               }),
-              phase: 'enriching-reciprocity',
-              step: NODE_EXPANSION_ENRICHMENT_STEP,
-              totalSteps: NODE_EXPANSION_TOTAL_STEPS,
+              phase: 'idle',
+              step: null,
+              totalSteps: null,
               startedAt: input.startedAt,
               runId: input.runId,
+              visibleStatus: 'ready',
+              backgroundStatus: 'loading',
+              visibleAppliedAt: input.visibleAppliedAt,
               enrichmentStatus: 'loading',
               enrichmentProcessedBatches: progress.processedBatches,
               enrichmentTotalBatches: progress.totalBatches,
@@ -595,6 +649,10 @@ export function createNodeExpansionModule(
             enrichmentTotalCandidates: finalReciprocalEvidence.totalCandidates,
             enrichmentNewInboundCount: newlyAddedInboundCount,
           },
+          {
+            visibleStatus: 'ready',
+            visibleAppliedAt: input.visibleAppliedAt,
+          },
         )
       } catch (error) {
         if (isStaleRun(input.pubkey, input.runId)) {
@@ -648,6 +706,10 @@ export function createNodeExpansionModule(
             enrichmentTotalCandidates: candidatePlan.totalCandidates,
             enrichmentNewInboundCount: newlyAddedInboundCount,
           },
+          {
+            visibleStatus: 'ready',
+            visibleAppliedAt: input.visibleAppliedAt,
+          },
         )
       } finally {
         input.adapter.close()
@@ -684,6 +746,7 @@ export function createNodeExpansionModule(
     })
 
     ctx.store.getState().markNodeExpanded(input.pubkey)
+    const visibleAppliedAt = ctx.now()
     updateNodeStructurePreviewState(input.pubkey, input.structure)
     triggerPostMergeSideEffects({
       pubkey: input.pubkey,
@@ -704,6 +767,7 @@ export function createNodeExpansionModule(
             pubkey: input.pubkey,
             runId: input.runId,
             startedAt: input.startedAt,
+            visibleAppliedAt,
             adapter: input.adapter,
             relayUrls: input.relayUrls,
             structure: input.structure,
@@ -730,6 +794,11 @@ export function createNodeExpansionModule(
       input.startedAt,
       input.runId,
       'idle',
+      {},
+      {
+        visibleStatus: 'ready',
+        visibleAppliedAt,
+      },
     )
 
     return {
@@ -773,8 +842,8 @@ export function createNodeExpansionModule(
 
     if (state.expandedNodePubkeys.has(pubkey)) {
       const inFlightEnrichment =
-        currentExpansionState?.phase === 'enriching-reciprocity' &&
-        currentExpansionState.enrichmentStatus === 'loading'
+        currentExpansionState?.backgroundStatus === 'loading' ||
+        currentExpansionState?.enrichmentStatus === 'loading'
       const message =
         currentExpansionState?.message ??
         `Nodo ${pubkey.slice(0, 8)}... ya fue expandido.`
@@ -791,7 +860,32 @@ export function createNodeExpansionModule(
         }
       }
 
-      setTerminalState(pubkey, 'ready', message)
+      setTerminalState(
+        pubkey,
+        'ready',
+        message,
+        currentExpansionState?.startedAt ?? null,
+        currentExpansionState?.runId ?? null,
+        currentExpansionState?.backgroundStatus ??
+          currentExpansionState?.enrichmentStatus ??
+          'idle',
+        {
+          enrichmentProcessedBatches:
+            currentExpansionState?.enrichmentProcessedBatches ?? null,
+          enrichmentTotalBatches:
+            currentExpansionState?.enrichmentTotalBatches ?? null,
+          enrichmentProcessedCandidates:
+            currentExpansionState?.enrichmentProcessedCandidates ?? null,
+          enrichmentTotalCandidates:
+            currentExpansionState?.enrichmentTotalCandidates ?? null,
+          enrichmentNewInboundCount:
+            currentExpansionState?.enrichmentNewInboundCount ?? null,
+        },
+        {
+          visibleStatus: 'ready',
+          visibleAppliedAt: currentExpansionState?.visibleAppliedAt ?? null,
+        },
+      )
       return {
         status: 'ready',
         discoveredFollowCount: state.adjacency[pubkey]?.length ?? 0,

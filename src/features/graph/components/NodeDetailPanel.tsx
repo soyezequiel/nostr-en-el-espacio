@@ -435,7 +435,7 @@ export function NodeDetailPanel({
       aria-busy={isStructurallyExpanding}
       aria-labelledby="node-detail-title"
       aria-live="polite"
-      className="node-detail-panel"
+      className="node-detail-panel node-detail-panel--detail"
       data-node-detail-panel
     >
       <div className="node-detail-panel__header">

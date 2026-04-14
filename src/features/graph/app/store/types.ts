@@ -214,6 +214,9 @@ export interface NodeExpansionState {
   startedAt: number | null
   updatedAt: number | null
   runId?: string | null
+  visibleStatus: NodeExpansionStatus
+  backgroundStatus: NodeExpansionEnrichmentStatus | 'idle'
+  visibleAppliedAt: number | null
   enrichmentStatus?: NodeExpansionEnrichmentStatus | null
   enrichmentProcessedBatches?: number | null
   enrichmentTotalBatches?: number | null

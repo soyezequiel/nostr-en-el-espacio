@@ -148,6 +148,80 @@ test('activates a bridge layout for a single active anchor instead of falling ba
   )
 })
 
+test('fans root-owned and anchor-owned targets laterally in the root plus one expanded case', () => {
+  const input = createLayoutInput({
+    comparedNodePubkeys: new Set(['anchor-a']),
+    activeComparisonAnchorPubkeys: ['anchor-a'],
+    comparisonAnchorOrder: ['anchor-a'],
+  })
+
+  const extraOwnedNodes = [
+    ['root-only-1', 10],
+    ['root-only-2', 11],
+    ['root-only-3', 12],
+    ['root-only-4', 13],
+    ['root-only-5', 14],
+    ['anchor-only-1', 15],
+    ['anchor-only-2', 16],
+    ['anchor-only-3', 17],
+    ['anchor-only-4', 18],
+    ['anchor-only-5', 19],
+  ] as const satisfies readonly (readonly [string, number])[]
+
+  extraOwnedNodes.forEach(([pubkey, discoveredAt]) => {
+    input.nodes[pubkey] = createNode(pubkey, { discoveredAt })
+    input.visiblePubkeys.add(pubkey)
+    input.radiiByPubkey.set(pubkey, 12)
+  })
+
+  input.links.push(
+    { source: 'root', target: 'root-only-1', relation: 'follow' },
+    { source: 'root', target: 'root-only-2', relation: 'follow' },
+    { source: 'root', target: 'root-only-3', relation: 'follow' },
+    { source: 'root', target: 'root-only-4', relation: 'follow' },
+    { source: 'root', target: 'root-only-5', relation: 'follow' },
+    { source: 'anchor-a', target: 'anchor-only-1', relation: 'follow' },
+    { source: 'anchor-a', target: 'anchor-only-2', relation: 'follow' },
+    { source: 'anchor-a', target: 'anchor-only-3', relation: 'follow' },
+    { source: 'anchor-a', target: 'anchor-only-4', relation: 'follow' },
+    { source: 'anchor-a', target: 'anchor-only-5', relation: 'follow' },
+  )
+
+  const result = runMultiCenterComparisonLayout(input)
+
+  assert.ok(result)
+
+  const rootPosition = result.positions.get('root')
+  const anchorPosition = result.positions.get('anchor-a')
+  const rootOwnedPositions = [
+    'root-only-1',
+    'root-only-2',
+    'root-only-3',
+    'root-only-4',
+    'root-only-5',
+  ].map((pubkey) => result.positions.get(pubkey))
+  const anchorOwnedPositions = [
+    'anchor-only-1',
+    'anchor-only-2',
+    'anchor-only-3',
+    'anchor-only-4',
+    'anchor-only-5',
+  ].map((pubkey) => result.positions.get(pubkey))
+
+  assert.ok(rootPosition)
+  assert.ok(anchorPosition)
+  assert.equal(rootOwnedPositions.every(Boolean), true)
+  assert.equal(anchorOwnedPositions.every(Boolean), true)
+
+  const rootOwnedXs = rootOwnedPositions.map((position) => position![0])
+  const anchorOwnedXs = anchorOwnedPositions.map((position) => position![0])
+
+  assert.ok(rootOwnedXs.every((x) => x < rootPosition[0] - 48))
+  assert.ok(anchorOwnedXs.every((x) => x > anchorPosition[0] + 48))
+  assert.ok(Math.max(...rootOwnedXs) - Math.min(...rootOwnedXs) > 180)
+  assert.ok(Math.max(...anchorOwnedXs) - Math.min(...anchorOwnedXs) > 180)
+})
+
 test('fills a second expanded anchor when only one explicit compare anchor is set', () => {
   const result = runMultiCenterComparisonLayout(
     createLayoutInput({

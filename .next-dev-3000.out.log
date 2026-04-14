@@ -1,0 +1,56 @@
+
+> nostr-starter@0.1.0 predev
+> npm run workers:build
+
+
+> nostr-starter@0.1.0 workers:build
+> node scripts/build-graph-workers.mjs
+
+
+> nostr-starter@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.2 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://172.17.176.1:3000
+✓ Ready in 328ms
+
+ GET / 200 in 481ms (next.js: 325ms, application-code: 156ms)
+ GET / 200 in 41ms (next.js: 4ms, application-code: 37ms)
+ GET / 200 in 37ms (next.js: 3ms, application-code: 34ms)
+ GET / 200 in 37ms (next.js: 3ms, application-code: 34ms)
+ GET / 200 in 41ms (next.js: 3ms, application-code: 38ms)
+✓ Compiled in 143ms
+✓ Compiled in 86ms
+✓ Compiled in 48ms
+✓ Compiled in 44ms
+✓ Compiled in 46ms
+✓ Compiled in 46ms
+✓ Compiled in 41ms
+✓ Compiled in 35ms
+✓ Compiled in 38ms
+✓ Compiled in 33ms
+✓ Compiled in 37ms
+✓ Compiled in 34ms
+✓ Compiled in 43ms
+✓ Compiled in 37ms
+✓ Compiled in 163ms
+ GET / 200 in 28ms (next.js: 5ms, application-code: 22ms)
+✓ Compiled in 87ms
+ GET / 200 in 31ms (next.js: 4ms, application-code: 27ms)
+✓ Compiled in 62ms
+ GET / 200 in 44ms (next.js: 3ms, application-code: 41ms)
+✓ Compiled in 44ms
+✓ Compiled in 68ms
+✓ Compiled in 41ms
+✓ Compiled in 47ms
+✓ Compiled in 47ms
+✓ Compiled in 57ms
+✓ Compiled in 48ms
+✓ Compiled in 51ms
+✓ Compiled in 51ms
+✓ Compiled in 74ms
+ GET / 200 in 48ms (next.js: 5ms, application-code: 43ms)
+✓ Compiled in 54ms
+ GET / 200 in 40ms (next.js: 4ms, application-code: 36ms)
+ GET / 200 in 46ms (next.js: 4ms, application-code: 42ms)

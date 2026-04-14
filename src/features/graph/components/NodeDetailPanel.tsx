@@ -110,6 +110,7 @@ export function NodeDetailPanel({
     slotsRemaining,
     isDeepSelectionLocked,
     isSelectedForDeepCapture,
+    isPinned,
     nodeExpansionState,
     nodeStructurePreviewState,
   } = useAppStore(useShallow(selectNodeDetailContext))
@@ -127,6 +128,7 @@ export function NodeDetailPanel({
   const setPathfindingSelectionMode = useAppStore(
     (state) => state.setPathfindingSelectionMode,
   )
+  const togglePinnedNode = useAppStore((state) => state.togglePinnedNode)
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
   const selectedProfileSnapshot = buildNodeProfileSnapshot(selectedNode)
   const selectedProfileSignature = buildProfileSignature(selectedProfileSnapshot)
@@ -426,6 +428,14 @@ export function NodeDetailPanel({
     })
   }
 
+  const handleTogglePinned = () => {
+    if (!selectedNodePubkey) {
+      return
+    }
+
+    togglePinnedNode(selectedNodePubkey)
+  }
+
   if (!isOpen || !selectedNodePubkey || !selectedNode) {
     return null
   }
@@ -679,6 +689,18 @@ export function NodeDetailPanel({
                 {expandLabel}
               </button>
             )}
+
+            <button
+              className={
+                isPinned
+                  ? 'node-detail-panel__secondary-action node-detail-panel__secondary-action--active'
+                  : 'node-detail-panel__secondary-action'
+              }
+              onClick={handleTogglePinned}
+              type="button"
+            >
+              {isPinned ? 'Quitar pin' : 'Fijar nodo'}
+            </button>
 
             <button
               className={

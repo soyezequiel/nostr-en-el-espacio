@@ -20,6 +20,7 @@ import type {
   ImageRendererDeliverySnapshot,
 } from '@/features/graph/render/imageRuntime'
 import type { GraphNodeScreenRadii } from '@/features/graph/render/nodeSizing'
+import type { PhysicsFrameStore } from '@/features/graph/render/physicsFrameStore'
 import type { GraphRenderLabel, GraphRenderModel } from '@/features/graph/render/types'
 
 // DeckRendererAsync is the ONLY module that statically imports DeckGraphRenderer.
@@ -49,11 +50,17 @@ interface GraphViewportLazyProps {
       | null,
   ) => void
   onSelectNode: (pubkey: string | null, options?: { shiftKey?: boolean }) => void
+  onNodeDragStart?: (pubkey: string, position: [number, number]) => void
+  onNodeDragMove?: (pubkey: string, position: [number, number]) => void
+  onNodeDragEnd?: (pubkey: string) => void
   onViewStateChange: (viewState: GraphViewState) => void
   renderConfig: RenderConfig
   forceLowDevicePixels?: boolean
   hoverInteractionEnabled?: boolean
   comparedNodePubkeys?: ReadonlySet<string>
+  physicsFrameStore?: PhysicsFrameStore | null
+  pinnedNodePubkeys?: ReadonlySet<string>
+  nodeDragEnabled?: boolean
 }
 
 /**
@@ -76,11 +83,17 @@ export const GraphViewportLazy = memo(function GraphViewportLazy({
   onAvatarRendererDelivery,
   onHoverGraph,
   onSelectNode,
+  onNodeDragStart,
+  onNodeDragMove,
+  onNodeDragEnd,
   onViewStateChange,
   renderConfig,
   forceLowDevicePixels,
   hoverInteractionEnabled,
   comparedNodePubkeys,
+  physicsFrameStore,
+  pinnedNodePubkeys,
+  nodeDragEnabled,
 }: GraphViewportLazyProps) {
   return (
     <Suspense fallback={null}>
@@ -97,6 +110,9 @@ export const GraphViewportLazy = memo(function GraphViewportLazy({
         onAvatarRendererDelivery={onAvatarRendererDelivery}
         onHoverGraph={onHoverGraph}
         onSelectNode={onSelectNode}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDragMove={onNodeDragMove}
+        onNodeDragEnd={onNodeDragEnd}
         onViewStateChange={onViewStateChange}
         viewState={viewState}
         width={width}
@@ -104,6 +120,9 @@ export const GraphViewportLazy = memo(function GraphViewportLazy({
         forceLowDevicePixels={forceLowDevicePixels}
         hoverInteractionEnabled={hoverInteractionEnabled}
         comparedNodePubkeys={comparedNodePubkeys}
+        physicsFrameStore={physicsFrameStore}
+        pinnedNodePubkeys={pinnedNodePubkeys}
+        nodeDragEnabled={nodeDragEnabled}
       />
     </Suspense>
   )

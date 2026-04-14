@@ -336,6 +336,8 @@ export interface RenderConfig {
   nodeSizeFactor: number
   autoSizeNodes: boolean
   imageQualityMode: ImageQualityMode
+  physicsEnabled: boolean
+  physicsAutoFreeze: boolean
   avatarHdZoomThreshold?: number
   avatarFullHdZoomThreshold?: number
   showDiscoveryState?: boolean
@@ -401,6 +403,8 @@ export interface UiSlice {
   savedRoots: SavedRootEntry[]
   savedRootsHydrated: boolean
   interactionState: ViewportInteractionState
+  pinnedNodePubkeys: ReadonlySet<string>
+  physicsReheatRevision: number
   setSelectedNodePubkey: (pubkey: string | null) => void
   setComparedNodePubkeys: (pubkeys: ReadonlySet<string>) => void
   clearComparedNodes: () => void
@@ -434,6 +438,12 @@ export interface UiSlice {
     fetchedAt: number | null,
   ) => void
   setSavedRootsHydrated: (hydrated: boolean) => void
+  pinNode: (pubkey: string) => void
+  unpinNode: (pubkey: string) => void
+  togglePinnedNode: (pubkey: string) => void
+  clearPinnedNodes: () => void
+  prunePinnedNodePubkeys: (availablePubkeys: ReadonlySet<string>) => void
+  requestPhysicsReheat: () => void
 }
 
 export interface ExportSlice {

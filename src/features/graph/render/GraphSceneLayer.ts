@@ -11,7 +11,6 @@ import type { RenderConfig } from '@/features/graph/app/store/types'
 import type { GraphViewState } from '@/features/graph/render/graphViewState'
 import {
   COMMON_FOLLOW_NODE_COLOR,
-  CONNECTIONS_FOLLOW_COLOR,
   CONNECTIONS_INBOUND_COLOR,
   EXPANDED_RING_COLOR,
   HIGHLIGHT_LINK_COLOR,
@@ -44,6 +43,7 @@ import {
   getZoomResponsiveNodeSizeFactor,
   type VisibleGeometryContext,
 } from '@/features/graph/render/visibleGeometry'
+import type { PhysicsFrameStore } from '@/features/graph/render/physicsFrameStore'
 import type {
   GraphRenderEdge,
   GraphRenderLabel,
@@ -65,6 +65,8 @@ type GraphSceneLayerProps = {
   imageFrame: ImageRenderPayload
   hoverPickingEnabled: boolean
   renderConfig: RenderConfig
+  physicsFrameStore?: PhysicsFrameStore | null
+  pinnedNodePubkeys?: ReadonlySet<string>
   onAvatarRendererDelivery?: (snapshot: ImageRendererDeliverySnapshot) => void
 }
 
@@ -79,6 +81,8 @@ const defaultProps: DefaultProps<GraphSceneLayerProps> = {
   nodeScreenRadii: new Map<string, number>(),
   imageFrame: createEmptyImageRenderPayload(),
   hoverPickingEnabled: true,
+  physicsFrameStore: null,
+  pinnedNodePubkeys: new Set<string>(),
   onAvatarRendererDelivery: undefined,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any
@@ -460,6 +464,13 @@ type GraphSceneImageDataCacheEntry = {
   hdAvatarNodesByIconId: ReadonlyMap<string, readonly GraphRenderNode[]>
 }
 
+type ResolvedPhysicsSceneData = {
+  model: GraphRenderModel
+  visibleLabels: readonly GraphRenderLabel[]
+  hasLivePhysicsFrame: boolean
+  physicsVersion: number
+}
+
 const rendererAvatarAtlases = new Map<string, AvatarAtlasManager>()
 const graphSceneTopologyCache = new Map<string, GraphSceneTopologyCacheEntry>()
 const graphSceneEmphasisCache = new Map<string, GraphSceneEmphasisCacheEntry>()
@@ -475,15 +486,111 @@ const HD_ATLAS_BUCKETS = [256, 512, 1024] as const
 const AVATAR_ATLAS_INITIAL_BURST_PAGE_COMMITS = 4
 const AVATAR_ATLAS_INITIAL_BURST_PIXEL_BUDGET = 1024 * 1024 * 4
 
+// Cache the resolved physics scene data so that when the physics version
+// hasn't changed, we return the exact same object references. Without this,
+// every renderLayers() call creates new spread-copies of nodes/edges/labels,
+// and deck.gl interprets the new array references as "data changed" →
+// triggering GPU buffer re-uploads and visual jitter even when positions
+// are identical.
+let resolvedPhysicsSceneCache: {
+  signature: string
+  data: ResolvedPhysicsSceneData
+} | null = null
+
+const resolvePhysicsSceneData = ({
+  model,
+  visibleLabels,
+  physicsFrameStore,
+}: {
+  model: GraphRenderModel
+  visibleLabels: readonly GraphRenderLabel[]
+  physicsFrameStore: PhysicsFrameStore | null | undefined
+}): ResolvedPhysicsSceneData => {
+  const physicsVersion = physicsFrameStore?.getVersion() ?? 0
+  const cacheSignature = `${model.topologySignature}|${model.layoutKey}|${physicsVersion}|${model.nodes.length}`
+
+  if (resolvedPhysicsSceneCache?.signature === cacheSignature) {
+    return resolvedPhysicsSceneCache.data
+  }
+
+  if (!physicsFrameStore?.hasLiveFrame()) {
+    const result: ResolvedPhysicsSceneData = {
+      model,
+      visibleLabels,
+      hasLivePhysicsFrame: false,
+      physicsVersion,
+    }
+    resolvedPhysicsSceneCache = { signature: cacheSignature, data: result }
+    return result
+  }
+
+  let hasLivePosition = false
+  const resolvedNodes = model.nodes.map((node) => {
+    const nextPosition = physicsFrameStore.getPosition(node.pubkey)
+    if (!nextPosition) {
+      return node
+    }
+
+    hasLivePosition = true
+    return {
+      ...node,
+      position: nextPosition,
+    }
+  })
+
+  if (!hasLivePosition) {
+    const result: ResolvedPhysicsSceneData = {
+      model,
+      visibleLabels,
+      hasLivePhysicsFrame: false,
+      physicsVersion,
+    }
+    resolvedPhysicsSceneCache = { signature: cacheSignature, data: result }
+    return result
+  }
+
+  const positionByPubkey = new Map(
+    resolvedNodes.map((node) => [node.pubkey, node.position]),
+  )
+  const resolvedEdges = model.edges.map((edge) => ({
+    ...edge,
+    sourcePosition: positionByPubkey.get(edge.source) ?? edge.sourcePosition,
+    targetPosition: positionByPubkey.get(edge.target) ?? edge.targetPosition,
+  }))
+  const resolvedLabels = visibleLabels.map((label) => ({
+    ...label,
+    position: positionByPubkey.get(label.pubkey) ?? label.position,
+  }))
+
+  const result: ResolvedPhysicsSceneData = {
+    model: {
+      ...model,
+      nodes: resolvedNodes,
+      edges: resolvedEdges,
+      labels: model.labels.map((label) => ({
+        ...label,
+        position: positionByPubkey.get(label.pubkey) ?? label.position,
+      })),
+    },
+    visibleLabels: resolvedLabels,
+    hasLivePhysicsFrame: true,
+    physicsVersion,
+  }
+  resolvedPhysicsSceneCache = { signature: cacheSignature, data: result }
+  return result
+}
+
 const resolveGraphSceneTopologySignature = (model: GraphRenderModel) =>
   `${model.topologySignature}|${model.layoutKey}|${model.nodes.length}n:${model.edges.length}e`
 
 const getGraphSceneTopologyData = (
   layerId: string,
   model: GraphRenderModel,
+  options?: { disableCache?: boolean },
 ): GraphSceneTopologyCacheEntry => {
   const signature = resolveGraphSceneTopologySignature(model)
-  const cachedEntry = graphSceneTopologyCache.get(layerId)
+  const disableCache = options?.disableCache === true
+  const cachedEntry = disableCache ? undefined : graphSceneTopologyCache.get(layerId)
 
   if (cachedEntry && cachedEntry.signature === signature) {
     return cachedEntry
@@ -529,7 +636,9 @@ const getGraphSceneTopologyData = (
         : getCommonFollowNodes(model.nodes),
   }
 
-  graphSceneTopologyCache.set(layerId, nextEntry)
+  if (!disableCache) {
+    graphSceneTopologyCache.set(layerId, nextEntry)
+  }
 
   return nextEntry
 }
@@ -578,18 +687,20 @@ const getGraphSceneEmphasisData = ({
   model,
   hoveredNodePubkey,
   hoveredEdgePubkeys,
+  disableCache = false,
 }: {
   layerId: string
   model: GraphRenderModel
   hoveredNodePubkey: string | null
   hoveredEdgePubkeys: readonly string[]
+  disableCache?: boolean
 }): GraphSceneEmphasisCacheEntry => {
   const signature = [
     resolveGraphSceneTopologySignature(model),
     hoveredNodePubkey ?? '',
     hoveredEdgePubkeys.join(','),
   ].join('|')
-  const cachedEntry = graphSceneEmphasisCache.get(layerId)
+  const cachedEntry = disableCache ? undefined : graphSceneEmphasisCache.get(layerId)
 
   if (cachedEntry && cachedEntry.signature === signature) {
     return cachedEntry
@@ -605,7 +716,9 @@ const getGraphSceneEmphasisData = ({
     ),
   }
 
-  graphSceneEmphasisCache.set(layerId, nextEntry)
+  if (!disableCache) {
+    graphSceneEmphasisCache.set(layerId, nextEntry)
+  }
 
   return nextEntry
 }
@@ -614,10 +727,12 @@ const getGraphSceneImageData = ({
   layerId,
   model,
   imageFrame,
+  disableCache = false,
 }: {
   layerId: string
   model: GraphRenderModel
   imageFrame: ImageRenderPayload
+  disableCache?: boolean
 }): GraphSceneImageDataCacheEntry => {
   const baseReadyImagesByPubkey =
     imageFrame.baseReadyImagesByPubkey ?? imageFrame.readyImagesByPubkey
@@ -634,13 +749,13 @@ const getGraphSceneImageData = ({
     baseReadyImageSignature,
     hdReadyImageSignature,
   ].join('|')
-  const cachedEntry = graphSceneImageDataCache.get(layerId)
+  const cachedEntry = disableCache ? undefined : graphSceneImageDataCache.get(layerId)
 
   if (cachedEntry && cachedEntry.signature === signature) {
     return cachedEntry
   }
 
-  const paintedAvatarPubkeySet = new Set(imageFrame.paintedPubkeys)
+  const paintedAvatarPubkeySet = new Set<string>(imageFrame.paintedPubkeys)
   const fallbackAvatarNodes = model.nodes.filter(
     (node) => !paintedAvatarPubkeySet.has(node.pubkey),
   )
@@ -676,7 +791,9 @@ const getGraphSceneImageData = ({
     ),
   }
 
-  graphSceneImageDataCache.set(layerId, nextEntry)
+  if (!disableCache) {
+    graphSceneImageDataCache.set(layerId, nextEntry)
+  }
 
   return nextEntry
 }
@@ -711,14 +828,14 @@ class RendererAvatarDeliveryAggregator {
   }
 
   public setExplicitFailedPubkeys(pubkeys: string[]) {
-    this.explicitFailedPubkeys = [...new Set(pubkeys)].sort()
+    this.explicitFailedPubkeys = Array.from(new Set(pubkeys)).sort()
     this.emit()
   }
 
   public pruneVisiblePages(visiblePageIds: ReadonlySet<string>) {
     let changed = false
 
-    for (const pageId of this.snapshotsByPageId.keys()) {
+    for (const pageId of Array.from(this.snapshotsByPageId.keys())) {
       if (!visiblePageIds.has(pageId)) {
         this.snapshotsByPageId.delete(pageId)
         changed = true
@@ -732,10 +849,10 @@ class RendererAvatarDeliveryAggregator {
 
   public reportPage(pageId: string, snapshot: ImageRendererDeliverySnapshot) {
     this.snapshotsByPageId.set(pageId, {
-      paintedPubkeys: [...new Set(snapshot.paintedPubkeys)].sort(),
-      basePaintedPubkeys: [...new Set(snapshot.basePaintedPubkeys ?? [])].sort(),
-      hdPaintedPubkeys: [...new Set(snapshot.hdPaintedPubkeys ?? [])].sort(),
-      failedPubkeys: [...new Set(snapshot.failedPubkeys)].sort(),
+      paintedPubkeys: Array.from(new Set(snapshot.paintedPubkeys)).sort(),
+      basePaintedPubkeys: Array.from(new Set(snapshot.basePaintedPubkeys ?? [])).sort(),
+      hdPaintedPubkeys: Array.from(new Set(snapshot.hdPaintedPubkeys ?? [])).sort(),
+      failedPubkeys: Array.from(new Set(snapshot.failedPubkeys)).sort(),
     })
     this.emit()
   }
@@ -750,7 +867,7 @@ class RendererAvatarDeliveryAggregator {
     const hdPaintedPubkeys = new Set<string>()
     const failedPubkeys = new Set(this.explicitFailedPubkeys)
 
-    for (const snapshot of this.snapshotsByPageId.values()) {
+    for (const snapshot of Array.from(this.snapshotsByPageId.values())) {
       for (const pubkey of snapshot.paintedPubkeys) {
         paintedPubkeys.add(pubkey)
       }
@@ -768,10 +885,10 @@ class RendererAvatarDeliveryAggregator {
     }
 
     const nextSnapshot = {
-      paintedPubkeys: [...paintedPubkeys].sort(),
-      basePaintedPubkeys: [...basePaintedPubkeys].sort(),
-      hdPaintedPubkeys: [...hdPaintedPubkeys].sort(),
-      failedPubkeys: [...failedPubkeys].sort(),
+      paintedPubkeys: Array.from(paintedPubkeys).sort(),
+      basePaintedPubkeys: Array.from(basePaintedPubkeys).sort(),
+      hdPaintedPubkeys: Array.from(hdPaintedPubkeys).sort(),
+      failedPubkeys: Array.from(failedPubkeys).sort(),
     }
     const nextSignature = [
       nextSnapshot.paintedPubkeys.join(','),
@@ -868,6 +985,38 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
   public static defaultProps = defaultProps
 
   public static layerName = 'GraphSceneLayer'
+
+  public override initializeState() {
+    this.setState({
+      physicsUnsubscribe: this.props.physicsFrameStore?.subscribe(() => {
+        this.setNeedsUpdate()
+        this.setNeedsRedraw()
+      }),
+    })
+  }
+
+  public override updateState(params: UpdateParameters<this>) {
+    super.updateState(params)
+
+    if (params.props.physicsFrameStore !== params.oldProps.physicsFrameStore) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(this.state as any)?.physicsUnsubscribe?.()
+      this.setState({
+        physicsUnsubscribe: params.props.physicsFrameStore?.subscribe(() => {
+          this.setNeedsUpdate()
+          this.setNeedsRedraw()
+        }),
+      })
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public override finalizeState(context: any) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(this.state as any)?.physicsUnsubscribe?.()
+    super.finalizeState(context)
+  }
+
   public renderLayers(): Layer[] {
     const {
       model,
@@ -881,14 +1030,27 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       renderConfig,
       imageFrame,
       hoverPickingEnabled,
+      physicsFrameStore,
+      pinnedNodePubkeys = new Set<string>(),
       onAvatarRendererDelivery,
     } = this.props
-    const topologyData = getGraphSceneTopologyData(this.props.id, model)
+    const resolvedPhysicsScene = resolvePhysicsSceneData({
+      model,
+      visibleLabels,
+      physicsFrameStore,
+    })
+    const resolvedModel = resolvedPhysicsScene.model
+    const resolvedVisibleLabels = resolvedPhysicsScene.visibleLabels
+    const disableCache = resolvedPhysicsScene.hasLivePhysicsFrame
+    const topologyData = getGraphSceneTopologyData(this.props.id, resolvedModel, {
+      disableCache,
+    })
     const { hasPathHighlight, emphasisNodes } = getGraphSceneEmphasisData({
       layerId: this.props.id,
-      model,
+      model: resolvedModel,
       hoveredNodePubkey,
       hoveredEdgePubkeys,
+      disableCache,
     })
     const {
       maxZapWeight,
@@ -937,7 +1099,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       getScreenRadius(pubkey, fallbackRadius) / worldDivisor
     const getWorldSize = (pubkey: string, fallbackRadius: number) =>
       getWorldRadius(pubkey, fallbackRadius) * 2
-    const nodeByPubkey = new Map(model.nodes.map((node) => [node.pubkey, node]))
+    const nodeByPubkey = new Map(resolvedModel.nodes.map((node) => [node.pubkey, node]))
     const visibleGeometryContext: VisibleGeometryContext = {
       nodeByPubkey,
       nodeScreenRadii,
@@ -952,7 +1114,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         context: visibleGeometryContext,
       })
     const focusedNeighborPubkeys = getFirstDegreeNeighborPubkeys(
-      model.edges,
+      resolvedModel.edges,
       hoveredNodePubkey,
     )
 
@@ -1000,8 +1162,9 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
       hdAvatarNodesByIconId,
     } = getGraphSceneImageData({
       layerId: this.props.id,
-      model,
+      model: resolvedModel,
       imageFrame,
+      disableCache,
     })
 
     const visibleArrowData = arrowType !== 'none' ? arrowData : []
@@ -1034,7 +1197,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
     const avatarLayers =
       avatarAtlasSnapshot.pages.length > 0
         ? avatarAtlasSnapshot.pages.map((page) => {
-            const pageNodes = [...new Set(page.iconIds)].flatMap(
+            const pageNodes = Array.from(new Set(page.iconIds)).flatMap(
               (iconId) => avatarNodesByIconId.get(iconId) ?? [],
             )
             const pageLayerId = `${baseAvatarLayerId}-${page.key}`
@@ -1100,7 +1263,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
     const hdAvatarLayers =
       hdAvatarAtlasSnapshot.pages.length > 0
         ? hdAvatarAtlasSnapshot.pages.map((page) => {
-            const pageNodes = [...new Set(page.iconIds)].flatMap(
+            const pageNodes = Array.from(new Set(page.iconIds)).flatMap(
               (iconId) => hdAvatarNodesByIconId.get(iconId) ?? [],
             )
             const pageLayerId = `${hdAtlasLayerId}-${page.key}`
@@ -1444,8 +1607,32 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         },
       }),
       new ScatterplotLayer<GraphRenderNode>({
+        id: `${this.props.id}-pinned-ring`,
+        data: resolvedModel.nodes.filter((node) => pinnedNodePubkeys.has(node.pubkey)),
+        pickable: false,
+        stroked: true,
+        filled: false,
+        radiusUnits: 'common',
+        lineWidthUnits: 'common',
+        getPosition: (node) => node.position,
+        getRadius: (node) => getWorldRadius(node.pubkey, node.radius) * 2.18,
+        getLineColor: (node) =>
+          applyFocusFade([248, 250, 252, 224], 'node', node.pubkey),
+        getLineWidth: 1.8 / viewScale,
+        updateTriggers: {
+          getRadius: [
+            nodeScreenRadii,
+            nodeSizeFactor,
+            viewState.zoom,
+            resolvedPhysicsScene.physicsVersion,
+          ],
+          getLineColor: [hoveredNodePubkey, Array.from(pinnedNodePubkeys).join(',')],
+          getLineWidth: [viewState.zoom],
+        },
+      }),
+      new ScatterplotLayer<GraphRenderNode>({
         id: `${this.props.id}-node-glass-halo`,
-        data: model.nodes,
+        data: resolvedModel.nodes,
         pickable: false,
         stroked: false,
         filled: true,
@@ -1457,8 +1644,8 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             getNodeGlassHaloColor(
               node,
               paintedAvatarPubkeySet,
-              model,
-              model.activeLayer,
+              resolvedModel,
+              resolvedModel.activeLayer,
               hasPathHighlight,
             ),
             'node',
@@ -1470,14 +1657,14 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
           getFillColor: [
             hoveredNodePubkey,
             imageFrame.paintedPubkeys.join(','),
-            model.activeLayer,
+            resolvedModel.activeLayer,
             hasPathHighlight,
           ],
         },
       }),
       new ScatterplotLayer<GraphRenderNode>({
         id: `${this.props.id}-nodes`,
-        data: model.nodes,
+        data: resolvedModel.nodes,
         pickable: true,
         stroked: true,
         filled: true,
@@ -1490,8 +1677,8 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             getNodeGlassFillColor(
               node,
               paintedAvatarPubkeySet,
-              model,
-              model.activeLayer,
+              resolvedModel,
+              resolvedModel.activeLayer,
               hasPathHighlight,
             ),
             'node',
@@ -1499,7 +1686,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
           ),
         getLineColor: (node) =>
           applyFocusFade(
-            getNodeGlassLineColor(node, paintedAvatarPubkeySet, model),
+            getNodeGlassLineColor(node, paintedAvatarPubkeySet, resolvedModel),
             'node',
             node.pubkey,
           ),
@@ -1515,20 +1702,20 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
           getFillColor: [
             hoveredNodePubkey,
             imageFrame.paintedPubkeys.join(','),
-            model.activeLayer,
+            resolvedModel.activeLayer,
             hasPathHighlight,
           ],
           getLineColor: [
             hoveredNodePubkey,
             imageFrame.paintedPubkeys.join(','),
-            model.activeLayer,
+            resolvedModel.activeLayer,
           ],
           getLineWidth: [imageFrame.paintedPubkeys.join(','), viewState.zoom],
         },
       }),
       new ScatterplotLayer<GraphRenderNode>({
         id: `${this.props.id}-node-glass-highlight`,
-        data: model.nodes,
+        data: resolvedModel.nodes,
         pickable: false,
         stroked: false,
         filled: true,
@@ -1540,8 +1727,8 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
             getNodeGlassHighlightColor(
               node,
               paintedAvatarPubkeySet,
-              model,
-              model.activeLayer,
+              resolvedModel,
+              resolvedModel.activeLayer,
               hasPathHighlight,
             ),
             'node',
@@ -1553,7 +1740,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
           getFillColor: [
             hoveredNodePubkey,
             imageFrame.paintedPubkeys.join(','),
-            model.activeLayer,
+            resolvedModel.activeLayer,
             hasPathHighlight,
           ],
         },
@@ -1604,7 +1791,7 @@ export class GraphSceneLayer extends CompositeLayer<GraphSceneLayerProps> {
         : []),
       new TextLayer<GraphRenderLabel>({
         id: `${this.props.id}-labels`,
-        data: visibleLabels,
+        data: resolvedVisibleLabels,
         pickable: hoverPickingEnabled,
         background: true,
         sizeUnits: 'pixels',

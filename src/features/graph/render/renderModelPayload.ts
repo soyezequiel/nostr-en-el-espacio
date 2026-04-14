@@ -403,6 +403,8 @@ export const serializeBuildGraphRenderModelInput = ({
     nodeSizeFactor: sanitizeFiniteNumber(renderConfig.nodeSizeFactor, 0.88),
     autoSizeNodes: renderConfig.autoSizeNodes === true,
     imageQualityMode: renderConfig.imageQualityMode ?? 'adaptive',
+    physicsEnabled: renderConfig.physicsEnabled !== false,
+    physicsAutoFreeze: renderConfig.physicsAutoFreeze !== false,
     showSharedEmphasis: renderConfig.showSharedEmphasis === true,
   },
   previousPositions: sanitizePreviousPositions(previousPositions),

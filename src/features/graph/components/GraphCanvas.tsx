@@ -71,6 +71,9 @@ import {
   createGraphRenderModelWorkerGateway,
   type GraphRenderModelWorkerGateway,
 } from '@/features/graph/render/renderModelWorker'
+import { createPhysicsGateway, type PhysicsGateway } from '@/features/graph/render/physicsGateway'
+import { PhysicsFrameStore } from '@/features/graph/render/physicsFrameStore'
+import type { PhysicsTopologySnapshot } from '@/features/graph/workers/physics/types'
 import { GraphViewportLazy } from '@/features/graph/render/GraphViewportLazy'
 
 const selectGraphCanvasRenderState = (state: AppStore) => ({
@@ -111,6 +114,8 @@ const selectGraphCanvasRenderState = (state: AppStore) => ({
   effectiveGraphCaps: state.effectiveGraphCaps,
   effectiveImageBudget: state.effectiveImageBudget,
   isViewportActive: state.interactionState.isViewportActive,
+  pinnedNodePubkeys: state.pinnedNodePubkeys,
+  physicsReheatRevision: state.physicsReheatRevision,
 })
 
 const selectGraphCanvasPanelState = (state: AppStore) => ({
@@ -258,6 +263,29 @@ const equalStringLists = (left: readonly string[], right: readonly string[]) =>
 
 const hasRenderableFrameSize = (size: { width: number; height: number }) =>
   size.width > 0 && size.height > 0
+
+const buildPhysicsTopologySnapshot = (
+  model: GraphRenderModel,
+): PhysicsTopologySnapshot => ({
+  topologySignature: model.topologySignature,
+  activeLayer: model.activeLayer,
+  rootPubkey:
+    model.nodes.find((node) => node.isRoot)?.pubkey ??
+    model.nodes.find((node) => node.position[0] === 0 && node.position[1] === 0)?.pubkey ??
+    null,
+  nodes: model.nodes.map((node) => ({
+    pubkey: node.pubkey,
+    position: node.position,
+    radius: node.radius,
+    isRoot: node.isRoot,
+  })),
+  edges: model.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    relation: edge.relation,
+  })),
+})
 
 const applyImageFrameDiagnostics = ({
   snapshot,
@@ -835,6 +863,8 @@ export const GraphCanvas = memo(function GraphCanvas({
     effectiveGraphCaps,
     effectiveImageBudget,
     isViewportActive,
+    pinnedNodePubkeys,
+    physicsReheatRevision,
   } = useAppStore(useShallow(selectGraphCanvasRenderState))
   const containerRef = useRef<HTMLDivElement | null>(null)
   const perfCountersRef = useRef(createPerfCounters())
@@ -879,6 +909,10 @@ export const GraphCanvas = memo(function GraphCanvas({
   )
   const [graphRenderWorker, setGraphRenderWorker] =
     useState<GraphRenderModelWorkerGateway | null>(null)
+  const physicsGatewayRef = useRef<PhysicsGateway | null>(null)
+  const physicsFrameStoreRef = useRef(new PhysicsFrameStore())
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+  const [isDocumentHidden, setIsDocumentHidden] = useState(false)
 
   const imageRuntimeRef = useRef<ImageRuntime | null>(null)
   const refreshImageFrameRef = useRef<() => void>(() => undefined)
@@ -926,8 +960,17 @@ export const GraphCanvas = memo(function GraphCanvas({
   const isMobileProfile = isMobileDevicePerformanceProfile(
     devicePerformanceProfile,
   )
+  const physicsInteractionEnabled =
+    renderConfig.physicsEnabled &&
+    devicePerformanceProfile === 'desktop' &&
+    !prefersReducedMotion &&
+    !isDocumentHidden
   const hoverInteractionEnabled = !isPointerCoarse
   const shouldCollectDiagnostics = onDiagnosticsChange !== undefined
+  const clearPinnedNodes = useAppStore((state) => state.clearPinnedNodes)
+  const prunePinnedNodePubkeys = useAppStore(
+    (state) => state.prunePinnedNodePubkeys,
+  )
 
   useEffect(() => {
     const handleOnline = () => {
@@ -969,6 +1012,47 @@ export const GraphCanvas = memo(function GraphCanvas({
     mediaQuery.addListener(handleChange)
     return () => {
       mediaQuery.removeListener(handleChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const handleChange = (event: MediaQueryListEvent) => {
+      setPrefersReducedMotion(event.matches)
+    }
+
+    setPrefersReducedMotion(mediaQuery.matches)
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange)
+      return () => {
+        mediaQuery.removeEventListener('change', handleChange)
+      }
+    }
+
+    mediaQuery.addListener(handleChange)
+    return () => {
+      mediaQuery.removeListener(handleChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    const updateVisibility = () => {
+      setIsDocumentHidden(document.visibilityState === 'hidden')
+    }
+
+    updateVisibility()
+    document.addEventListener('visibilitychange', updateVisibility)
+    return () => {
+      document.removeEventListener('visibilitychange', updateVisibility)
     }
   }, [])
 
@@ -1047,8 +1131,86 @@ export const GraphCanvas = memo(function GraphCanvas({
   }, [])
 
   useEffect(() => {
+    const gateway = createPhysicsGateway()
+    physicsGatewayRef.current = gateway
+    const unsubscribe = gateway.subscribe((event) => {
+      if (event.type === 'FRAME') {
+        physicsFrameStoreRef.current.publishFrame(event.payload)
+        return
+      }
+
+      if (event.type === 'STATUS') {
+        physicsFrameStoreRef.current.setStatus(event.payload.status)
+        return
+      }
+
+      if (event.type === 'ERROR') {
+        console.warn('[graph] physics worker disabled after error:', event.payload.message)
+        physicsFrameStoreRef.current.clear()
+      }
+    })
+
+    const physicsFrameStore = physicsFrameStoreRef.current
+
+    return () => {
+      unsubscribe()
+      physicsGatewayRef.current = null
+      gateway.dispose()
+      physicsFrameStore.clear()
+    }
+  }, [])
+
+  useEffect(() => {
     modelRef.current = model
   }, [model])
+
+  useEffect(() => {
+    clearPinnedNodes()
+  }, [clearPinnedNodes, rootNodePubkey])
+
+  useEffect(() => {
+    prunePinnedNodePubkeys(new Set(Object.keys(nodes)))
+  }, [nodes, prunePinnedNodePubkeys])
+
+  useEffect(() => {
+    const physicsGateway = physicsGatewayRef.current
+    if (!physicsGateway) {
+      return
+    }
+
+    physicsGateway.setEnabled(physicsInteractionEnabled)
+    physicsGateway.setVisibility(isDocumentHidden)
+
+    if (!physicsInteractionEnabled) {
+      physicsFrameStoreRef.current.clear()
+      return
+    }
+
+    if (model.nodes.length === 0) {
+      physicsFrameStoreRef.current.clear()
+      return
+    }
+
+    physicsGateway.syncTopology(buildPhysicsTopologySnapshot(model))
+  }, [isDocumentHidden, model, physicsInteractionEnabled])
+
+  useEffect(() => {
+    const physicsGateway = physicsGatewayRef.current
+    if (!physicsGateway) {
+      return
+    }
+
+    physicsGateway.setPinned([...pinnedNodePubkeys])
+  }, [pinnedNodePubkeys])
+
+  useEffect(() => {
+    const physicsGateway = physicsGatewayRef.current
+    if (!physicsGateway || !physicsInteractionEnabled) {
+      return
+    }
+
+    physicsGateway.reheat('manual')
+  }, [physicsInteractionEnabled, physicsReheatRevision])
 
   const refreshViewportQuietState = useCallback(() => {
     const lastInteractionAt = lastViewportInteractionAtRef.current
@@ -2023,6 +2185,39 @@ export const GraphCanvas = memo(function GraphCanvas({
     [hoverInteractionEnabled],
   )
 
+  const handleNodeDragStart = useCallback(
+    (pubkey: string, position: [number, number]) => {
+      if (!physicsInteractionEnabled) {
+        return
+      }
+
+      physicsGatewayRef.current?.dragStart(pubkey, position)
+    },
+    [physicsInteractionEnabled],
+  )
+
+  const handleNodeDragMove = useCallback(
+    (pubkey: string, position: [number, number]) => {
+      if (!physicsInteractionEnabled) {
+        return
+      }
+
+      physicsGatewayRef.current?.dragMove(pubkey, position)
+    },
+    [physicsInteractionEnabled],
+  )
+
+  const handleNodeDragEnd = useCallback(
+    (pubkey: string) => {
+      if (!physicsInteractionEnabled) {
+        return
+      }
+
+      physicsGatewayRef.current?.dragEnd(pubkey)
+    },
+    [physicsInteractionEnabled],
+  )
+
   useEffect(() => {
     if (!hoverInteractionEnabled) {
       setHoverState(EMPTY_HOVER_STATE)
@@ -2733,12 +2928,18 @@ export const GraphCanvas = memo(function GraphCanvas({
               onAvatarRendererDelivery={handleAvatarRendererDelivery}
               onHoverGraph={handleHoverGraph}
               onSelectNode={handleSelectNode}
+              onNodeDragStart={handleNodeDragStart}
+              onNodeDragMove={handleNodeDragMove}
+              onNodeDragEnd={handleNodeDragEnd}
               onViewStateChange={handleViewStateChange}
               viewState={viewState}
               width={size.width}
               renderConfig={renderConfig}
               forceLowDevicePixels={isMobileProfile}
               hoverInteractionEnabled={hoverInteractionEnabled}
+              physicsFrameStore={physicsFrameStoreRef.current}
+              pinnedNodePubkeys={pinnedNodePubkeys}
+              nodeDragEnabled={physicsInteractionEnabled}
             />
           ) : null}
 

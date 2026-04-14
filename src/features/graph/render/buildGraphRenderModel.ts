@@ -18,6 +18,10 @@ import {
   type GraphPhysicsLink,
   type GraphPhysicsNode,
 } from '@/features/graph/render/graphPhysics'
+import {
+  buildExpandedSharedTopology,
+  type ExpandedSharedTopology,
+} from '@/features/graph/render/expandedSharedTopology'
 import type {
   AccessibleNodeSummary,
   BuildGraphRenderModelInput,
@@ -212,6 +216,9 @@ const applyAutoSizeNearestNeighborDistances = (
 
 const createPathPairKey = (source: string, target: string) =>
   [source, target].sort().join('<->')
+
+const createExpandedPairKey = (left: string, right: string) =>
+  left.localeCompare(right) <= 0 ? `${left}<->${right}` : `${right}<->${left}`
 
 const INTERNAL_CONNECTION_SORT_OPTIONS = {
   numeric: false,
@@ -697,46 +704,165 @@ const getNodeRadius = (
   )
 }
 
-const buildSharedByExpandedCount = ({
-  links,
-  expandedNodePubkeys,
-}: Pick<BuildGraphRenderModelInput, 'expandedNodePubkeys' | 'links'>) => {
-  const sharedSourcesByTarget = new Map<string, Set<string>>()
+export type CandidateEdgeThinRank = {
+  structuralClass: number
+  targetSharedByExpandedCount: number
+  targetOverlapPairCount: number
+  targetOverlapPairSupport: number
+  sourceSharedTargetCount: number
+  relationRank: number
+  weightRank: number
+}
 
-  for (const link of links) {
-    if (
-      link.relation !== 'follow' ||
-      !expandedNodePubkeys.has(link.source) ||
-      link.source === link.target
-    ) {
-      continue
+type ThinRankingEdge = Pick<
+  GraphRenderEdge,
+  'id' | 'source' | 'target' | 'relation' | 'weight' | 'targetSharedByExpandedCount'
+>
+
+const getTargetOverlapPairSupport = ({
+  targetPubkey,
+  expandedSharedTopology,
+}: {
+  targetPubkey: string
+  expandedSharedTopology: ExpandedSharedTopology
+}) => {
+  const expandedSources =
+    expandedSharedTopology.expandedSourcesByTarget.get(targetPubkey) ?? []
+
+  if (expandedSources.length < 2) {
+    return {
+      targetOverlapPairCount: 0,
+      targetOverlapPairSupport: 0,
     }
-
-    const currentSources = sharedSourcesByTarget.get(link.target)
-
-    if (currentSources) {
-      currentSources.add(link.source)
-      continue
-    }
-
-    sharedSourcesByTarget.set(link.target, new Set([link.source]))
   }
 
-  return new Map(
-    Array.from(sharedSourcesByTarget.entries()).map(([target, sources]) => [
-      target,
-      sources.size,
-    ]),
-  )
+  let targetOverlapPairSupport = 0
+
+  for (let leftIndex = 0; leftIndex < expandedSources.length; leftIndex += 1) {
+    for (
+      let rightIndex = leftIndex + 1;
+      rightIndex < expandedSources.length;
+      rightIndex += 1
+    ) {
+      targetOverlapPairSupport +=
+        expandedSharedTopology.overlapStrengthByExpandedPair.get(
+          createExpandedPairKey(
+            expandedSources[leftIndex],
+            expandedSources[rightIndex],
+          ),
+        )?.sharedTargetCount ?? 0
+    }
+  }
+
+  return {
+    targetOverlapPairCount:
+      (expandedSources.length * (expandedSources.length - 1)) / 2,
+    targetOverlapPairSupport,
+  }
+}
+
+export const deriveCandidateEdgeThinRank = ({
+  edge,
+  expandedNodePubkeys,
+  expandedSharedTopology,
+}: {
+  edge: ThinRankingEdge
+  expandedNodePubkeys: ReadonlySet<string>
+  expandedSharedTopology: ExpandedSharedTopology
+}): CandidateEdgeThinRank => {
+  const sourceIsExpanded = expandedNodePubkeys.has(edge.source)
+  const targetIsSharedAcrossExpanded = edge.targetSharedByExpandedCount >= 2
+  const { targetOverlapPairCount, targetOverlapPairSupport } =
+    getTargetOverlapPairSupport({
+      targetPubkey: edge.target,
+      expandedSharedTopology,
+    })
+  const sourceSharedTargetCount = sourceIsExpanded
+    ? expandedSharedTopology.sharedTargetSetsByExpanded.get(edge.source)?.size ?? 0
+    : 0
+  const relationRank =
+    edge.relation === 'follow' ? 2 : edge.relation === 'inbound' ? 1 : 0
+  const structuralClass =
+    edge.relation === 'follow' && sourceIsExpanded && targetIsSharedAcrossExpanded
+      ? 4
+      : edge.relation === 'follow' && sourceIsExpanded
+        ? 3
+        : edge.relation === 'follow'
+          ? 2
+          : edge.relation === 'inbound'
+            ? 1
+            : 0
+
+  return {
+    structuralClass,
+    targetSharedByExpandedCount: edge.targetSharedByExpandedCount,
+    targetOverlapPairCount,
+    targetOverlapPairSupport,
+    sourceSharedTargetCount,
+    relationRank,
+    weightRank: edge.weight,
+  }
+}
+
+const compareCandidateEdgeThinRanks = (
+  left: CandidateEdgeThinRank,
+  right: CandidateEdgeThinRank,
+) => {
+  if (left.structuralClass !== right.structuralClass) {
+    return right.structuralClass - left.structuralClass
+  }
+
+  if (
+    left.targetSharedByExpandedCount !== right.targetSharedByExpandedCount
+  ) {
+    return right.targetSharedByExpandedCount - left.targetSharedByExpandedCount
+  }
+
+  if (left.targetOverlapPairCount !== right.targetOverlapPairCount) {
+    return right.targetOverlapPairCount - left.targetOverlapPairCount
+  }
+
+  if (left.targetOverlapPairSupport !== right.targetOverlapPairSupport) {
+    return right.targetOverlapPairSupport - left.targetOverlapPairSupport
+  }
+
+  if (left.sourceSharedTargetCount !== right.sourceSharedTargetCount) {
+    return right.sourceSharedTargetCount - left.sourceSharedTargetCount
+  }
+
+  if (left.relationRank !== right.relationRank) {
+    return right.relationRank - left.relationRank
+  }
+
+  if (left.weightRank !== right.weightRank) {
+    return right.weightRank - left.weightRank
+  }
+
+  return 0
 }
 
 const thinCandidateEdges = ({
   candidateEdges,
+  expandedNodePubkeys,
+  expandedSharedTopology,
 }: {
   candidateEdges: GraphRenderEdge[]
+  expandedNodePubkeys: ReadonlySet<string>
+  expandedSharedTopology: ExpandedSharedTopology
 }) => {
   const prioritizedEdges = candidateEdges.filter((edge) => edge.isPriority)
-  const nonPriorityEdges = candidateEdges.filter((edge) => !edge.isPriority)
+  const nonPriorityEdges: (GraphRenderEdge & {
+    thinRank: CandidateEdgeThinRank
+  })[] = candidateEdges
+    .filter((edge) => !edge.isPriority)
+    .map((edge) => ({
+      ...edge,
+      thinRank: deriveCandidateEdgeThinRank({
+        edge,
+        expandedNodePubkeys,
+        expandedSharedTopology,
+      }),
+    }))
 
   if (nonPriorityEdges.length === 0) {
     return {
@@ -766,11 +892,15 @@ const thinCandidateEdges = ({
     }
   }
 
-  const sortedNonPriorityEdges = nonPriorityEdges.sort(compareEdges)
-  const stride = Math.ceil(sortedNonPriorityEdges.length / remainingBudget)
-  const keptNonPriorityEdges = sortedNonPriorityEdges
-    .filter((_, index) => index % stride === 0)
-    .slice(0, remainingBudget)
+  const sortedNonPriorityEdges = nonPriorityEdges.sort((left, right) => {
+    const rankingComparison = compareCandidateEdgeThinRanks(
+      left.thinRank,
+      right.thinRank,
+    )
+
+    return rankingComparison !== 0 ? rankingComparison : compareEdges(left, right)
+  })
+  const keptNonPriorityEdges = sortedNonPriorityEdges.slice(0, remainingBudget)
 
   return {
     edges: [...prioritizedEdges, ...keptNonPriorityEdges].sort(compareEdges),
@@ -1312,10 +1442,14 @@ export const buildGraphRenderModel = async ({
     visiblePubkeys,
   })
   const degreeValues = Array.from(visibleDegreeByPubkey.values())
-  const sharedByExpandedCount = buildSharedByExpandedCount({
+  // Plan 3 keeps the richer shared-topology derivation local to render for now.
+  // Current consumers still read the legacy scalar count, while later plans can
+  // promote the pair/target overlap signals without re-deriving topology.
+  const expandedSharedTopology = buildExpandedSharedTopology({
     links,
     expandedNodePubkeys,
   })
+  const { sharedByExpandedCount } = expandedSharedTopology
   const pathPubkeys = pathfinding?.status === 'found' && pathfinding.path ? pathfinding.path : []
   const pathOrderByPubkey = new Map(
     pathPubkeys.map((pubkey, index) => [pubkey, index]),
@@ -1593,6 +1727,8 @@ export const buildGraphRenderModel = async ({
 
   const { edges, edgesThinned, thinnedEdgeCount } = thinCandidateEdges({
     candidateEdges,
+    expandedNodePubkeys,
+    expandedSharedTopology,
   })
   const displayedNodePubkeys =
     activeLayer === 'connections'

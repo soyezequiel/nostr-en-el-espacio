@@ -103,6 +103,8 @@ export const createInitialUiSliceState = (): Pick<
   | 'savedRoots'
   | 'savedRootsHydrated'
   | 'interactionState'
+  | 'pinnedNodePubkeys'
+  | 'physicsReheatRevision'
 > => ({
   selectedNodePubkey: null,
   comparedNodePubkeys: new Set<string>(),
@@ -124,6 +126,8 @@ export const createInitialUiSliceState = (): Pick<
     nodeSizeFactor: 0.88,
     autoSizeNodes: false,
     imageQualityMode: 'adaptive',
+    physicsEnabled: true,
+    physicsAutoFreeze: true,
     avatarHdZoomThreshold: DEFAULT_AVATAR_HD_ZOOM_THRESHOLD,
     avatarFullHdZoomThreshold: DEFAULT_AVATAR_FULL_HD_ZOOM_THRESHOLD,
     showDiscoveryState: true,
@@ -139,6 +143,8 @@ export const createInitialUiSliceState = (): Pick<
   effectiveImageBudget: DEFAULT_EFFECTIVE_IMAGE_BUDGET,
   savedRoots: [],
   savedRootsHydrated: typeof window === 'undefined',
+  pinnedNodePubkeys: new Set<string>(),
+  physicsReheatRevision: 0,
   interactionState: {
     isViewportActive: false,
     lastViewportInteractionAt: null,
@@ -156,6 +162,82 @@ export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
   },
   clearComparedNodes: () => {
     set({ comparedNodePubkeys: new Set<string>() })
+  },
+  pinNode: (pubkey) => {
+    if (!pubkey) {
+      return
+    }
+
+    set((state) => {
+      if (state.pinnedNodePubkeys.has(pubkey)) {
+        return state
+      }
+
+      const nextPinned = new Set(state.pinnedNodePubkeys)
+      nextPinned.add(pubkey)
+      return { pinnedNodePubkeys: nextPinned }
+    })
+  },
+  unpinNode: (pubkey) => {
+    if (!pubkey) {
+      return
+    }
+
+    set((state) => {
+      if (!state.pinnedNodePubkeys.has(pubkey)) {
+        return state
+      }
+
+      const nextPinned = new Set(state.pinnedNodePubkeys)
+      nextPinned.delete(pubkey)
+      return { pinnedNodePubkeys: nextPinned }
+    })
+  },
+  togglePinnedNode: (pubkey) => {
+    if (!pubkey) {
+      return
+    }
+
+    set((state) => {
+      const nextPinned = new Set(state.pinnedNodePubkeys)
+      if (nextPinned.has(pubkey)) {
+        nextPinned.delete(pubkey)
+      } else {
+        nextPinned.add(pubkey)
+      }
+      return { pinnedNodePubkeys: nextPinned }
+    })
+  },
+  clearPinnedNodes: () => {
+    set((state) =>
+      state.pinnedNodePubkeys.size === 0
+        ? state
+        : { pinnedNodePubkeys: new Set<string>() },
+    )
+  },
+  prunePinnedNodePubkeys: (availablePubkeys) => {
+    set((state) => {
+      if (state.pinnedNodePubkeys.size === 0) {
+        return state
+      }
+
+      const nextPinned = new Set(
+        Array.from(state.pinnedNodePubkeys).filter((pubkey) =>
+          availablePubkeys.has(pubkey),
+        ),
+      )
+
+      if (nextPinned.size === state.pinnedNodePubkeys.size) {
+        return state
+      }
+
+      return { pinnedNodePubkeys: nextPinned }
+    })
+  },
+  requestPhysicsReheat: () => {
+    set((state) => ({
+      physicsReheatRevision: state.physicsReheatRevision + 1,
+    }))
   },
   setActiveLayer: (layer) => {
     set({ activeLayer: layer })

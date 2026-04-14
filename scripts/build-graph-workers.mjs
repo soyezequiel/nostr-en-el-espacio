@@ -16,6 +16,7 @@ await build({
   entryPoints: {
     'events.worker': 'src/features/graph/workers/events.worker.ts',
     'graph.worker': 'src/features/graph/workers/graph.worker.ts',
+    'physics.worker': 'src/features/graph/workers/physics.worker.ts',
     'verify.worker': 'src/features/graph/workers/verifyWorker.ts',
   },
   format: 'esm',

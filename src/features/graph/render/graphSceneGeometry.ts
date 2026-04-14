@@ -1,7 +1,4 @@
 import {
-  GRAPH_CURVED_EDGE_OFFSET_FACTOR,
-  GRAPH_CURVED_EDGE_OFFSET_MAX,
-  GRAPH_CURVED_EDGE_OFFSET_MIN,
   GRAPH_CURVED_EDGE_SAMPLE_STEPS,
 } from '@/features/graph/render/constants'
 import type { GraphRenderEdge } from '@/features/graph/render/types'
@@ -34,8 +31,7 @@ const EDGE_TARGET_PADDING_PX = 2
 const compareEdgesById = <T extends { id: string }>(left: T, right: T) =>
   left.id.localeCompare(right.id)
 
-const clampNumber = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value))
+
 
 const graphSceneGeometryCache = new Map<
   string,
@@ -115,28 +111,7 @@ export const createGraphSceneGeometrySignature = (
 const createDirectedFollowKey = (source: string, target: string) =>
   `${source}->${target}`
 
-const sampleQuadraticBezierPath = ({
-  start,
-  control,
-  end,
-}: {
-  start: Point
-  control: Point
-  end: Point
-}): Point[] =>
-  Array.from({ length: GRAPH_CURVED_EDGE_SAMPLE_STEPS + 1 }, (_, step) => {
-    const t = step / GRAPH_CURVED_EDGE_SAMPLE_STEPS
-    const inverseT = 1 - t
 
-    return [
-      inverseT * inverseT * start[0] +
-        2 * inverseT * t * control[0] +
-        t * t * end[0],
-      inverseT * inverseT * start[1] +
-        2 * inverseT * t * control[1] +
-        t * t * end[1],
-    ]
-  })
 
 const buildSegmentsFromPath = (
   edge: GraphRenderEdge,
@@ -165,44 +140,7 @@ const buildSegmentsFromPath = (
   return segments
 }
 
-const buildCurvedEdgeSegments = (
-  edge: GraphRenderEdge,
-  laneOffset: number,
-): GraphEdgeSegment[] | null => {
-  const { sourcePosition, targetPosition } = getEdgeEndpoints(edge)
-  const dx = targetPosition[0] - sourcePosition[0]
-  const dy = targetPosition[1] - sourcePosition[1]
-  const length = Math.hypot(dx, dy)
 
-  if (length === 0) {
-    return null
-  }
-
-  const normalX = -dy / length
-  const normalY = dx / length
-  const offsetStep = clampNumber(
-    length * GRAPH_CURVED_EDGE_OFFSET_FACTOR,
-    GRAPH_CURVED_EDGE_OFFSET_MIN,
-    GRAPH_CURVED_EDGE_OFFSET_MAX,
-  )
-  const control: Point = [
-    (sourcePosition[0] + targetPosition[0]) / 2 +
-      normalX * laneOffset * offsetStep,
-    (sourcePosition[1] + targetPosition[1]) / 2 +
-      normalY * laneOffset * offsetStep,
-  ]
-
-  const path = sampleQuadraticBezierPath({
-    start: sourcePosition,
-    control,
-    end: targetPosition,
-  })
-
-  return buildSegmentsFromPath(edge, path)
-}
-
-const resolveOpposingFollowLaneOffset = (edge: GraphRenderEdge) =>
-  edge.source.localeCompare(edge.target) <= 0 ? -0.8 : 0.8
 
 const buildStraightEdgeSegments = (
   edge: GraphRenderEdge,

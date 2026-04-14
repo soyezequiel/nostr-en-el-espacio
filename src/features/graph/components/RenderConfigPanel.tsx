@@ -30,8 +30,18 @@ const COLOR_PROFILES: Record<string, { label: string; edge: string; mutual: stri
 
 export function RenderConfigPanel() {
   const renderConfig = useAppStore((state) => state.renderConfig)
+  const devicePerformanceProfile = useAppStore(
+    (state) => state.devicePerformanceProfile,
+  )
   const setRenderConfig = useAppStore((state) => state.setRenderConfig)
+  const requestPhysicsReheat = useAppStore((state) => state.requestPhysicsReheat)
   const zoomThresholds = normalizeAvatarZoomThresholds(renderConfig)
+  const physicsAvailable = devicePerformanceProfile === 'desktop'
+  const physicsDisabledReason = physicsAvailable
+    ? null
+    : devicePerformanceProfile === 'mobile'
+      ? 'La fisica viva se desactiva en mobile para evitar jitter y consumo innecesario.'
+      : 'La fisica viva se desactiva en equipos low-end para preservar fluidez.'
 
   return (
     <div className="settings-form">
@@ -303,6 +313,43 @@ export function RenderConfigPanel() {
           />
           <span>Mostrar guia de calidad por zoom</span>
         </label>
+
+        <label className="settings-toggle">
+          <input
+            checked={renderConfig.physicsEnabled}
+            disabled={!physicsAvailable}
+            onChange={(event) =>
+              setRenderConfig({ physicsEnabled: event.target.checked })
+            }
+            type="checkbox"
+          />
+          <span>Fisica continua del grafo</span>
+        </label>
+
+        <label className="settings-toggle">
+          <input
+            checked={renderConfig.physicsAutoFreeze}
+            disabled={!physicsAvailable || !renderConfig.physicsEnabled}
+            onChange={(event) =>
+              setRenderConfig({ physicsAutoFreeze: event.target.checked })
+            }
+            type="checkbox"
+          />
+          <span>Auto-freeze cuando el grafo se estabiliza</span>
+        </label>
+
+        {physicsDisabledReason ? (
+          <p className="settings-field__hint">{physicsDisabledReason}</p>
+        ) : null}
+
+        <button
+          className="settings-secondary-btn"
+          disabled={!physicsAvailable || !renderConfig.physicsEnabled}
+          onClick={requestPhysicsReheat}
+          type="button"
+        >
+          Recalentar fisica
+        </button>
 
         <button
           className="settings-secondary-btn"

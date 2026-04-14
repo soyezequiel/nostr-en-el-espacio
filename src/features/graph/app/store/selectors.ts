@@ -157,6 +157,8 @@ export const selectNodeDetailContext = (state: AppStore) => {
   const isSelectedForDeepCapture =
     selectedNodePubkey !== null &&
     state.selectedDeepUserPubkeys.includes(selectedNodePubkey)
+  const isPinned =
+    selectedNodePubkey !== null && state.pinnedNodePubkeys.has(selectedNodePubkey)
 
   return {
     selectedNodePubkey,
@@ -187,6 +189,7 @@ export const selectNodeDetailContext = (state: AppStore) => {
     slotsRemaining,
     isDeepSelectionLocked,
     isSelectedForDeepCapture,
+    isPinned,
     nodeExpansionState:
       selectedNodePubkey === null
         ? null

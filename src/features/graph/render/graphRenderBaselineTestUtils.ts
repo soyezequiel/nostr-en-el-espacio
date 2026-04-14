@@ -11,6 +11,10 @@ import type {
   GraphRenderNode,
 } from './types'
 import type {
+  ExpandedPairOverlapStrength,
+  ExpandedSharedTopology,
+} from './expandedSharedTopology'
+import type {
   GraphPhysicsLayoutJob,
   GraphPhysicsLink,
   GraphPhysicsNode,
@@ -41,6 +45,8 @@ export const DEFAULT_TEST_RENDER_CONFIG: RenderConfig = {
   autoSizeNodes: false,
   imageQualityMode: 'adaptive',
   showSharedEmphasis: true,
+  physicsEnabled: true,
+  physicsAutoFreeze: true,
 }
 
 export const DEFAULT_TEST_GRAPH_ANALYSIS: NonNullable<
@@ -99,6 +105,9 @@ const createLinkId = (
   target: string,
   relation: GraphLink['relation'],
 ) => `${source}->${target}:${relation}`
+
+const createExpandedPairKey = (left: string, right: string) =>
+  left.localeCompare(right) <= 0 ? `${left}<->${right}` : `${right}<->${left}`
 
 const hashString = (value: string) => {
   let hash = 2166136261
@@ -451,11 +460,167 @@ export const createSharedByExpandedCount = (
   fixture: ExpandedIntersectionFixture,
 ) =>
   new Map(
-    Object.entries(fixture.sharedTargetExpanders).map(([targetPubkey, expanders]) => [
-      targetPubkey,
-      expanders.length,
+    Array.from(
+      createExpandedSourcesByTarget(fixture).entries(),
+      ([targetPubkey, expanders]) => [targetPubkey, expanders.length] as const,
+    ),
+  )
+
+export const createExpandedSourcesByTarget = (
+  fixture: ExpandedIntersectionFixture,
+) => {
+  const expandedSourcesByTarget = new Map<string, string[]>()
+
+  for (const [targetPubkey, expanders] of Object.entries(
+    fixture.sharedTargetExpanders,
+  )) {
+    expandedSourcesByTarget.set(targetPubkey, [...expanders].sort())
+  }
+
+  for (const [expanderPubkey, targets] of Object.entries(
+    fixture.uniqueTargetsByExpander,
+  )) {
+    for (const targetPubkey of targets) {
+      expandedSourcesByTarget.set(targetPubkey, [expanderPubkey])
+    }
+  }
+
+  return new Map(
+    Array.from(expandedSourcesByTarget.entries()).sort(([leftTarget], [rightTarget]) =>
+      leftTarget.localeCompare(rightTarget),
+    ),
+  )
+}
+
+export const createSharedTargetSetsByExpanded = (
+  fixture: ExpandedIntersectionFixture,
+) => {
+  const sharedTargetSetsByExpanded = new Map<string, Set<string>>(
+    fixture.expanderPubkeys
+      .slice()
+      .sort()
+      .map((expanderPubkey) => [expanderPubkey, new Set<string>()]),
+  )
+
+  for (const [targetPubkey, expanders] of Object.entries(
+    fixture.sharedTargetExpanders,
+  )) {
+    if (expanders.length < 2) {
+      continue
+    }
+
+    for (const expanderPubkey of expanders) {
+      sharedTargetSetsByExpanded.get(expanderPubkey)?.add(targetPubkey)
+    }
+  }
+
+  return new Map(
+    Array.from(sharedTargetSetsByExpanded.entries()).map(([expanderPubkey, targets]) => [
+      expanderPubkey,
+      new Set(Array.from(targets).sort()),
     ]),
   )
+}
+
+export const createOverlapStrengthByExpandedPair = (
+  fixture: ExpandedIntersectionFixture,
+) => {
+  const expandedSourcesByTarget = createExpandedSourcesByTarget(fixture)
+  const targetCountByExpanded = new Map<string, number>(
+    fixture.expanderPubkeys
+      .slice()
+      .sort()
+      .map((expanderPubkey) => [expanderPubkey, 0]),
+  )
+
+  for (const sources of Array.from(expandedSourcesByTarget.values())) {
+    for (const expanderPubkey of sources) {
+      targetCountByExpanded.set(
+        expanderPubkey,
+        (targetCountByExpanded.get(expanderPubkey) ?? 0) + 1,
+      )
+    }
+  }
+
+  const sharedTargetsByPair = new Map<string, string[]>()
+  const sortedExpanders = fixture.expanderPubkeys.slice().sort()
+
+  for (let leftIndex = 0; leftIndex < sortedExpanders.length; leftIndex += 1) {
+    for (
+      let rightIndex = leftIndex + 1;
+      rightIndex < sortedExpanders.length;
+      rightIndex += 1
+    ) {
+      sharedTargetsByPair.set(
+        createExpandedPairKey(
+          sortedExpanders[leftIndex],
+          sortedExpanders[rightIndex],
+        ),
+        [],
+      )
+    }
+  }
+
+  for (const [targetPubkey, expanders] of Object.entries(
+    fixture.sharedTargetExpanders,
+  )) {
+    if (expanders.length < 2) {
+      continue
+    }
+
+    const sortedSources = [...expanders].sort()
+
+    for (let leftIndex = 0; leftIndex < sortedSources.length; leftIndex += 1) {
+      for (
+        let rightIndex = leftIndex + 1;
+        rightIndex < sortedSources.length;
+        rightIndex += 1
+      ) {
+        sharedTargetsByPair
+          .get(createExpandedPairKey(sortedSources[leftIndex], sortedSources[rightIndex]))
+          ?.push(targetPubkey)
+      }
+    }
+  }
+
+  return new Map<string, ExpandedPairOverlapStrength>(
+    Array.from(sharedTargetsByPair.entries()).map(([pairKey, sharedTargets]) => {
+      const [leftPubkey, rightPubkey] = pairKey.split('<->') as [string, string]
+      const leftTargetCount = targetCountByExpanded.get(leftPubkey) ?? 0
+      const rightTargetCount = targetCountByExpanded.get(rightPubkey) ?? 0
+      const sortedSharedTargets = sharedTargets.slice().sort()
+      const sharedTargetCount = sortedSharedTargets.length
+      const unionTargetCount =
+        leftTargetCount + rightTargetCount - sharedTargetCount
+      const overlapDenominator = Math.min(leftTargetCount, rightTargetCount)
+
+      return [
+        pairKey,
+        {
+          expandedPair: [leftPubkey, rightPubkey],
+          sharedTargetCount,
+          sharedTargets: sortedSharedTargets,
+          leftTargetCount,
+          rightTargetCount,
+          unionTargetCount,
+          jaccard:
+            unionTargetCount > 0 ? sharedTargetCount / unionTargetCount : 0,
+          overlapCoefficient:
+            overlapDenominator > 0 ? sharedTargetCount / overlapDenominator : 0,
+        },
+      ]
+    }),
+  )
+}
+
+export const createExpandedSharedTopologyFromFixture = (
+  fixture: ExpandedIntersectionFixture,
+): ExpandedSharedTopology => ({
+  sharedByExpandedCount: createSharedByExpandedCount(fixture),
+  expandedSourcesByTarget: createExpandedSourcesByTarget(fixture),
+  sharedTargetSetsByExpanded: createSharedTargetSetsByExpanded(fixture),
+  overlapStrengthByExpandedPair: createOverlapStrengthByExpandedPair(fixture),
+})
 
 const createExpanderSeedPositions = (
   fixture: ExpandedIntersectionFixture,

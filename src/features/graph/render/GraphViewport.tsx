@@ -6,6 +6,7 @@ import type {
   ImageRendererDeliverySnapshot,
 } from '@/features/graph/render/imageRuntime'
 import type { GraphNodeScreenRadii } from '@/features/graph/render/nodeSizing'
+import type { PhysicsFrameStore } from '@/features/graph/render/physicsFrameStore'
 import type {
   GraphRenderLabel,
   GraphRenderModel,
@@ -31,9 +32,15 @@ interface GraphViewportProps {
       | null,
   ) => void
   onSelectNode: (pubkey: string | null, options?: { shiftKey?: boolean }) => void
+  onNodeDragStart?: (pubkey: string, position: [number, number]) => void
+  onNodeDragMove?: (pubkey: string, position: [number, number]) => void
+  onNodeDragEnd?: (pubkey: string) => void
   onViewStateChange: (viewState: GraphViewState) => void
   renderConfig: RenderConfig
   comparedNodePubkeys: ReadonlySet<string>
+  physicsFrameStore?: PhysicsFrameStore | null
+  pinnedNodePubkeys?: ReadonlySet<string>
+  nodeDragEnabled?: boolean
 }
 
 export function GraphViewport({
@@ -51,9 +58,15 @@ export function GraphViewport({
   onAvatarRendererDelivery,
   onHoverGraph,
   onSelectNode,
+  onNodeDragStart,
+  onNodeDragMove,
+  onNodeDragEnd,
   onViewStateChange,
   renderConfig,
   comparedNodePubkeys,
+  physicsFrameStore,
+  pinnedNodePubkeys,
+  nodeDragEnabled,
 }: GraphViewportProps) {
   return (
     <GraphViewportLazy
@@ -69,11 +82,17 @@ export function GraphViewport({
       onAvatarRendererDelivery={onAvatarRendererDelivery}
       onHoverGraph={onHoverGraph}
       onSelectNode={onSelectNode}
+      onNodeDragStart={onNodeDragStart}
+      onNodeDragMove={onNodeDragMove}
+      onNodeDragEnd={onNodeDragEnd}
       onViewStateChange={onViewStateChange}
       viewState={viewState}
       width={width}
       renderConfig={renderConfig}
       comparedNodePubkeys={comparedNodePubkeys}
+      physicsFrameStore={physicsFrameStore}
+      pinnedNodePubkeys={pinnedNodePubkeys}
+      nodeDragEnabled={nodeDragEnabled}
     />
   )
 }

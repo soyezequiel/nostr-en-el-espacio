@@ -597,30 +597,6 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     setIsSettingsOpen(true)
   }, [openPanel, setOpenPanel])
 
-  const handleTogglePathfinding = useCallback(() => {
-    if (isPathfindingOpen) {
-      if (pathfindingSelectionMode !== 'idle') {
-        setPathfindingSelectionMode('idle')
-      }
-      setOpenPanel('overview')
-      return
-    }
-
-    if (openPanel === 'node-detail') {
-      setOpenPanel('overview')
-    }
-
-    setIsSettingsOpen(false)
-    setIsRootEntryOpen(false)
-    setPathfindingSelectionMode('idle')
-    setOpenPanel('pathfinding')
-  }, [
-    isPathfindingOpen,
-    openPanel,
-    pathfindingSelectionMode,
-    setOpenPanel,
-    setPathfindingSelectionMode,
-  ])
 
   const handleCloseSettings = useCallback(() => {
     setIsSettingsOpen(false)

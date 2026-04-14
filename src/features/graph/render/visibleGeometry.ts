@@ -88,47 +88,47 @@ export const getVisibleEdgeEndpoints = ({
 }) => {
   const { nodeByPubkey, nodeScreenRadii, nodeSizeFactor, viewState } = context
   const viewScale = Math.max(Number.MIN_VALUE, Math.pow(2, viewState.zoom))
-  let sourcePosition = segment.sourcePosition
-  let targetPosition = segment.targetPosition
 
-  if (segment.progressStart === 0) {
-    const sourceNode = nodeByPubkey.get(segment.source)
+  const sourceNode = nodeByPubkey.get(segment.source)
+  const targetNode = nodeByPubkey.get(segment.target)
 
-    if (sourceNode) {
-      sourcePosition = adjustSegmentEndpoint({
-        from: segment.targetPosition,
-        to: sourceNode.position,
-        paddingWorld:
-          (getVisibleNodeRadius({
-            pubkey: sourceNode.pubkey,
-            fallbackRadius: sourceNode.radius,
-            nodeScreenRadii,
-            nodeSizeFactor,
-          }) +
-            EDGE_SOURCE_PADDING_PX) /
-          viewScale,
-      })
-    }
+  // Always use live node positions as the canonical positions for the line.
+  // If a node is unknown we fall back to the embedded segment position.
+  let sourcePosition: readonly [number, number] =
+    sourceNode?.position ?? segment.sourcePosition
+  let targetPosition: readonly [number, number] =
+    targetNode?.position ?? segment.targetPosition
+
+  if (segment.progressStart === 0 && sourceNode) {
+    sourcePosition = adjustSegmentEndpoint({
+      from: targetPosition,
+      to: sourceNode.position,
+      paddingWorld:
+        (getVisibleNodeRadius({
+          pubkey: sourceNode.pubkey,
+          fallbackRadius: sourceNode.radius,
+          nodeScreenRadii,
+          nodeSizeFactor,
+        }) +
+          EDGE_SOURCE_PADDING_PX) /
+        viewScale,
+    })
   }
 
-  if (segment.progressEnd === 1) {
-    const targetNode = nodeByPubkey.get(segment.target)
-
-    if (targetNode) {
-      targetPosition = adjustSegmentEndpoint({
-        from: segment.sourcePosition,
-        to: targetNode.position,
-        paddingWorld:
-          (getVisibleNodeRadius({
-            pubkey: targetNode.pubkey,
-            fallbackRadius: targetNode.radius,
-            nodeScreenRadii,
-            nodeSizeFactor,
-          }) +
-            EDGE_TARGET_PADDING_PX) /
-          viewScale,
-      })
-    }
+  if (segment.progressEnd === 1 && targetNode) {
+    targetPosition = adjustSegmentEndpoint({
+      from: sourcePosition,
+      to: targetNode.position,
+      paddingWorld:
+        (getVisibleNodeRadius({
+          pubkey: targetNode.pubkey,
+          fallbackRadius: targetNode.radius,
+          nodeScreenRadii,
+          nodeSizeFactor,
+        }) +
+          EDGE_TARGET_PADDING_PX) /
+        viewScale,
+    })
   }
 
   return { sourcePosition, targetPosition }

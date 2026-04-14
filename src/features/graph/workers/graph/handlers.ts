@@ -577,6 +577,8 @@ function validateRenderConfig(input: unknown, path: string): RenderConfig {
       config.imageQualityMode ?? 'adaptive',
       `${path}.imageQualityMode`,
     ) as RenderConfig['imageQualityMode'],
+    physicsEnabled: config.physicsEnabled !== false,
+    physicsAutoFreeze: config.physicsAutoFreeze !== false,
     showSharedEmphasis: config.showSharedEmphasis === true,
   }
 }

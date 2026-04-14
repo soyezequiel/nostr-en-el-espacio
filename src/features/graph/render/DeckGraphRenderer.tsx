@@ -18,6 +18,7 @@ import type {
   ImageRendererDeliverySnapshot,
 } from '@/features/graph/render/imageRuntime'
 import type { GraphNodeScreenRadii } from '@/features/graph/render/nodeSizing'
+import type { PhysicsFrameStore } from '@/features/graph/render/physicsFrameStore'
 import type {
   GraphRenderLabel,
   GraphRenderEdge,
@@ -68,11 +69,17 @@ interface DeckGraphRendererProps {
       | null,
   ) => void
   onSelectNode: (pubkey: string | null, options?: { shiftKey?: boolean }) => void
+  onNodeDragStart?: (pubkey: string, position: [number, number]) => void
+  onNodeDragMove?: (pubkey: string, position: [number, number]) => void
+  onNodeDragEnd?: (pubkey: string) => void
   onViewStateChange: (viewState: GraphViewState) => void
   renderConfig: RenderConfig
   forceLowDevicePixels?: boolean
   hoverInteractionEnabled?: boolean
   comparedNodePubkeys?: ReadonlySet<string>
+  physicsFrameStore?: PhysicsFrameStore | null
+  pinnedNodePubkeys?: ReadonlySet<string>
+  nodeDragEnabled?: boolean
 }
 
 const resolvePickedPubkey = (
@@ -132,6 +139,25 @@ const serializeHoverTarget = (
     : `edge:${hover.edgeId}:${hover.pubkeys[0]}:${hover.pubkeys[1]}`
 }
 
+const resolveWorldPosition = (
+  info: PickingInfo<PickableGraphObject>,
+): [number, number] | null => {
+  const coordinate = info.coordinate
+
+  if (
+    Array.isArray(coordinate) &&
+    coordinate.length >= 2 &&
+    typeof coordinate[0] === 'number' &&
+    Number.isFinite(coordinate[0]) &&
+    typeof coordinate[1] === 'number' &&
+    Number.isFinite(coordinate[1])
+  ) {
+    return [coordinate[0], coordinate[1]]
+  }
+
+  return null
+}
+
 export const DeckGraphRenderer = memo(function DeckGraphRenderer({
   width,
   height,
@@ -147,10 +173,16 @@ export const DeckGraphRenderer = memo(function DeckGraphRenderer({
   onAvatarRendererDelivery,
   onHoverGraph,
   onSelectNode,
+  onNodeDragStart,
+  onNodeDragMove,
+  onNodeDragEnd,
   onViewStateChange,
   renderConfig,
   forceLowDevicePixels = false,
   hoverInteractionEnabled = true,
+  physicsFrameStore = null,
+  pinnedNodePubkeys,
+  nodeDragEnabled = false,
 }: DeckGraphRendererProps) {
   const hoverFrameRef = useRef<number | null>(null)
   const hoverResumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -163,6 +195,9 @@ export const DeckGraphRenderer = memo(function DeckGraphRenderer({
   const emittedHoverSignatureRef = useRef('none')
   const lastViewStateRef = useRef<GraphViewState | null>(null)
   const [hoverPickingEnabled, setHoverPickingEnabled] = useState(true)
+  const [isNodeDragging, setIsNodeDragging] = useState(false)
+  const draggedNodePubkeyRef = useRef<string | null>(null)
+  const skipClickSelectionRef = useRef(false)
 
   const useDevicePixels = useMemo(
     () =>
@@ -232,16 +267,21 @@ export const DeckGraphRenderer = memo(function DeckGraphRenderer({
 
   const handleGetCursor = useCallback(
     ({ isDragging }: { isDragging: boolean; isHovering: boolean }) =>
-      isDragging
+      isNodeDragging || isDragging
         ? 'grabbing'
         : hoveredNodePubkey !== null || hoveredEdgeId !== null
           ? 'pointer'
           : 'grab',
-    [hoveredEdgeId, hoveredNodePubkey],
+    [hoveredEdgeId, hoveredNodePubkey, isNodeDragging],
   )
 
   const handleClick = useCallback(
     (info: PickingInfo<PickableGraphObject>, event: unknown) => {
+      if (skipClickSelectionRef.current) {
+        skipClickSelectionRef.current = false
+        return
+      }
+
       const shiftKey =
         typeof event === 'object' &&
         event !== null &&
@@ -265,6 +305,57 @@ export const DeckGraphRenderer = memo(function DeckGraphRenderer({
     },
     [scheduleHoverDispatch],
   )
+
+  const handleNodeDragStart = useCallback(
+    (info: PickingInfo<PickableGraphObject>) => {
+      if (!nodeDragEnabled) {
+        return
+      }
+
+      const pubkey = resolvePickedPubkey(info.object)
+      const position = resolveWorldPosition(info)
+
+      if (!pubkey || !position) {
+        return
+      }
+
+      draggedNodePubkeyRef.current = pubkey
+      skipClickSelectionRef.current = true
+      setIsNodeDragging(true)
+      suspendHoverPicking(DRAG_HOVER_RESUME_DELAY_MS)
+      onNodeDragStart?.(pubkey, position)
+    },
+    [nodeDragEnabled, onNodeDragStart, suspendHoverPicking],
+  )
+
+  const handleNodeDrag = useCallback(
+    (info: PickingInfo<PickableGraphObject>) => {
+      const pubkey = draggedNodePubkeyRef.current
+      if (!pubkey) {
+        return
+      }
+
+      const position = resolveWorldPosition(info)
+      if (!position) {
+        return
+      }
+
+      onNodeDragMove?.(pubkey, position)
+    },
+    [onNodeDragMove],
+  )
+
+  const handleNodeDragEnd = useCallback(() => {
+    const pubkey = draggedNodePubkeyRef.current
+    if (!pubkey) {
+      return
+    }
+
+    draggedNodePubkeyRef.current = null
+    setIsNodeDragging(false)
+    suspendHoverPicking(DRAG_HOVER_RESUME_DELAY_MS)
+    onNodeDragEnd?.(pubkey)
+  }, [onNodeDragEnd, suspendHoverPicking])
 
   const handleDeckViewStateChange = useCallback(
     (params: {
@@ -327,6 +418,8 @@ export const DeckGraphRenderer = memo(function DeckGraphRenderer({
         onAvatarRendererDelivery,
         hoverPickingEnabled: hoverInteractionEnabled && hoverPickingEnabled,
         renderConfig,
+        physicsFrameStore,
+        pinnedNodePubkeys,
       }),
     ],
     [
@@ -342,18 +435,33 @@ export const DeckGraphRenderer = memo(function DeckGraphRenderer({
       onAvatarRendererDelivery,
       hoverInteractionEnabled,
       hoverPickingEnabled,
+      physicsFrameStore,
+      pinnedNodePubkeys,
       renderConfig,
     ],
   )
 
   return (
     <DeckGL
-      controller={true}
+      controller={
+        nodeDragEnabled && isNodeDragging
+          ? {
+              dragPan: false,
+              scrollZoom: true,
+              touchZoom: true,
+              doubleClickZoom: false,
+              keyboard: false,
+            }
+          : true
+      }
       getCursor={handleGetCursor}
       height={height}
       layers={layers}
       useDevicePixels={useDevicePixels}
       onClick={handleClick}
+      onDragStart={nodeDragEnabled ? handleNodeDragStart : undefined}
+      onDrag={nodeDragEnabled ? handleNodeDrag : undefined}
+      onDragEnd={nodeDragEnabled ? handleNodeDragEnd : undefined}
       onHover={
         hoverInteractionEnabled && hoverPickingEnabled ? handleHover : undefined
       }

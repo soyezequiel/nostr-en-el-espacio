@@ -1,4 +1,5 @@
 import {
+  forceCollide,
   forceLink,
   forceManyBody,
   forceSimulation,
@@ -29,15 +30,22 @@ const TICK_INTERVAL_MS = 1000 / 30
 const AUTO_FREEZE_ALPHA_THRESHOLD = 0.005
 const AUTO_FREEZE_STABLE_TICKS = 6
 const BASE_ALPHA = 0.3
+const DRAG_REHEAT_ALPHA = 0.48
+const DRAG_IMMEDIATE_TICKS = 3
 const ALPHA_MIN = 0.001
 const ALPHA_DECAY = 0.05
-const VELOCITY_DECAY = 0.35
-const CENTER_GRAVITY_STRENGTH = 0.012
-const N_BODY_STRENGTH = -200
+const VELOCITY_DECAY = 0.15
+const CENTER_GRAVITY_STRENGTH = 0.02
+const N_BODY_STRENGTH = -150
 const N_BODY_DISTANCE_MAX = 600
-const DEFAULT_LINK_DISTANCE = 130
-const MIN_LINK_DISTANCE = 60
-const MAX_LINK_DISTANCE = 260
+const COLLISION_PADDING = 20
+const CONNECTIONS_COLLISION_PADDING = 30
+const COLLISION_STRENGTH = 1
+const COLLISION_ITERATIONS = 2
+const TOPOLOGY_SYNC_REHEAT_ALPHA = 0.14
+const DEFAULT_LINK_DISTANCE = 110
+const MIN_LINK_DISTANCE = 50
+const MAX_LINK_DISTANCE = 220
 
 interface InternalPhysicsNode extends SimulationNodeDatum {
   id: string
@@ -81,6 +89,11 @@ const isUiLayer = (value: unknown): value is UiLayer =>
 
 const isRelation = (value: unknown): value is GraphLinkRelation =>
   value === 'follow' || value === 'inbound' || value === 'zap'
+
+const resolveCollisionPadding = (activeLayer: UiLayer) =>
+  activeLayer === 'connections'
+    ? CONNECTIONS_COLLISION_PADDING
+    : COLLISION_PADDING
 
 const isTopologyNodeSnapshot = (
   value: unknown,
@@ -141,9 +154,6 @@ const resolveLinkDistance = ({
     return DEFAULT_LINK_DISTANCE
   }
 
-  const dx = targetNode.position[0] - sourceNode.position[0]
-  const dy = targetNode.position[1] - sourceNode.position[1]
-  const canonicalDistance = Math.hypot(dx, dy)
   const minimumDistance = sourceNode.radius + targetNode.radius + 20
   const fallbackDistance =
     edge.relation === 'zap'
@@ -153,19 +163,69 @@ const resolveLinkDistance = ({
         : DEFAULT_LINK_DISTANCE
 
   return clampNumber(
-    Math.max(
-      minimumDistance,
-      Number.isFinite(canonicalDistance) && canonicalDistance > 0
-        ? canonicalDistance
-        : fallbackDistance,
-    ),
+    Math.max(minimumDistance, fallbackDistance),
     MIN_LINK_DISTANCE,
     MAX_LINK_DISTANCE,
   )
 }
 
 const resolveLinkStrength = (relation: GraphLinkRelation) =>
-  relation === 'zap' ? 0.08 : relation === 'inbound' ? 0.12 : 0.15
+  relation === 'zap' ? 0.2 : relation === 'inbound' ? 0.35 : 0.55
+
+const haveSameNodeSet = (
+  previousNodeByPubkey: ReadonlyMap<string, InternalPhysicsNode>,
+  nextNodes: readonly InternalPhysicsNode[],
+) =>
+  previousNodeByPubkey.size === nextNodes.length &&
+  nextNodes.every((node) => previousNodeByPubkey.has(node.pubkey))
+
+const didNodeRadiiChange = ({
+  previousNodeByPubkey,
+  nextNodes,
+}: {
+  previousNodeByPubkey: ReadonlyMap<string, InternalPhysicsNode>
+  nextNodes: readonly InternalPhysicsNode[]
+}) =>
+  nextNodes.some((node) => {
+    const previousNode = previousNodeByPubkey.get(node.pubkey)
+    return previousNode !== undefined && previousNode.radius !== node.radius
+  })
+
+const didLinksChange = (
+  previousLinks: readonly InternalPhysicsLink[],
+  nextLinks: readonly InternalPhysicsLink[],
+) =>
+  previousLinks.length !== nextLinks.length ||
+  previousLinks.some((link, index) => {
+    const nextLink = nextLinks[index]
+    return (
+      nextLink === undefined ||
+      link.id !== nextLink.id ||
+      link.source !== nextLink.source ||
+      link.target !== nextLink.target ||
+      link.relation !== nextLink.relation ||
+      link.distance !== nextLink.distance
+    )
+  })
+
+const readNowMs = () =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+
+interface DragTraceSession {
+  pubkey: string
+  startedAtMs: number
+  startPosition: [number, number]
+  moveCount: number
+  deferredSyncCount: number
+  appliedDeferredTopology: boolean
+  rebuildCount: number
+  asyncTickCount: number
+  immediateTickCount: number
+  emittedFrameCount: number
+  lastPointerPosition: [number, number]
+}
 
 export class PhysicsSimulationRuntime {
   private readonly emit: (event: PhysicsWorkerEvent) => void
@@ -180,6 +240,9 @@ export class PhysicsSimulationRuntime {
   private links: InternalPhysicsLink[] = []
   private pinnedPubkeys = new Set<string>()
   private draggingPubkey: string | null = null
+  private deferredTopology: PhysicsTopologySnapshot | null = null
+  private debugTraceEnabled = false
+  private dragTraceSession: DragTraceSession | null = null
   private hidden = false
   private enabled = true
   private disposed = false
@@ -223,6 +286,9 @@ export class PhysicsSimulationRuntime {
           return
         case 'SET_VISIBILITY':
           this.setVisibility(message.payload.hidden)
+          return
+        case 'SET_DEBUG_TRACE':
+          this.setDebugTrace(message.payload.enabled)
           return
         case 'DISPOSE':
           this.dispose()
@@ -296,6 +362,14 @@ export class PhysicsSimulationRuntime {
           'hidden' in message.payload &&
           typeof message.payload.hidden === 'boolean'
         )
+      case 'SET_DEBUG_TRACE':
+        return (
+          'payload' in message &&
+          typeof message.payload === 'object' &&
+          message.payload !== null &&
+          'enabled' in message.payload &&
+          typeof message.payload.enabled === 'boolean'
+        )
       case 'DISPOSE':
         return true
       default:
@@ -308,12 +382,29 @@ export class PhysicsSimulationRuntime {
       return
     }
 
-    this.topologySignature = snapshot.topologySignature
-    this.rootPubkey = snapshot.rootPubkey
-    this.activeLayer = snapshot.activeLayer
+    // Defer topology rebuilds while the user is dragging to avoid
+    // destroying the live simulation and resetting all neighbor
+    // velocities/forces mid-interaction.
+    if (this.draggingPubkey) {
+      this.deferredTopology = snapshot
+      if (this.dragTraceSession) {
+        this.dragTraceSession.deferredSyncCount += 1
+      }
+      this.trace('sync-topology-deferred', {
+        draggingPubkey: this.draggingPubkey,
+        snapshotSignature: snapshot.topologySignature,
+        nodes: snapshot.nodes.length,
+        edges: snapshot.edges.length,
+      })
+      return
+    }
 
+    const previousTopologySignature = this.topologySignature
+    const previousRootPubkey = this.rootPubkey
+    const previousActiveLayer = this.activeLayer
     const previousNodeByPubkey = this.nodeByPubkey
     const previousNodeCount = this.nodes.length
+    const previousLinks = this.links
     const canonicalNodeByPubkey = new Map(
       snapshot.nodes.map((node) => [node.pubkey, node]),
     )
@@ -351,16 +442,42 @@ export class PhysicsSimulationRuntime {
         }),
       }))
 
+    this.topologySignature = snapshot.topologySignature
+    this.rootPubkey = snapshot.rootPubkey
+    this.activeLayer = snapshot.activeLayer
     this.nodes = nextNodes
     this.nodeByPubkey = nextNodeByPubkey
     this.links = nextLinks
 
-    const hasNewNodes = nextNodes.length !== previousNodeCount
+    const nodeSetChanged = !haveSameNodeSet(previousNodeByPubkey, nextNodes)
+    const hasNewNodes = previousNodeCount === 0 || nodeSetChanged
+    const linksChanged = didLinksChange(previousLinks, nextLinks)
+    const radiiChanged = didNodeRadiiChange({
+      previousNodeByPubkey,
+      nextNodes,
+    })
+    const topologyChanged =
+      previousTopologySignature !== snapshot.topologySignature ||
+      previousRootPubkey !== snapshot.rootPubkey ||
+      previousActiveLayer !== snapshot.activeLayer ||
+      linksChanged ||
+      radiiChanged
+    this.trace('sync-topology-applied', {
+      snapshotSignature: snapshot.topologySignature,
+      previousNodeCount,
+      nextNodeCount: nextNodes.length,
+      edgeCount: nextLinks.length,
+      hasNewNodes,
+      topologyChanged,
+    })
 
     if (hasNewNodes) {
       // New nodes arrived → full rebuild and reheat
       this.rebuildSimulation()
       this.applyPinnedState()
+      // Restore drag state after rebuild so the dragged node stays pinned
+      // to the user's cursor position
+      this.restoreDragState()
       if (this.enabled && !this.hidden && this.nodes.length > 0) {
         this.reheat()
       } else {
@@ -376,10 +493,24 @@ export class PhysicsSimulationRuntime {
             .distance((link) => link.distance)
             .strength((link) => resolveLinkStrength(link.relation)),
         )
+        this.simulation.force(
+          'collision',
+          forceCollide<InternalPhysicsNode>()
+            .radius(
+              (node) => node.radius + resolveCollisionPadding(this.activeLayer),
+            )
+            .strength(COLLISION_STRENGTH)
+            .iterations(COLLISION_ITERATIONS),
+        )
         this.simulation.nodes(this.nodes)
       }
       this.applyPinnedState()
-      this.emitFrame()
+      this.restoreDragState()
+      if (topologyChanged && this.enabled && !this.hidden && this.nodes.length > 0) {
+        this.reheat(TOPOLOGY_SYNC_REHEAT_ALPHA)
+      } else {
+        this.emitFrame()
+      }
     }
   }
 
@@ -393,8 +524,18 @@ export class PhysicsSimulationRuntime {
       return
     }
 
+    const initialAlpha = this.draggingPubkey ? BASE_ALPHA : ALPHA_MIN
+    if (this.dragTraceSession) {
+      this.dragTraceSession.rebuildCount += 1
+    }
+    this.trace('rebuild-simulation', {
+      draggingPubkey: this.draggingPubkey,
+      nodeCount: this.nodes.length,
+      edgeCount: this.links.length,
+      initialAlpha,
+    })
     const simulation = forceSimulation<InternalPhysicsNode>(this.nodes)
-      .alpha(ALPHA_MIN)
+      .alpha(initialAlpha)
       .alphaDecay(ALPHA_DECAY)
       .alphaMin(ALPHA_MIN)
       .velocityDecay(VELOCITY_DECAY)
@@ -405,6 +546,10 @@ export class PhysicsSimulationRuntime {
         .id((node) => node.id)
         .distance((link) => link.distance)
         .strength((link) => resolveLinkStrength(link.relation)))
+      .force('collision', forceCollide<InternalPhysicsNode>()
+        .radius((node) => node.radius + resolveCollisionPadding(this.activeLayer))
+        .strength(COLLISION_STRENGTH)
+        .iterations(COLLISION_ITERATIONS))
       .force('gravityX', forceX<InternalPhysicsNode>(0).strength(CENTER_GRAVITY_STRENGTH))
       .force('gravityY', forceY<InternalPhysicsNode>(0).strength(CENTER_GRAVITY_STRENGTH))
       .stop()
@@ -446,11 +591,31 @@ export class PhysicsSimulationRuntime {
     }
 
     this.draggingPubkey = pubkey
+    this.dragTraceSession = {
+      pubkey,
+      startedAtMs: readNowMs(),
+      startPosition: position,
+      moveCount: 0,
+      deferredSyncCount: 0,
+      appliedDeferredTopology: false,
+      rebuildCount: 0,
+      asyncTickCount: 0,
+      immediateTickCount: 0,
+      emittedFrameCount: 0,
+      lastPointerPosition: position,
+    }
     node.fx = position[0]
     node.fy = position[1]
     node.x = position[0]
     node.y = position[1]
-    this.reheat()
+    this.trace('drag-start', {
+      pubkey,
+      position,
+      simulationAlpha: this.simulation?.alpha() ?? null,
+      nodeCount: this.nodes.length,
+      edgeCount: this.links.length,
+    })
+    this.reheat(DRAG_REHEAT_ALPHA)
     this.emitFrame()
   }
 
@@ -470,6 +635,40 @@ export class PhysicsSimulationRuntime {
     node.y = position[1]
     node.vx = 0
     node.vy = 0
+    if (this.dragTraceSession) {
+      this.dragTraceSession.moveCount += 1
+      this.dragTraceSession.lastPointerPosition = position
+    }
+
+    // Tick the simulation immediately so link forces propagate to connected
+    // nodes in the same frame — without this, neighbors only respond on the
+    // next setInterval tick (~33ms later), causing visible lag.
+    if (this.simulation) {
+      this.simulation.alpha(Math.max(this.simulation.alpha(), DRAG_REHEAT_ALPHA))
+      for (let tick = 0; tick < DRAG_IMMEDIATE_TICKS; tick += 1) {
+        this.simulation.tick()
+      }
+      if (this.dragTraceSession) {
+        this.dragTraceSession.immediateTickCount += DRAG_IMMEDIATE_TICKS
+      }
+    }
+
+    if (
+      this.debugTraceEnabled &&
+      this.dragTraceSession !== null &&
+      (this.dragTraceSession.moveCount <= 3 ||
+        this.dragTraceSession.moveCount % 10 === 0)
+    ) {
+      this.trace('drag-move', {
+        pubkey,
+        moveCount: this.dragTraceSession.moveCount,
+        position,
+        simulationAlpha: this.simulation?.alpha() ?? null,
+        deferredTopology: this.deferredTopology?.topologySignature ?? null,
+      })
+    }
+
+    this.reheat(DRAG_REHEAT_ALPHA)
     this.emitFrame()
   }
 
@@ -480,16 +679,30 @@ export class PhysicsSimulationRuntime {
 
     this.draggingPubkey = null
     this.applyPinnedState()
-    this.reheat()
+
+    // Flush any topology update that arrived during the drag
+    if (this.deferredTopology) {
+      const deferred = this.deferredTopology
+      this.deferredTopology = null
+      if (this.dragTraceSession) {
+        this.dragTraceSession.appliedDeferredTopology = true
+      }
+      this.syncTopology(deferred)
+    } else {
+      this.reheat()
+    }
+
+    this.traceDragSummary(pubkey)
+    this.dragTraceSession = null
   }
 
-  private reheat() {
+  private reheat(minimumAlpha = BASE_ALPHA) {
     if (!this.enabled || this.hidden || this.simulation === null) {
       return
     }
 
     this.lowAlphaTicks = 0
-    this.simulation.alpha(Math.max(this.simulation.alpha(), BASE_ALPHA))
+    this.simulation.alpha(Math.max(this.simulation.alpha(), minimumAlpha))
     // alphaTarget stays at 0 so the simulation cools down naturally and
     // autoFreeze can fire. REHEAT_ALPHA only sets the starting alpha.
     this.simulation.alphaTarget(0)
@@ -514,15 +727,6 @@ export class PhysicsSimulationRuntime {
 
   private applyPinnedState() {
     for (const node of this.nodes) {
-      if (node.isRoot || node.pubkey === this.rootPubkey) {
-        node.fx = 0
-        node.fy = 0
-        node.x = 0
-        node.y = 0
-        node.vx = 0
-        node.vy = 0
-        continue
-      }
 
       if (this.draggingPubkey === node.pubkey) {
         continue
@@ -538,6 +742,28 @@ export class PhysicsSimulationRuntime {
         node.fy = undefined
       }
     }
+  }
+
+  /** Re-pin the actively dragged node after a topology rebuild or applyPinnedState
+   *  so that the user's drag interaction is never interrupted by background
+   *  node-discovery events. */
+  private restoreDragState() {
+    if (!this.draggingPubkey) {
+      return
+    }
+
+    const node = this.nodeByPubkey.get(this.draggingPubkey)
+    if (!node) {
+      // The dragged node was removed from the topology — release drag
+      this.draggingPubkey = null
+      return
+    }
+
+    // Ensure the dragged node stays fixed at its current position
+    node.fx = node.x ?? node.homeX
+    node.fy = node.y ?? node.homeY
+    node.vx = 0
+    node.vy = 0
   }
 
   private ensureTickLoop() {
@@ -566,6 +792,9 @@ export class PhysicsSimulationRuntime {
     }
 
     this.simulation.tick()
+    if (this.dragTraceSession) {
+      this.dragTraceSession.asyncTickCount += 1
+    }
 
     this.emitFrame()
 
@@ -587,6 +816,9 @@ export class PhysicsSimulationRuntime {
 
   private emitFrame() {
     this.version += 1
+    if (this.dragTraceSession) {
+      this.dragTraceSession.emittedFrameCount += 1
+    }
     const positions = new Float32Array(this.nodes.length * 2)
     const orderedPubkeys = this.nodes.map((node, index) => {
       positions[index * 2] = node.x ?? node.homeX
@@ -623,6 +855,45 @@ export class PhysicsSimulationRuntime {
     this.emit({
       type: 'ERROR',
       payload: { message },
+    })
+  }
+
+  private setDebugTrace(enabled: boolean) {
+    this.debugTraceEnabled = enabled
+    this.trace('debug-trace', { enabled })
+  }
+
+  private trace(event: string, payload: Record<string, unknown>) {
+    if (!this.debugTraceEnabled) {
+      return
+    }
+
+    console.debug('[physics][trace]', {
+      atMs: Number(readNowMs().toFixed(1)),
+      event,
+      ...payload,
+    })
+  }
+
+  private traceDragSummary(pubkey: string) {
+    if (!this.debugTraceEnabled || this.dragTraceSession === null) {
+      return
+    }
+
+    const session = this.dragTraceSession
+    this.trace('drag-end-summary', {
+      pubkey,
+      durationMs: Number((readNowMs() - session.startedAtMs).toFixed(1)),
+      moveCount: session.moveCount,
+      deferredSyncCount: session.deferredSyncCount,
+      appliedDeferredTopology: session.appliedDeferredTopology,
+      rebuildCount: session.rebuildCount,
+      asyncTickCount: session.asyncTickCount,
+      immediateTickCount: session.immediateTickCount,
+      emittedFrameCount: session.emittedFrameCount,
+      startPosition: session.startPosition,
+      endPosition: session.lastPointerPosition,
+      topologySignature: this.topologySignature,
     })
   }
 

@@ -89,6 +89,12 @@ export type PhysicsWorkerCommand =
       }
     }
   | {
+      type: 'SET_DEBUG_TRACE'
+      payload: {
+        enabled: boolean
+      }
+    }
+  | {
       type: 'DISPOSE'
     }
 

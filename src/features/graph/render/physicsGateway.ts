@@ -8,6 +8,7 @@ import type {
 
 const INLINE_WORKERS_FLAG = '1'
 const PHYSICS_WORKER_SCRIPT_URL = '/workers/physics.worker.js'
+const PHYSICS_DEBUG_STORAGE_KEY = 'graph:physics-debug'
 
 type PhysicsGatewayListener = (event: PhysicsWorkerEvent) => void
 
@@ -42,6 +43,21 @@ export interface PhysicsGateway {
 
 const shouldForceInlineWorkers = () =>
   process.env.NEXT_PUBLIC_GRAPH_INLINE_WORKERS === INLINE_WORKERS_FLAG
+
+const shouldEnablePhysicsTrace = () => {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  try {
+    return (
+      window.localStorage.getItem(PHYSICS_DEBUG_STORAGE_KEY) === '1' ||
+      window.sessionStorage.getItem(PHYSICS_DEBUG_STORAGE_KEY) === '1'
+    )
+  } catch {
+    return false
+  }
+}
 
 const createInlinePhysicsWorkerLike = (): PhysicsWorkerLike => {
   const listeners = new Set<(event: MessageEvent<PhysicsWorkerEvent>) => void>()
@@ -87,6 +103,10 @@ class BrowserPhysicsGateway implements PhysicsGateway {
   public constructor() {
     this.worker = this.createWorker()
     this.worker.addEventListener('message', this.handleMessage)
+    this.post({
+      type: 'SET_DEBUG_TRACE',
+      payload: { enabled: shouldEnablePhysicsTrace() },
+    })
   }
 
   public syncTopology(snapshot: PhysicsTopologySnapshot) {

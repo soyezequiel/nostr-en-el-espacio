@@ -1738,6 +1738,18 @@ export const buildGraphRenderModel = async ({
     displayedNodePubkeys === null
       ? renderNodes
       : renderNodes.filter((node) => displayedNodePubkeys.has(node.pubkey))
+  const physicsEdgeNodePubkeys =
+    displayedNodePubkeys === null
+      ? null
+      : new Set(displayedNodes.map((node) => node.pubkey))
+  const physicsEdges =
+    physicsEdgeNodePubkeys === null
+      ? candidateEdges
+      : candidateEdges.filter(
+          (edge) =>
+            physicsEdgeNodePubkeys.has(edge.source) &&
+            physicsEdgeNodePubkeys.has(edge.target),
+        )
   const labelsSuppressedByBudget = renderNodes.length > GRAPH_LABEL_NODE_BUDGET
   const degradedReasons = [
     ...(edgesThinned ? (['edge-thinning'] as const) : []),
@@ -1763,10 +1775,16 @@ export const buildGraphRenderModel = async ({
   return {
     nodes: displayedNodes,
     edges,
+    physicsEdges,
     labels,
     accessibleNodes,
     bounds: resolveGraphBounds(displayedNodes),
     topologySignature: createTopologySignature(displayedNodes, edges, activeLayer),
+    physicsTopologySignature: createTopologySignature(
+      displayedNodes,
+      physicsEdges,
+      activeLayer,
+    ),
     layoutKey,
     lod: {
       labelPolicy: labelsSuppressedByBudget

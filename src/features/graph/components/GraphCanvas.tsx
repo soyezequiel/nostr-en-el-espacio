@@ -37,7 +37,6 @@ import type { RootLoader } from '@/features/graph/kernel/runtime'
 import { createEmptyGraphRenderModel } from '@/features/graph/render/createEmptyGraphRenderModel'
 import {
   createFittedGraphViewState,
-  createGraphFitSignature,
   type GraphViewState,
 } from '@/features/graph/render/graphViewState'
 import {
@@ -267,7 +266,7 @@ const hasRenderableFrameSize = (size: { width: number; height: number }) =>
 const buildPhysicsTopologySnapshot = (
   model: GraphRenderModel,
 ): PhysicsTopologySnapshot => ({
-  topologySignature: model.topologySignature,
+  topologySignature: model.physicsTopologySignature,
   activeLayer: model.activeLayer,
   rootPubkey:
     model.nodes.find((node) => node.isRoot)?.pubkey ??
@@ -279,7 +278,7 @@ const buildPhysicsTopologySnapshot = (
     radius: node.radius,
     isRoot: node.isRoot,
   })),
-  edges: model.edges.map((edge) => ({
+  edges: model.physicsEdges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
@@ -1640,14 +1639,11 @@ export const GraphCanvas = memo(function GraphCanvas({
   const fitSignature = useMemo(
       () =>
         size.width > 0 && size.height > 0
-          ? createGraphFitSignature({
-              topologySignature: model.topologySignature,
-              width: size.width,
-              height: size.height,
-            })
+          ? `${rootNodePubkey ?? 'none'}:${activeLayer}:${size.width}:${size.height}`
           : 'empty',
     [
-      model.topologySignature,
+      rootNodePubkey,
+      activeLayer,
       size.height,
       size.width,
     ],
@@ -2278,18 +2274,22 @@ export const GraphCanvas = memo(function GraphCanvas({
   const setConnectionsSourceLayer = useAppStore(
     (storeState) => storeState.setConnectionsSourceLayer,
   )
-  const relationshipControlLayer = resolveRelationshipControlLayer(
-    activeLayer,
-    connectionsSourceLayer,
+  const relationshipControlLayer = useMemo(
+    () => resolveRelationshipControlLayer(activeLayer, connectionsSourceLayer),
+    [activeLayer, connectionsSourceLayer],
   )
-  const relationshipToggleState = getRelationshipToggleState(
-    relationshipControlLayer,
+  const relationshipToggleState = useMemo(
+    () => getRelationshipToggleState(relationshipControlLayer),
+    [relationshipControlLayer],
   )
   const onlyOneRelationshipSideActive =
     relationshipToggleState.following !== relationshipToggleState.followers
-  const canToggleOnlyNonReciprocal =
-    isRelationshipLayer(relationshipControlLayer) &&
-    (relationshipToggleState.following || relationshipToggleState.followers)
+  const canToggleOnlyNonReciprocal = useMemo(
+    () =>
+      isRelationshipLayer(relationshipControlLayer) &&
+      (relationshipToggleState.following || relationshipToggleState.followers),
+    [relationshipControlLayer, relationshipToggleState],
+  )
 
   const handleToggleRelationship = useCallback(
     (role: 'following' | 'followers') => {
@@ -2472,25 +2472,17 @@ export const GraphCanvas = memo(function GraphCanvas({
     () =>
       rootNodePubkey === null
         ? 0
-        : links.filter(
-            (link) =>
-              link.source === rootNodePubkey && link.relation === 'follow',
-          ).length,
-    [links, rootNodePubkey],
+        : appStore.getState().adjacency[rootNodePubkey]?.length ?? 0,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [graphRevision, rootNodePubkey],
   )
   const rootInboundCount = useMemo(
     () =>
       rootNodePubkey === null
         ? 0
-        : new Set(
-            inboundLinks
-              .filter(
-                (link) =>
-                  link.target === rootNodePubkey && link.relation === 'inbound',
-              )
-              .map((link) => link.source),
-          ).size,
-    [inboundLinks, rootNodePubkey],
+        : appStore.getState().inboundAdjacency[rootNodePubkey]?.length ?? 0,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inboundGraphRevision, rootNodePubkey],
   )
   const progressMetrics = useMemo<ProgressMetric[]>(() => {
     const hasRoot = rootNodePubkey !== null

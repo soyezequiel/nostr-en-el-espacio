@@ -7,6 +7,7 @@ export const createEmptyGraphRenderModel = (
 ): GraphRenderModel => ({
   nodes: [],
   edges: [],
+  physicsEdges: [],
   labels: [],
   accessibleNodes: [],
   bounds: {
@@ -16,6 +17,7 @@ export const createEmptyGraphRenderModel = (
     maxY: 0,
   },
   topologySignature: 'empty',
+  physicsTopologySignature: 'empty',
   layoutKey: 'empty',
   lod: {
     labelPolicy: 'hover-selected-or-zoom',

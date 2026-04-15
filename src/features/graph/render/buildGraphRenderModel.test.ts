@@ -591,6 +591,15 @@ test('graph layer characterization thins a deterministic subset of shared edges 
   assert.ok(model.lod.candidateEdgeCount > model.lod.visibleEdgeCount, metricsMessage)
   assert.ok(model.lod.thinnedEdgeCount > 0, metricsMessage)
   assert.equal(
+    model.physicsEdges.length,
+    model.lod.candidateEdgeCount,
+    'physics should retain all candidate edges even when the visible layer is thinned',
+  )
+  assert.ok(
+    model.physicsEdges.length > model.edges.length,
+    'expected physics edges to preserve more force links than the visible edge set',
+  )
+  assert.equal(
     expectedSharedEdgeIds.filter((edgeId) => visibleEdgeIds.has(edgeId)).length,
     expectedSharedEdgeIds.length,
     metricsMessage,

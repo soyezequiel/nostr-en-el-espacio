@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs'
 
-const raw = readFileSync('C:\\Users\\soyal\\Downloads\\profiling-data.14-04-2026.19-21-10.json', 'utf8')
+const raw = readFileSync(process.argv[2], 'utf8')
 const data = JSON.parse(raw)
 
 const root = data.dataForRoots[0]

@@ -132,10 +132,12 @@ export interface GraphRenderAnalysisOverlay {
 export interface GraphRenderModel {
   nodes: GraphRenderNode[]
   edges: GraphRenderEdge[]
+  physicsEdges: GraphRenderEdge[]
   labels: GraphRenderLabel[]
   accessibleNodes: AccessibleNodeSummary[]
   bounds: GraphBounds
   topologySignature: string
+  physicsTopologySignature: string
   layoutKey: string
   lod: GraphRenderLodSummary
   analysisOverlay: GraphRenderAnalysisOverlay

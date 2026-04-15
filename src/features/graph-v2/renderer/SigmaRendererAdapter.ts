@@ -11,6 +11,14 @@ import type {
   SigmaNodeAttributes,
 } from '@/features/graph-v2/renderer/graphologyProjectionStore'
 import { GraphologyProjectionStore } from '@/features/graph-v2/renderer/graphologyProjectionStore'
+import {
+  createSuppressedNodeClick,
+  createPendingNodeDragGesture,
+  shouldSuppressNodeClick,
+  shouldStartNodeDrag,
+  type PendingNodeDragGesture,
+  type SuppressedNodeClick,
+} from '@/features/graph-v2/renderer/nodeDragGesture'
 
 export class SigmaRendererAdapter implements RendererAdapter {
   private sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null
@@ -23,20 +31,93 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private scene: GraphSceneSnapshot | null = null
 
+  private pendingDragGesture: PendingNodeDragGesture | null = null
+
+  private suppressedClick: SuppressedNodeClick | null = null
+
   private draggedNodePubkey: string | null = null
 
-  private readonly releaseDrag = () => {
-    if (!this.draggedNodePubkey || !this.projectionStore || !this.callbacks) {
+  private pendingDragFrame: number | null = null
+
+  private pendingGraphPosition: { x: number; y: number } | null = null
+
+  private readonly flushPendingDragFrame = () => {
+    this.pendingDragFrame = null
+
+    if (
+      !this.sigma ||
+      !this.projectionStore ||
+      !this.callbacks ||
+      !this.draggedNodePubkey ||
+      !this.pendingGraphPosition
+    ) {
       return
     }
+
+    const draggedNodePubkey = this.draggedNodePubkey
+    const graphPosition = this.pendingGraphPosition
+    this.pendingGraphPosition = null
+
+    this.projectionStore.setNodePosition(
+      draggedNodePubkey,
+      graphPosition.x,
+      graphPosition.y,
+      true,
+    )
+    this.sigma.refresh()
+    this.callbacks.onNodeDragMove(draggedNodePubkey, graphPosition)
+  }
+
+  private readonly scheduleDragFrame = (graphPosition: { x: number; y: number }) => {
+    this.pendingGraphPosition = graphPosition
+
+    if (this.pendingDragFrame !== null) {
+      return
+    }
+
+    this.pendingDragFrame = requestAnimationFrame(this.flushPendingDragFrame)
+  }
+
+  private readonly cancelPendingDragFrame = () => {
+    if (this.pendingDragFrame !== null) {
+      cancelAnimationFrame(this.pendingDragFrame)
+      this.pendingDragFrame = null
+    }
+
+    this.pendingGraphPosition = null
+  }
+
+  private readonly startDrag = (pubkey: string) => {
+    if (!this.projectionStore || !this.callbacks) {
+      return
+    }
+
+    this.draggedNodePubkey = pubkey
+    this.cancelPendingDragFrame()
+    this.projectionStore.setNodeFixed(pubkey, true)
+    this.forceRuntime?.suspend()
+    this.callbacks.onNodeDragStart(pubkey)
+  }
+
+  private readonly releaseDrag = () => {
+    this.pendingDragGesture = null
+
+    if (!this.draggedNodePubkey || !this.projectionStore || !this.callbacks) {
+      this.cancelPendingDragFrame()
+      return
+    }
+
+    this.flushPendingDragFrame()
 
     const draggedNodePubkey = this.draggedNodePubkey
     const position = this.projectionStore.getNodePosition(draggedNodePubkey)
     const isPinned = this.scene?.pins.pubkeys.includes(draggedNodePubkey) ?? false
 
     this.projectionStore.setNodeFixed(draggedNodePubkey, isPinned)
+    this.forceRuntime?.resume()
     this.forceRuntime?.reheat()
     this.draggedNodePubkey = null
+    this.suppressedClick = createSuppressedNodeClick(draggedNodePubkey)
 
     if (position) {
       this.callbacks.onNodeDragEnd(draggedNodePubkey, position)
@@ -94,6 +175,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   public dispose() {
     this.releaseDrag()
+    this.cancelPendingDragFrame()
     this.forceRuntime?.dispose()
     this.forceRuntime = null
     this.sigma?.kill()
@@ -109,10 +191,18 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
 
     const sigma = this.sigma
-    const projectionStore = this.projectionStore
     const callbacks = this.callbacks
 
     sigma.on('clickNode', ({ node }) => {
+      if (shouldSuppressNodeClick(this.suppressedClick, node)) {
+        this.suppressedClick = null
+        return
+      }
+
+      if (this.suppressedClick && Date.now() > this.suppressedClick.expiresAt) {
+        this.suppressedClick = null
+      }
+
       callbacks.onNodeClick(node)
     })
 
@@ -124,16 +214,37 @@ export class SigmaRendererAdapter implements RendererAdapter {
       callbacks.onNodeHover(null)
     })
 
-    sigma.on('downNode', ({ node, preventSigmaDefault }) => {
-      preventSigmaDefault()
-      this.draggedNodePubkey = node
-      projectionStore.setNodeFixed(node, true)
-      this.forceRuntime?.reheat()
-      callbacks.onNodeDragStart(node)
+    sigma.on('downNode', ({ node, event }) => {
+      this.pendingDragGesture = createPendingNodeDragGesture(node, {
+        x: event.x,
+        y: event.y,
+      })
     })
 
     sigma.on('moveBody', ({ event, preventSigmaDefault }) => {
+      const pendingDragGesture = this.pendingDragGesture
+
+      if (!this.draggedNodePubkey && !pendingDragGesture) {
+        return
+      }
+
       if (!this.draggedNodePubkey) {
+        if (
+          !pendingDragGesture ||
+          !shouldStartNodeDrag(pendingDragGesture, {
+            x: event.x,
+            y: event.y,
+          })
+        ) {
+          return
+        }
+
+        this.startDrag(pendingDragGesture.pubkey)
+      }
+
+      const draggedNodePubkey = this.draggedNodePubkey
+
+      if (!draggedNodePubkey) {
         return
       }
 
@@ -144,14 +255,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
         y: event.y,
       })
 
-      projectionStore.setNodePosition(
-        this.draggedNodePubkey,
-        graphPosition.x,
-        graphPosition.y,
-        true,
-      )
-      sigma.refresh()
-      callbacks.onNodeDragMove(this.draggedNodePubkey, graphPosition)
+      this.scheduleDragFrame(graphPosition)
     })
 
     sigma.on('upNode', () => {

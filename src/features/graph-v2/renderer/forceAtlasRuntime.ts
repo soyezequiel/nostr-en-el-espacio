@@ -16,6 +16,8 @@ export class ForceAtlasRuntime {
 
   private lastTopologySignature: string | null = null
 
+  private suspended = false
+
   public constructor(
     private readonly graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>,
   ) {}
@@ -26,6 +28,11 @@ export class ForceAtlasRuntime {
 
     if (!shouldRun) {
       this.stop()
+      this.lastTopologySignature = scene.diagnostics.topologySignature
+      return
+    }
+
+    if (this.suspended) {
       this.lastTopologySignature = scene.diagnostics.topologySignature
       return
     }
@@ -45,6 +52,10 @@ export class ForceAtlasRuntime {
   }
 
   public reheat() {
+    if (this.suspended) {
+      return
+    }
+
     if (this.graph.order < MINIMUM_RUNNING_NODES || this.graph.size === 0) {
       return
     }
@@ -58,6 +69,23 @@ export class ForceAtlasRuntime {
   public stop() {
     if (this.layout?.isRunning()) {
       this.layout.stop()
+    }
+  }
+
+  public suspend() {
+    this.suspended = true
+    this.stop()
+  }
+
+  public resume() {
+    if (!this.suspended) {
+      return
+    }
+
+    this.suspended = false
+
+    if (this.layout && !this.layout.isRunning()) {
+      this.layout.start()
     }
   }
 

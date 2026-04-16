@@ -20,6 +20,10 @@ import type { CanonicalGraphState } from '@/features/graph-v2/domain/types'
 import { buildGraphSceneSnapshot } from '@/features/graph-v2/projections/buildGraphSceneSnapshot'
 import { buildNodeDetailProjection } from '@/features/graph-v2/projections/buildNodeDetailProjection'
 import type { GraphInteractionCallbacks, GraphViewportState } from '@/features/graph-v2/renderer/contracts'
+import {
+  DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING,
+  type DragNeighborhoodInfluenceTuning,
+} from '@/features/graph-v2/renderer/dragInfluence'
 import { createDragLocalFixture } from '@/features/graph-v2/testing/fixtures/dragLocalFixture'
 import { SigmaCanvasHost } from '@/features/graph-v2/ui/SigmaCanvasHost'
 
@@ -146,6 +150,111 @@ function RelayEditor({
   )
 }
 
+const DRAG_TUNING_SLIDERS: Array<{
+  key: keyof DragNeighborhoodInfluenceTuning
+  label: string
+  description: string
+  min: number
+  max: number
+  step: number
+}> = [
+  {
+    key: 'edgeStiffness',
+    label: 'Edge stiffness',
+    description: 'Cuanto se propaga el tiron por las aristas reales.',
+    min: 0.01,
+    max: 0.12,
+    step: 0.002,
+  },
+  {
+    key: 'anchorStiffnessPerHop',
+    label: 'Anchor por hop',
+    description: 'Cuanto vuelve cada hop a su posicion inicial.',
+    min: 0.001,
+    max: 0.02,
+    step: 0.0005,
+  },
+  {
+    key: 'baseDamping',
+    label: 'Base damping',
+    description: 'Amortiguacion de velocidad; mas alto, mas inercia.',
+    min: 0.75,
+    max: 0.95,
+    step: 0.005,
+  },
+]
+
+function DragTuningPanel({
+  tuning,
+  onChange,
+  onReset,
+}: {
+  tuning: DragNeighborhoodInfluenceTuning
+  onChange: <K extends keyof DragNeighborhoodInfluenceTuning>(
+    key: K,
+    value: DragNeighborhoodInfluenceTuning[K],
+  ) => void
+  onReset: () => void
+}) {
+  return (
+    <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-white/50">Drag tuning</p>
+          <h2 className="mt-1 text-sm font-semibold text-white">
+            Springs del laboratorio
+          </h2>
+          <p className="mt-2 text-xs leading-5 text-white/55">
+            Ajusta el feel del drag en vivo. Esto no toca el dominio ni persiste fuera de la pagina.
+          </p>
+        </div>
+        <button
+          className="rounded-xl border border-white/10 px-3 py-2 text-xs text-white/70 hover:border-white/20"
+          onClick={onReset}
+          type="button"
+        >
+          Reset
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-4">
+        {DRAG_TUNING_SLIDERS.map((slider) => {
+          const value = tuning[slider.key]
+          return (
+            <label className="block" key={slider.key}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-white/85">{slider.label}</span>
+                <span className="rounded-full border border-white/10 px-2 py-1 font-mono text-[11px] text-[#7dd3a7]">
+                  {value.toFixed(3)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-white/50">{slider.description}</p>
+              <input
+                className="mt-3 h-2 w-full cursor-pointer accent-[#7dd3a7]"
+                max={slider.max}
+                min={slider.min}
+                onChange={(event) => {
+                  onChange(
+                    slider.key,
+                    Number.parseFloat(event.target.value) as DragNeighborhoodInfluenceTuning[typeof slider.key],
+                  )
+                }}
+                step={slider.step}
+                type="range"
+                value={value}
+              />
+              <div className="mt-1 flex items-center justify-between text-[11px] text-white/35">
+                <span>{slider.min.toFixed(3)}</span>
+                <span>{slider.max.toFixed(3)}</span>
+              </div>
+            </label>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 export default function GraphAppV2() {
   const searchParams = useSearchParams()
   const fixtureName = searchParams.get('fixture')
@@ -166,6 +275,10 @@ export default function GraphAppV2() {
     () => (isFixtureMode ? createDragLocalFixture().state : null),
   )
   const [lastViewportRatio, setLastViewportRatio] = useState<number | null>(null)
+  const [dragInfluenceTuning, setDragInfluenceTuning] =
+    useState<DragNeighborhoodInfluenceTuning>(
+      DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING,
+    )
 
   useEffect(() => {
     bridge.connect()
@@ -189,6 +302,16 @@ export default function GraphAppV2() {
                   : current,
               )
             },
+            onClearSelection: () => {
+              setFixtureState((current) =>
+                current
+                  ? {
+                      ...current,
+                      selectedNodePubkey: null,
+                    }
+                  : current,
+              )
+            },
             onNodeHover: () => {},
             onNodeDragStart: () => {},
             onNodeDragMove: () => {},
@@ -208,6 +331,7 @@ export default function GraphAppV2() {
     loadFeedback === 'Cargando root...' && rootLoadMessage
       ? rootLoadMessage
       : loadFeedback ?? rootLoadMessage
+  const isDragFixtureLab = fixtureName === 'drag-local'
 
   const updateFixtureState = (
     updater: (current: CanonicalGraphState) => CanonicalGraphState,
@@ -246,6 +370,18 @@ export default function GraphAppV2() {
     updateFixtureState((current) => ({
       ...current,
       activeLayer: layer,
+    }))
+  }
+
+  const updateDragInfluenceTuning = <
+    K extends keyof DragNeighborhoodInfluenceTuning,
+  >(
+    key: K,
+    value: DragNeighborhoodInfluenceTuning[K],
+  ) => {
+    setDragInfluenceTuning((current) => ({
+      ...current,
+      [key]: value,
     }))
   }
 
@@ -375,6 +511,18 @@ export default function GraphAppV2() {
               relayUrls={domainState.relayState.urls}
             />
 
+            {isDragFixtureLab ? (
+              <DragTuningPanel
+                onChange={updateDragInfluenceTuning}
+                onReset={() => {
+                  setDragInfluenceTuning(
+                    DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING,
+                  )
+                }}
+                tuning={dragInfluenceTuning}
+              />
+            ) : null}
+
             <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -429,6 +577,7 @@ export default function GraphAppV2() {
               <div className="min-h-0 flex-1">
                 <SigmaCanvasHost
                   callbacks={callbacks}
+                  dragInfluenceTuning={dragInfluenceTuning}
                   enableDebugProbe={isTestMode}
                   scene={deferredScene}
                 />

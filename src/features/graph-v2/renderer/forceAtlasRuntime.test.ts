@@ -6,6 +6,8 @@ import { DirectedGraph } from 'graphology'
 import type { GraphSceneSnapshot } from '@/features/graph-v2/renderer/contracts'
 import {
   ForceAtlasRuntime,
+  resolveForceAtlasDenseFactor,
+  resolveForceAtlasSettings,
   type ForceAtlasLayoutController,
 } from '@/features/graph-v2/renderer/forceAtlasRuntime'
 import type {
@@ -125,6 +127,33 @@ class LayoutStub implements ForceAtlasLayoutController {
     this.killCalls += 1
   }
 }
+
+test('ForceAtlas settings scale repulsion and damping for dense sigma graphs', () => {
+  const smallSettings = resolveForceAtlasSettings(80)
+  const denseSettings = resolveForceAtlasSettings(2200)
+
+  assert.equal(resolveForceAtlasDenseFactor(80), 0)
+  assert.equal(resolveForceAtlasDenseFactor(2200), 1)
+  assert.ok(
+    (denseSettings.scalingRatio ?? 0) > (smallSettings.scalingRatio ?? 0),
+    'expected dense graphs to use stronger magnetic repulsion',
+  )
+  assert.ok(
+    (denseSettings.gravity ?? 0) > (smallSettings.gravity ?? 0),
+    'expected dense graphs to increase bounding gravity with repulsion',
+  )
+  assert.ok(
+    (denseSettings.slowDown ?? 0) > (smallSettings.slowDown ?? 0),
+    'expected dense graphs to use more controlled inertia',
+  )
+  assert.ok(
+    (denseSettings.edgeWeightInfluence ?? 0) <
+      (smallSettings.edgeWeightInfluence ?? 0),
+    'expected dense graphs to soften weighted link attraction',
+  )
+  assert.equal(smallSettings.adjustSizes, true)
+  assert.equal(denseSettings.adjustSizes, true)
+})
 
 test('sync does not reheat when only the topology signature changes', () => {
   const graph = createGraph(3, 2)

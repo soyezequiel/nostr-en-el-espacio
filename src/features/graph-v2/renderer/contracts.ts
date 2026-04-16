@@ -100,6 +100,7 @@ export interface NodeDetailProjection {
 
 export interface GraphInteractionCallbacks {
   onNodeClick: (pubkey: string) => void
+  onClearSelection: () => void
   onNodeHover: (pubkey: string | null) => void
   onNodeDragStart: (pubkey: string) => void
   onNodeDragMove: (pubkey: string, position: { x: number; y: number }) => void
@@ -116,4 +117,3 @@ export interface RendererAdapter {
   update: (scene: GraphSceneSnapshot) => void
   dispose: () => void
 }
-

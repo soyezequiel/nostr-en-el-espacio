@@ -172,7 +172,7 @@ test('leaves every node with idle/root focus state when there is no selection', 
   assert.ok(scene.visibleEdges.every((edge) => !edge.isDimmed))
 })
 
-test('dims nodes outside the selected depth-1 neighborhood and highlights focus edges', () => {
+test('dims nodes outside the selected depth-1 neighborhood and highlights direct focus edges', () => {
   const scene = buildGraphSceneSnapshot(
     createState({
       selectedNodePubkey: 'alice',
@@ -191,7 +191,7 @@ test('dims nodes outside the selected depth-1 neighborhood and highlights focus 
   )
   assert.equal(edgeFocusById['root->alice:follow'], true)
   assert.equal(edgeFocusById['alice->bob:follow'], true)
-  assert.equal(edgeFocusById['root->bob:follow'], true)
+  assert.equal(edgeFocusById['root->bob:follow'], false)
 })
 
 test('keeps root as the root focus state even when it is a depth-1 neighbor of the selection', () => {

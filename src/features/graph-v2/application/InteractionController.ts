@@ -14,6 +14,9 @@ export class GraphInteractionController {
       onNodeClick: (pubkey) => {
         this.bridge.selectNode(pubkey)
       },
+      onClearSelection: () => {
+        this.bridge.selectNode(null)
+      },
       onNodeHover: () => {
         // Hover stays local to the renderer in v1.
       },
@@ -36,4 +39,3 @@ export class GraphInteractionController {
     return this.lastViewport
   }
 }
-

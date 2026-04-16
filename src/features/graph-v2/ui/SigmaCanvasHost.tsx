@@ -7,18 +7,21 @@ import type {
   GraphSceneSnapshot,
 } from '@/features/graph-v2/renderer/contracts'
 import { SigmaRendererAdapter } from '@/features/graph-v2/renderer/SigmaRendererAdapter'
+import type { DragNeighborhoodInfluenceTuning } from '@/features/graph-v2/renderer/dragInfluence'
 import type { SigmaLabDebugApi } from '@/features/graph-v2/testing/browserDebug'
 
 interface SigmaCanvasHostProps {
   scene: GraphSceneSnapshot
   callbacks: GraphInteractionCallbacks
   enableDebugProbe?: boolean
+  dragInfluenceTuning?: Partial<DragNeighborhoodInfluenceTuning>
 }
 
 export function SigmaCanvasHost({
   scene,
   callbacks,
   enableDebugProbe = false,
+  dragInfluenceTuning,
 }: SigmaCanvasHostProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const adapterRef = useRef<SigmaRendererAdapter | null>(null)
@@ -43,6 +46,10 @@ export function SigmaCanvasHost({
   useEffect(() => {
     adapterRef.current?.update(scene)
   }, [scene])
+
+  useEffect(() => {
+    adapterRef.current?.setDragInfluenceTuning(dragInfluenceTuning ?? {})
+  }, [dragInfluenceTuning])
 
   useEffect(() => {
     sceneRef.current = scene

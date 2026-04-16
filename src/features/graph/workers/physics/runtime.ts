@@ -25,8 +25,9 @@ import type {
 } from '@/features/graph/workers/physics/types'
 
 const TICK_INTERVAL_MS = 1000 / 30
-// Obsidian-like physics: floaty, gentle, no collision boundaries.
-// Nodes drift with inertia, settle in ~3 seconds, and overlap freely.
+// Obsidian-like physics: floaty, magnetic, and bounded.
+// Runtime forces scale with node count because the initial layout supports
+// thousands of nodes, while live drag frames must stay stable at 30fps.
 const AUTO_FREEZE_ALPHA_THRESHOLD = 0.005
 const AUTO_FREEZE_STABLE_TICKS = 6
 const BASE_ALPHA = 0.3
@@ -36,16 +37,38 @@ const ALPHA_MIN = 0.001
 const ALPHA_DECAY = 0.05
 const VELOCITY_DECAY = 0.15
 const CENTER_GRAVITY_STRENGTH = 0.02
+const HOME_GRAVITY_STRENGTH = 0.026
 const N_BODY_STRENGTH = -150
 const N_BODY_DISTANCE_MAX = 600
+const DENSE_N_BODY_STRENGTH = -460
+const DENSE_N_BODY_DISTANCE_MAX = 1150
 const COLLISION_PADDING = 20
 const CONNECTIONS_COLLISION_PADDING = 30
 const COLLISION_STRENGTH = 1
 const COLLISION_ITERATIONS = 2
+const DENSE_COLLISION_ITERATIONS = 4
+const DENSE_GRAPH_START_NODE_COUNT = 180
+const DENSE_GRAPH_FULL_NODE_COUNT = 1800
+const DENSE_LINK_DISTANCE_MULTIPLIER = 1.28
+const DENSE_FOLLOW_LINK_STRENGTH = 0.24
+const DENSE_INBOUND_LINK_STRENGTH = 0.22
+const DENSE_ZAP_LINK_STRENGTH = 0.16
+const DENSE_CENTER_GRAVITY_STRENGTH = 0.014
+const DENSE_HOME_GRAVITY_STRENGTH = 0.018
 const TOPOLOGY_SYNC_REHEAT_ALPHA = 0.14
 const DEFAULT_LINK_DISTANCE = 110
 const MIN_LINK_DISTANCE = 50
-const MAX_LINK_DISTANCE = 220
+const MAX_LINK_DISTANCE = 280
+
+export interface RuntimePhysicsConfig {
+  denseFactor: number
+  nBodyStrength: number
+  nBodyDistanceMax: number
+  collisionIterations: number
+  linkDistanceMultiplier: number
+  centerGravityStrength: number
+  homeGravityStrength: number
+}
 
 interface InternalPhysicsNode extends SimulationNodeDatum {
   id: string
@@ -66,6 +89,58 @@ interface InternalPhysicsLink extends SimulationLinkDatum<InternalPhysicsNode> {
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
+
+const interpolateNumber = (start: number, end: number, factor: number) =>
+  start + (end - start) * factor
+
+export const resolveRuntimePhysicsConfig = (
+  nodeCount: number,
+): RuntimePhysicsConfig => {
+  const denseFactor = clampNumber(
+    (Math.sqrt(Math.max(0, nodeCount)) -
+      Math.sqrt(DENSE_GRAPH_START_NODE_COUNT)) /
+      (Math.sqrt(DENSE_GRAPH_FULL_NODE_COUNT) -
+        Math.sqrt(DENSE_GRAPH_START_NODE_COUNT)),
+    0,
+    1,
+  )
+
+  return {
+    denseFactor,
+    nBodyStrength: interpolateNumber(
+      N_BODY_STRENGTH,
+      DENSE_N_BODY_STRENGTH,
+      denseFactor,
+    ),
+    nBodyDistanceMax: interpolateNumber(
+      N_BODY_DISTANCE_MAX,
+      DENSE_N_BODY_DISTANCE_MAX,
+      denseFactor,
+    ),
+    collisionIterations: Math.round(
+      interpolateNumber(
+        COLLISION_ITERATIONS,
+        DENSE_COLLISION_ITERATIONS,
+        denseFactor,
+      ),
+    ),
+    linkDistanceMultiplier: interpolateNumber(
+      1,
+      DENSE_LINK_DISTANCE_MULTIPLIER,
+      denseFactor,
+    ),
+    centerGravityStrength: interpolateNumber(
+      CENTER_GRAVITY_STRENGTH,
+      DENSE_CENTER_GRAVITY_STRENGTH,
+      denseFactor,
+    ),
+    homeGravityStrength: interpolateNumber(
+      HOME_GRAVITY_STRENGTH,
+      DENSE_HOME_GRAVITY_STRENGTH,
+      denseFactor,
+    ),
+  }
+}
 
 const isFinitePoint = (value: unknown): value is [number, number] =>
   Array.isArray(value) &&
@@ -143,9 +218,11 @@ const isTopologySnapshot = (value: unknown): value is PhysicsTopologySnapshot =>
 const resolveLinkDistance = ({
   edge,
   nodeByPubkey,
+  config,
 }: {
   edge: PhysicsTopologyEdgeSnapshot
   nodeByPubkey: ReadonlyMap<string, PhysicsTopologyNodeSnapshot>
+  config: RuntimePhysicsConfig
 }) => {
   const sourceNode = nodeByPubkey.get(edge.source)
   const targetNode = nodeByPubkey.get(edge.target)
@@ -163,14 +240,27 @@ const resolveLinkDistance = ({
         : DEFAULT_LINK_DISTANCE
 
   return clampNumber(
-    Math.max(minimumDistance, fallbackDistance),
+    Math.max(minimumDistance, fallbackDistance * config.linkDistanceMultiplier),
     MIN_LINK_DISTANCE,
     MAX_LINK_DISTANCE,
   )
 }
 
-const resolveLinkStrength = (relation: GraphLinkRelation) =>
-  relation === 'zap' ? 0.2 : relation === 'inbound' ? 0.35 : 0.55
+export const resolveRuntimeLinkStrength = (
+  relation: GraphLinkRelation,
+  config: RuntimePhysicsConfig,
+) => {
+  const baseStrength =
+    relation === 'zap' ? 0.2 : relation === 'inbound' ? 0.35 : 0.55
+  const denseStrength =
+    relation === 'zap'
+      ? DENSE_ZAP_LINK_STRENGTH
+      : relation === 'inbound'
+        ? DENSE_INBOUND_LINK_STRENGTH
+        : DENSE_FOLLOW_LINK_STRENGTH
+
+  return interpolateNumber(baseStrength, denseStrength, config.denseFactor)
+}
 
 const haveSameNodeSet = (
   previousNodeByPubkey: ReadonlyMap<string, InternalPhysicsNode>,
@@ -405,6 +495,7 @@ export class PhysicsSimulationRuntime {
     const previousNodeByPubkey = this.nodeByPubkey
     const previousNodeCount = this.nodes.length
     const previousLinks = this.links
+    const physicsConfig = resolveRuntimePhysicsConfig(snapshot.nodes.length)
     const canonicalNodeByPubkey = new Map(
       snapshot.nodes.map((node) => [node.pubkey, node]),
     )
@@ -439,6 +530,7 @@ export class PhysicsSimulationRuntime {
         distance: resolveLinkDistance({
           edge,
           nodeByPubkey: canonicalNodeByPubkey,
+          config: physicsConfig,
         }),
       }))
 
@@ -486,12 +578,21 @@ export class PhysicsSimulationRuntime {
     } else {
       // Same node set → just update links on the live simulation (no reheat)
       if (this.simulation) {
+        const runtimeConfig = resolveRuntimePhysicsConfig(this.nodes.length)
+        this.simulation.force(
+          'charge',
+          forceManyBody<InternalPhysicsNode>()
+            .strength(runtimeConfig.nBodyStrength)
+            .distanceMax(runtimeConfig.nBodyDistanceMax),
+        )
         this.simulation.force(
           'link',
           forceLink<InternalPhysicsNode, InternalPhysicsLink>(this.links)
             .id((node) => node.id)
             .distance((link) => link.distance)
-            .strength((link) => resolveLinkStrength(link.relation)),
+            .strength((link) =>
+              resolveRuntimeLinkStrength(link.relation, runtimeConfig),
+            ),
         )
         this.simulation.force(
           'collision',
@@ -500,7 +601,31 @@ export class PhysicsSimulationRuntime {
               (node) => node.radius + resolveCollisionPadding(this.activeLayer),
             )
             .strength(COLLISION_STRENGTH)
-            .iterations(COLLISION_ITERATIONS),
+            .iterations(runtimeConfig.collisionIterations),
+        )
+        this.simulation.force(
+          'gravityX',
+          forceX<InternalPhysicsNode>(0).strength(
+            runtimeConfig.centerGravityStrength,
+          ),
+        )
+        this.simulation.force(
+          'gravityY',
+          forceY<InternalPhysicsNode>(0).strength(
+            runtimeConfig.centerGravityStrength,
+          ),
+        )
+        this.simulation.force(
+          'homeX',
+          forceX<InternalPhysicsNode>((node) => node.homeX).strength(
+            runtimeConfig.homeGravityStrength,
+          ),
+        )
+        this.simulation.force(
+          'homeY',
+          forceY<InternalPhysicsNode>((node) => node.homeY).strength(
+            runtimeConfig.homeGravityStrength,
+          ),
         )
         this.simulation.nodes(this.nodes)
       }
@@ -524,6 +649,7 @@ export class PhysicsSimulationRuntime {
       return
     }
 
+    const runtimeConfig = resolveRuntimePhysicsConfig(this.nodes.length)
     const initialAlpha = this.draggingPubkey ? BASE_ALPHA : ALPHA_MIN
     if (this.dragTraceSession) {
       this.dragTraceSession.rebuildCount += 1
@@ -533,6 +659,8 @@ export class PhysicsSimulationRuntime {
       nodeCount: this.nodes.length,
       edgeCount: this.links.length,
       initialAlpha,
+      denseFactor: runtimeConfig.denseFactor,
+      nBodyStrength: runtimeConfig.nBodyStrength,
     })
     const simulation = forceSimulation<InternalPhysicsNode>(this.nodes)
       .alpha(initialAlpha)
@@ -540,18 +668,42 @@ export class PhysicsSimulationRuntime {
       .alphaMin(ALPHA_MIN)
       .velocityDecay(VELOCITY_DECAY)
       .force('charge', forceManyBody<InternalPhysicsNode>()
-        .strength(N_BODY_STRENGTH)
-        .distanceMax(N_BODY_DISTANCE_MAX))
+        .strength(runtimeConfig.nBodyStrength)
+        .distanceMax(runtimeConfig.nBodyDistanceMax))
       .force('link', forceLink<InternalPhysicsNode, InternalPhysicsLink>(this.links)
         .id((node) => node.id)
         .distance((link) => link.distance)
-        .strength((link) => resolveLinkStrength(link.relation)))
+        .strength((link) =>
+          resolveRuntimeLinkStrength(link.relation, runtimeConfig),
+        ))
       .force('collision', forceCollide<InternalPhysicsNode>()
         .radius((node) => node.radius + resolveCollisionPadding(this.activeLayer))
         .strength(COLLISION_STRENGTH)
-        .iterations(COLLISION_ITERATIONS))
-      .force('gravityX', forceX<InternalPhysicsNode>(0).strength(CENTER_GRAVITY_STRENGTH))
-      .force('gravityY', forceY<InternalPhysicsNode>(0).strength(CENTER_GRAVITY_STRENGTH))
+        .iterations(runtimeConfig.collisionIterations))
+      .force(
+        'gravityX',
+        forceX<InternalPhysicsNode>(0).strength(
+          runtimeConfig.centerGravityStrength,
+        ),
+      )
+      .force(
+        'gravityY',
+        forceY<InternalPhysicsNode>(0).strength(
+          runtimeConfig.centerGravityStrength,
+        ),
+      )
+      .force(
+        'homeX',
+        forceX<InternalPhysicsNode>((node) => node.homeX).strength(
+          runtimeConfig.homeGravityStrength,
+        ),
+      )
+      .force(
+        'homeY',
+        forceY<InternalPhysicsNode>((node) => node.homeY).strength(
+          runtimeConfig.homeGravityStrength,
+        ),
+      )
       .stop()
 
     this.simulation = simulation

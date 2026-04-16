@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node --test --experimental-strip-types src/features/graph-v2/projections/buildGraphSceneSnapshot.test.ts)"
+      "Bash(node --test --experimental-strip-types src/features/graph-v2/projections/buildGraphSceneSnapshot.test.ts)",
+      "Bash(npx tsx:*)"
     ]
   }
 }

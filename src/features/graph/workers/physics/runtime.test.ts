@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { PhysicsSimulationRuntime } from './runtime'
+import {
+  PhysicsSimulationRuntime,
+  resolveRuntimeLinkStrength,
+  resolveRuntimePhysicsConfig,
+} from './runtime'
 import type {
   PhysicsTopologySnapshot,
   PhysicsWorkerEvent,
@@ -46,6 +50,48 @@ const createSnapshot = (): PhysicsTopologySnapshot => ({
     },
   ],
   edges: [],
+})
+
+test('runtime physics scales magnetic repulsion and collision work for dense graphs', () => {
+  const smallConfig = resolveRuntimePhysicsConfig(80)
+  const denseConfig = resolveRuntimePhysicsConfig(2200)
+
+  assert.equal(smallConfig.denseFactor, 0)
+  assert.equal(denseConfig.denseFactor, 1)
+  assert.ok(
+    denseConfig.nBodyStrength < smallConfig.nBodyStrength,
+    'expected dense graphs to use stronger magnetic repulsion',
+  )
+  assert.ok(
+    denseConfig.nBodyDistanceMax > smallConfig.nBodyDistanceMax,
+    'expected dense graphs to repel nodes over a wider radius',
+  )
+  assert.ok(
+    denseConfig.collisionIterations > smallConfig.collisionIterations,
+    'expected dense graphs to spend more work resolving contact',
+  )
+  assert.ok(
+    denseConfig.centerGravityStrength < smallConfig.centerGravityStrength,
+    'expected dense graphs to reduce inward compression',
+  )
+})
+
+test('runtime physics softens link springs as graph density increases', () => {
+  const smallConfig = resolveRuntimePhysicsConfig(80)
+  const denseConfig = resolveRuntimePhysicsConfig(2200)
+
+  assert.ok(
+    resolveRuntimeLinkStrength('follow', denseConfig) <
+      resolveRuntimeLinkStrength('follow', smallConfig),
+  )
+  assert.ok(
+    resolveRuntimeLinkStrength('inbound', denseConfig) <
+      resolveRuntimeLinkStrength('inbound', smallConfig),
+  )
+  assert.ok(
+    resolveRuntimeLinkStrength('follow', denseConfig) >
+      resolveRuntimeLinkStrength('zap', denseConfig),
+  )
 })
 
 test('live physics runtime separates overlapping nodes with collision force', async () => {
@@ -226,6 +272,57 @@ test('dragging a connected node propagates visible movement to its neighbors', (
     assert.ok(
       averageShift >= 10,
       `expected drag tension to move connected neighbors, got average shift ${averageShift}`,
+    )
+  } finally {
+    runtime.handleMessage({ type: 'DISPOSE' })
+  }
+})
+
+test('released dragged node relaxes back toward its layout home position', () => {
+  const runtime = new PhysicsSimulationRuntime(() => {})
+  const runtimeHarness = runtime as unknown as RuntimeHarness
+
+  const snapshot: PhysicsTopologySnapshot = {
+    topologySignature: 'drag-release-home-return',
+    activeLayer: 'graph',
+    rootPubkey: null,
+    nodes: [
+      { pubkey: 'dragged', position: [500, 0], radius: 16, isRoot: false },
+    ],
+    edges: [],
+  }
+
+  try {
+    runtime.handleMessage({
+      type: 'SYNC_TOPOLOGY',
+      payload: snapshot,
+    })
+    runtimeHarness.stopTickLoop()
+
+    runtime.handleMessage({
+      type: 'DRAG_START',
+      payload: { pubkey: 'dragged', position: [0, 0] },
+    })
+    runtimeHarness.stopTickLoop()
+    runtime.handleMessage({
+      type: 'DRAG_END',
+      payload: { pubkey: 'dragged' },
+    })
+    runtimeHarness.stopTickLoop()
+
+    const beforeTicksX =
+      runtimeHarness.nodes.find((node) => node.pubkey === 'dragged')?.x ?? 0
+
+    for (let tick = 0; tick < 12; tick += 1) {
+      runtimeHarness.tick()
+    }
+
+    const afterTicksX =
+      runtimeHarness.nodes.find((node) => node.pubkey === 'dragged')?.x ?? 0
+
+    assert.ok(
+      afterTicksX > beforeTicksX + 20,
+      `expected released node to return toward home x=500, got ${afterTicksX}`,
     )
   } finally {
     runtime.handleMessage({ type: 'DISPOSE' })

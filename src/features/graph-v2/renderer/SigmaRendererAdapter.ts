@@ -15,11 +15,14 @@ import {
   DEFAULT_DRAG_NEIGHBORHOOD_CONFIG,
 } from '@/features/graph-v2/renderer/dragNeighborhood'
 import {
+  createDragNeighborhoodInfluenceConfig,
   createDragNeighborhoodInfluenceState,
   DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG,
   releaseDraggedNode,
   stepDragNeighborhoodInfluence,
+  type DragNeighborhoodInfluenceConfig,
   type DragNeighborhoodInfluenceState,
+  type DragNeighborhoodInfluenceTuning,
 } from '@/features/graph-v2/renderer/dragInfluence'
 import { GraphologyProjectionStore } from '@/features/graph-v2/renderer/graphologyProjectionStore'
 import {
@@ -39,6 +42,7 @@ import type {
 
 const HOVER_LABEL_BOOST = 1.25
 const HOVER_EDGE_BRIGHT_COLOR = '#e2ebff'
+const STAGE_CLICK_SUPPRESS_AFTER_DRAG_MS = 160
 
 export class SigmaRendererAdapter implements RendererAdapter {
   private sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null
@@ -55,6 +59,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private suppressedClick: SuppressedNodeClick | null = null
 
+  private suppressedStageClickUntil = 0
+
   private draggedNodePubkey: string | null = null
 
   private pendingDragFrame: number | null = null
@@ -64,6 +70,9 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private dragHopDistances: Map<string, number> = new Map()
 
   private dragInfluenceState: DragNeighborhoodInfluenceState | null = null
+
+  private dragInfluenceConfig: DragNeighborhoodInfluenceConfig =
+    DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG
 
   private lastDragGraphPosition: { x: number; y: number } | null = null
 
@@ -88,6 +97,14 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private isCameraLocked = false
 
   private isGraphBoundsLocked = false
+
+  private readonly handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape') {
+      return
+    }
+
+    this.callbacks?.onClearSelection()
+  }
 
   public getNodePosition(pubkey: string): DebugNodePosition | null {
     return this.projectionStore?.getNodePosition(pubkey) ?? null
@@ -228,6 +245,24 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
   }
 
+  public setDragInfluenceTuning(
+    tuning: Partial<DragNeighborhoodInfluenceTuning>,
+  ) {
+    this.dragInfluenceConfig = createDragNeighborhoodInfluenceConfig(tuning)
+
+    if (!this.projectionStore || !this.draggedNodePubkey) {
+      return
+    }
+
+    this.dragInfluenceState = createDragNeighborhoodInfluenceState(
+      this.projectionStore,
+      this.draggedNodePubkey,
+      this.dragHopDistances,
+      this.dragInfluenceConfig,
+      this.dragInfluenceState,
+    )
+  }
+
   private readonly flushPendingDragFrame = () => {
     this.pendingDragFrame = null
 
@@ -264,7 +299,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
         draggedNodePubkey,
         this.dragInfluenceState,
         deltaMs,
-        DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG,
+        this.dragInfluenceConfig,
       )
     }
     this.lastDragFlushTimestamp = now
@@ -307,6 +342,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       this.projectionStore,
       pubkey,
       this.dragHopDistances,
+      this.dragInfluenceConfig,
     )
     this.lastDragGraphPosition = this.projectionStore.getNodePosition(pubkey)
     this.lastDragFlushTimestamp = null
@@ -347,6 +383,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.draggedNodePubkey = null
     this.lastDragFlushTimestamp = null
     this.suppressedClick = createSuppressedNodeClick(draggedNodePubkey)
+    this.suppressedStageClickUntil =
+      Date.now() + STAGE_CLICK_SUPPRESS_AFTER_DRAG_MS
 
     // Reheat FA2 so it absorbs the drag's kinetic energy and relaxes the
     // graph back toward equilibrium from the new positions, instead of
@@ -428,6 +466,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
         this.projectionStore,
         draggedNodePubkey,
         this.dragHopDistances,
+        this.dragInfluenceConfig,
         this.dragInfluenceState,
       )
     } else {
@@ -465,6 +504,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
   public dispose() {
     this.releaseDrag()
     this.cancelPendingDragFrame()
+    window.removeEventListener('keydown', this.handleKeyDown)
     this.setCameraLocked(false)
     this.setGraphBoundsLocked(false)
     this.forceRuntime?.dispose()
@@ -495,6 +535,14 @@ export class SigmaRendererAdapter implements RendererAdapter {
       }
 
       callbacks.onNodeClick(node)
+    })
+
+    sigma.on('clickStage', () => {
+      if (Date.now() < this.suppressedStageClickUntil) {
+        return
+      }
+
+      callbacks.onClearSelection()
     })
 
     sigma.on('enterNode', ({ node }) => {
@@ -567,6 +615,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     sigma.getCamera().on('updated', (viewport) => {
       callbacks.onViewportChange(viewport)
     })
+
+    window.addEventListener('keydown', this.handleKeyDown)
   }
 
   private readonly nodeReducer = (

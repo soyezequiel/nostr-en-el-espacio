@@ -232,11 +232,7 @@ export const buildGraphSceneSnapshot = (
     if (!hasSelection || !selectedPubkey) {
       return false
     }
-    return (
-      edge.source === selectedPubkey ||
-      edge.target === selectedPubkey ||
-      (depth1Neighbors.has(edge.source) && depth1Neighbors.has(edge.target))
-    )
+    return edge.source === selectedPubkey || edge.target === selectedPubkey
   }
 
   const visibleEdges = layerProjection.visibleEdges.map((edge) =>

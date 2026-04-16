@@ -46,6 +46,12 @@ export interface DragNeighborhoodInfluenceConfig {
   stopDistanceThreshold: number
 }
 
+export interface DragNeighborhoodInfluenceTuning {
+  edgeStiffness: number
+  anchorStiffnessPerHop: number
+  baseDamping: number
+}
+
 export const DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG: DragNeighborhoodInfluenceConfig = {
   frameMs: 16,
   maxDeltaMs: 32,
@@ -64,6 +70,37 @@ export const DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG: DragNeighborhoodInfluen
   stopDistanceThreshold: 0.12,
 }
 
+export const DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING: DragNeighborhoodInfluenceTuning = {
+  edgeStiffness: DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.edgeStiffness,
+  anchorStiffnessPerHop:
+    DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.anchorStiffnessPerHop,
+  baseDamping: DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.baseDamping,
+}
+
+export const createDragNeighborhoodInfluenceConfig = (
+  tuning: Partial<DragNeighborhoodInfluenceTuning> = {},
+): DragNeighborhoodInfluenceConfig => ({
+  ...DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG,
+  edgeStiffness: clamp(
+    tuning.edgeStiffness ??
+      DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING.edgeStiffness,
+    0.001,
+    0.25,
+  ),
+  anchorStiffnessPerHop: clamp(
+    tuning.anchorStiffnessPerHop ??
+      DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING.anchorStiffnessPerHop,
+    0.0001,
+    0.05,
+  ),
+  baseDamping: clamp(
+    tuning.baseDamping ??
+      DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING.baseDamping,
+    0.4,
+    0.999,
+  ),
+})
+
 const toFrameScale = (
   deltaMs: number,
   config: DragNeighborhoodInfluenceConfig,
@@ -78,6 +115,7 @@ export const createDragNeighborhoodInfluenceState = (
   projectionStore: GraphologyProjectionStore,
   draggedNodePubkey: string,
   hopDistances: ReadonlyMap<string, number>,
+  config: DragNeighborhoodInfluenceConfig = DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG,
   previousState: DragNeighborhoodInfluenceState | null = null,
 ): DragNeighborhoodInfluenceState => {
   const nodes = new Map<string, DragNeighborhoodInfluenceNodeState>()
@@ -87,8 +125,6 @@ export const createDragNeighborhoodInfluenceState = (
   if (!graph.hasNode(draggedNodePubkey)) {
     return { nodes, edges }
   }
-
-  const config = DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG
 
   for (const [pubkey, hopDistance] of hopDistances) {
     if (pubkey === draggedNodePubkey) {

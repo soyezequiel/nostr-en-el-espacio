@@ -60,6 +60,14 @@ export interface DebugPhysicsDiagnostics {
   layoutEligible: boolean
   running: boolean
   suspended: boolean
+  settled: boolean
+  settlingStableSamples: number
+  motionSample: {
+    averageDisplacement: number
+    maxDisplacement: number
+    measuredNodeCount: number
+    totalNodeCount: number
+  } | null
   denseFactor: number
   tuning: {
     centripetalForce: number

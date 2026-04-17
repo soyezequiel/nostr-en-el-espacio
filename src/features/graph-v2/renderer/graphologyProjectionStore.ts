@@ -66,9 +66,16 @@ const hasEdgeAttributeChanges = (
   current.touchesFocus !== next.touchesFocus ||
   current.zIndex !== next.zIndex
 
-const createSeedPosition = (index: number, total: number) => {
-  const angle = (index / Math.max(total, 1)) * Math.PI * 2
-  const radius = Math.max(4, Math.sqrt(total) * 2)
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+const SEED_SPACING = 34
+
+const createSeedPosition = (index: number) => {
+  if (index === 0) {
+    return { x: 0, y: 0 }
+  }
+
+  const angle = index * GOLDEN_ANGLE
+  const radius = Math.sqrt(index) * SEED_SPACING
 
   return {
     x: Math.cos(angle) * radius,
@@ -145,8 +152,7 @@ export class GraphologyProjectionStore {
       const existingPosition = this.graph.hasNode(node.pubkey)
         ? this.graph.getNodeAttributes(node.pubkey)
         : this.positionCache.get(node.pubkey)
-      const seedPosition =
-        existingPosition ?? createSeedPosition(index, scene.nodes.length)
+      const seedPosition = existingPosition ?? createSeedPosition(index)
       const zIndex = node.focusState === 'selected'
         ? 8
         : node.isRoot

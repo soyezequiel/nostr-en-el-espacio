@@ -108,8 +108,54 @@ test('translates node positions without changing their fixed state', () => {
   store.setNodeFixed('A', true)
   store.translateNodePosition('A', 3, -2)
 
-  assert.deepEqual(store.getNodePosition('A'), { x: 7, y: -2 })
+  assert.deepEqual(store.getNodePosition('A'), { x: 3, y: -2 })
   assert.equal(store.isNodeFixed('A'), true)
+})
+
+test('seeds new nodes with enough spacing for anti-collision layout', () => {
+  const store = new GraphologyProjectionStore()
+  const scene = createScene('follow:A:B')
+  scene.nodes = Array.from({ length: 40 }, (_, index) => ({
+    pubkey: `node-${index}`,
+    label: `Node ${index}`,
+    pictureUrl: null,
+    color: '#fff',
+    size: 9,
+    isRoot: index === 0,
+    isSelected: false,
+    isPinned: false,
+    isNeighbor: false,
+    isDimmed: false,
+    focusState: index === 0 ? 'root' : 'idle',
+  }))
+  scene.visibleEdges = []
+  scene.forceEdges = []
+
+  store.applyScene(scene)
+
+  const graph = store.getGraph()
+  let minimumDistance = Number.POSITIVE_INFINITY
+
+  for (let leftIndex = 0; leftIndex < scene.nodes.length; leftIndex += 1) {
+    const left = graph.getNodeAttributes(scene.nodes[leftIndex]!.pubkey)
+
+    for (
+      let rightIndex = leftIndex + 1;
+      rightIndex < scene.nodes.length;
+      rightIndex += 1
+    ) {
+      const right = graph.getNodeAttributes(scene.nodes[rightIndex]!.pubkey)
+      minimumDistance = Math.min(
+        minimumDistance,
+        Math.hypot(right.x - left.x, right.y - left.y),
+      )
+    }
+  }
+
+  assert.ok(
+    minimumDistance > 18,
+    `expected seed spacing to exceed visual collision diameter, got ${minimumDistance}`,
+  )
 })
 
 test('projects selected neighborhoods into prominent sigma attributes', () => {

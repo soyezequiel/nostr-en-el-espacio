@@ -15,10 +15,10 @@ const DENSE_GRAPH_FULL_NODE_COUNT = 2200
 const OBSIDIAN_PHYSICS_PRESET_VERSION = 'obsidian-v2'
 const BASE_SCALING_RATIO = 4.5
 const DENSE_SCALING_RATIO = 9
-const BASE_GRAVITY = 0.35
-const DENSE_GRAVITY = 0.55
-const BASE_SLOW_DOWN = 14
-const DENSE_SLOW_DOWN = 22
+const BASE_GRAVITY = 0.08
+const DENSE_GRAVITY = 0.16
+const BASE_SLOW_DOWN = 22
+const DENSE_SLOW_DOWN = 36
 const BASE_EDGE_WEIGHT_INFLUENCE = 1.25
 const DENSE_EDGE_WEIGHT_INFLUENCE = 0.65
 const BASE_BARNES_HUT_THETA = 0.55
@@ -32,6 +32,16 @@ const MIN_SLOW_DOWN = 1
 const MAX_SLOW_DOWN = 60
 const MIN_EDGE_WEIGHT_INFLUENCE = 0.05
 const MAX_EDGE_WEIGHT_INFLUENCE = 3
+const SETTLING_SAMPLE_INTERVAL_MS = 500
+const SETTLING_STABLE_SAMPLE_COUNT = 3
+// Real FA2 with adjustSizes=true keeps a low-level jitter even after visually
+// stabilizing, so the thresholds must accept a small persistent floor of
+// motion instead of requiring perfect stillness.
+const SETTLING_AVERAGE_DISPLACEMENT_THRESHOLD = 0.18
+const SETTLING_MAX_DISPLACEMENT_THRESHOLD = 0.75
+// Hard wall-clock cap so the layout always reaches a visual rest, even if
+// repulsion/gravity are tuned such that the worker never truly converges.
+const SETTLING_MAX_LAYOUT_RUNTIME_MS = 12_000
 
 export interface ForceAtlasPhysicsTuning {
   centripetalForce: number
@@ -57,6 +67,9 @@ export interface ForceAtlasPhysicsDiagnostics {
   layoutEligible: boolean
   running: boolean
   suspended: boolean
+  settled: boolean
+  settlingStableSamples: number
+  motionSample: ForceAtlasMotionSample | null
   denseFactor: number
   tuning: ForceAtlasPhysicsTuning
   settings: ForceAtlas2Settings
@@ -73,11 +86,90 @@ export interface ForceAtlasPhysicsDiagnostics {
   approximateOverlapCount: number
 }
 
+export interface ForceAtlasPosition {
+  x: number
+  y: number
+}
+
+export type ForceAtlasPositionSnapshot = ReadonlyMap<string, ForceAtlasPosition>
+
+export interface ForceAtlasMotionSample {
+  averageDisplacement: number
+  maxDisplacement: number
+  measuredNodeCount: number
+  totalNodeCount: number
+}
+
+export interface ForceAtlasSettlingConfig {
+  sampleIntervalMs: number
+  stableSampleCount: number
+  averageDisplacementThreshold: number
+  maxDisplacementThreshold: number
+  maxLayoutRuntimeMs: number
+}
+
+const DEFAULT_FORCE_ATLAS_SETTLING_CONFIG: ForceAtlasSettlingConfig = {
+  sampleIntervalMs: SETTLING_SAMPLE_INTERVAL_MS,
+  stableSampleCount: SETTLING_STABLE_SAMPLE_COUNT,
+  averageDisplacementThreshold: SETTLING_AVERAGE_DISPLACEMENT_THRESHOLD,
+  maxDisplacementThreshold: SETTLING_MAX_DISPLACEMENT_THRESHOLD,
+  maxLayoutRuntimeMs: SETTLING_MAX_LAYOUT_RUNTIME_MS,
+}
+
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
 
 const interpolateNumber = (start: number, end: number, factor: number) =>
   start + (end - start) * factor
+
+export const createForceAtlasPositionSnapshot = (
+  graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>,
+) => {
+  const snapshot = new Map<string, ForceAtlasPosition>()
+
+  for (const node of graph.nodes()) {
+    const attributes = graph.getNodeAttributes(node)
+    snapshot.set(node, {
+      x: attributes.x,
+      y: attributes.y,
+    })
+  }
+
+  return snapshot
+}
+
+export const resolveForceAtlasMotionSample = (
+  previousSnapshot: ForceAtlasPositionSnapshot,
+  currentSnapshot: ForceAtlasPositionSnapshot,
+): ForceAtlasMotionSample => {
+  let totalDisplacement = 0
+  let maxDisplacement = 0
+  let measuredNodeCount = 0
+
+  for (const [node, currentPosition] of currentSnapshot) {
+    const previousPosition = previousSnapshot.get(node)
+
+    if (!previousPosition) {
+      continue
+    }
+
+    const displacement = Math.hypot(
+      currentPosition.x - previousPosition.x,
+      currentPosition.y - previousPosition.y,
+    )
+    totalDisplacement += displacement
+    maxDisplacement = Math.max(maxDisplacement, displacement)
+    measuredNodeCount += 1
+  }
+
+  return {
+    averageDisplacement:
+      measuredNodeCount === 0 ? 0 : totalDisplacement / measuredNodeCount,
+    maxDisplacement,
+    measuredNodeCount,
+    totalNodeCount: currentSnapshot.size,
+  }
+}
 
 export const createForceAtlasPhysicsTuning = (
   tuning: Partial<ForceAtlasPhysicsTuning> = {},
@@ -178,7 +270,7 @@ export const resolveForceAtlasSettings = (
       DENSE_BARNES_HUT_THETA,
       denseFactor,
     ),
-    strongGravityMode: false,
+    strongGravityMode: true,
   }
 }
 
@@ -292,9 +384,23 @@ export class ForceAtlasRuntime {
 
   private lastSettingsKey: string | null = null
 
+  private lastTopologySignature: string | null = null
+
   private suspended = false
 
   private layoutEligible = false
+
+  private settled = false
+
+  private settlingStableSamples = 0
+
+  private settlingTimer: ReturnType<typeof setInterval> | null = null
+
+  private previousSettlingSnapshot: ForceAtlasPositionSnapshot | null = null
+
+  private lastMotionSample: ForceAtlasMotionSample | null = null
+
+  private layoutStartedAt: number | null = null
 
   private physicsTuning = DEFAULT_FORCE_ATLAS_PHYSICS_TUNING
 
@@ -308,16 +414,26 @@ export class ForceAtlasRuntime {
         settings,
         getEdgeWeight: 'weight',
       }),
+    private readonly settlingConfig: ForceAtlasSettlingConfig = DEFAULT_FORCE_ATLAS_SETTLING_CONFIG,
   ) {}
 
   public sync(scene: GraphSceneSnapshot) {
     const shouldRun =
       scene.nodes.length >= MINIMUM_RUNNING_NODES && scene.forceEdges.length > 0
     this.layoutEligible = shouldRun
+    const topologySignature = scene.diagnostics.topologySignature
+    const topologyChanged =
+      this.lastTopologySignature !== null &&
+      this.lastTopologySignature !== topologySignature
+    this.lastTopologySignature = topologySignature
 
     if (!shouldRun) {
       this.stop()
       return
+    }
+
+    if (topologyChanged) {
+      this.wake()
     }
 
     if (this.suspended) {
@@ -329,21 +445,26 @@ export class ForceAtlasRuntime {
     if (this.layout === null) {
       this.layout = this.createLayout()
       this.lastSettingsKey = settingsKey
-      this.layout.start()
+      this.startLayout()
       return
     }
 
     if (this.lastSettingsKey !== settingsKey) {
+      this.wake()
       this.stop()
       this.kill()
       this.layout = this.createLayout()
       this.lastSettingsKey = settingsKey
-      this.layout.start()
+      this.startLayout()
+      return
+    }
+
+    if (this.settled) {
       return
     }
 
     if (!this.layout.isRunning()) {
-      this.layout.start()
+      this.startLayout()
     }
   }
 
@@ -356,11 +477,12 @@ export class ForceAtlasRuntime {
       return
     }
 
+    this.wake()
     this.stop()
     this.kill()
     this.layout = this.createLayout()
     this.lastSettingsKey = createSettingsKey(this.graph.order, this.physicsTuning)
-    this.layout.start()
+    this.startLayout()
   }
 
   public setPhysicsTuning(tuning: Partial<ForceAtlasPhysicsTuning> = {}) {
@@ -374,6 +496,8 @@ export class ForceAtlasRuntime {
       return
     }
 
+    this.wake()
+
     if (!this.layoutEligible || this.suspended) {
       this.stop()
       this.kill()
@@ -384,10 +508,12 @@ export class ForceAtlasRuntime {
     this.kill()
     this.layout = this.createLayout()
     this.lastSettingsKey = nextKey
-    this.layout.start()
+    this.startLayout()
   }
 
   public stop() {
+    this.stopSettlingMonitor()
+
     if (this.layout?.isRunning()) {
       this.layout.stop()
     }
@@ -404,6 +530,7 @@ export class ForceAtlasRuntime {
     }
 
     this.suspended = false
+    this.wake()
 
     if (!this.layoutEligible) {
       return
@@ -412,12 +539,12 @@ export class ForceAtlasRuntime {
     if (this.layout === null) {
       this.layout = this.createLayout()
       this.lastSettingsKey = createSettingsKey(this.graph.order, this.physicsTuning)
-      this.layout.start()
+      this.startLayout()
       return
     }
 
     if (!this.layout.isRunning()) {
-      this.layout.start()
+      this.startLayout()
     }
   }
 
@@ -440,6 +567,9 @@ export class ForceAtlasRuntime {
       layoutEligible: this.layoutEligible,
       running: this.isRunning(),
       suspended: this.suspended,
+      settled: this.settled,
+      settlingStableSamples: this.settlingStableSamples,
+      motionSample: this.lastMotionSample,
       denseFactor: resolveForceAtlasDenseFactor(this.graph.order),
       tuning: this.physicsTuning,
       settings: resolveForceAtlasSettings(this.graph.order, this.physicsTuning),
@@ -450,6 +580,7 @@ export class ForceAtlasRuntime {
   }
 
   public kill() {
+    this.stopSettlingMonitor()
     this.layout?.kill()
     this.layout = null
     this.lastSettingsKey = null
@@ -458,6 +589,104 @@ export class ForceAtlasRuntime {
   public dispose() {
     this.stop()
     this.kill()
+  }
+
+  public sampleSettling(): ForceAtlasMotionSample | null {
+    if (!this.layout?.isRunning() || this.suspended || this.settled) {
+      return this.lastMotionSample
+    }
+
+    const currentSnapshot = createForceAtlasPositionSnapshot(this.graph)
+
+    if (this.previousSettlingSnapshot === null) {
+      this.previousSettlingSnapshot = currentSnapshot
+      return null
+    }
+
+    const sample = resolveForceAtlasMotionSample(
+      this.previousSettlingSnapshot,
+      currentSnapshot,
+    )
+    this.previousSettlingSnapshot = currentSnapshot
+    this.lastMotionSample = sample
+
+    const isStable =
+      sample.measuredNodeCount > 0 &&
+      sample.averageDisplacement <=
+        this.settlingConfig.averageDisplacementThreshold &&
+      sample.maxDisplacement <= this.settlingConfig.maxDisplacementThreshold
+
+    this.settlingStableSamples = isStable
+      ? this.settlingStableSamples + 1
+      : 0
+
+    // Hard wall-clock cap guarantees the layout always reaches a visual rest,
+    // even if tuning combinations mean the displacement floor never falls
+    // below the stability thresholds. Prevents the "graph keeps vibrating
+    // forever" failure mode when repulsion is high and gravity is low.
+    const runtimeExpired =
+      this.layoutStartedAt !== null &&
+      typeof performance !== 'undefined' &&
+      performance.now() - this.layoutStartedAt >=
+        this.settlingConfig.maxLayoutRuntimeMs
+
+    if (
+      this.settlingStableSamples >= this.settlingConfig.stableSampleCount ||
+      runtimeExpired
+    ) {
+      this.settled = true
+      this.stop()
+    }
+
+    return sample
+  }
+
+  private wake() {
+    this.settled = false
+    this.settlingStableSamples = 0
+    this.previousSettlingSnapshot = null
+    this.lastMotionSample = null
+    this.layoutStartedAt = null
+  }
+
+  private startLayout() {
+    if (!this.layout) {
+      return
+    }
+
+    if (!this.layout.isRunning()) {
+      this.layout.start()
+    }
+
+    this.layoutStartedAt =
+      typeof performance !== 'undefined' ? performance.now() : null
+    this.startSettlingMonitor()
+  }
+
+  private startSettlingMonitor() {
+    if (this.settlingTimer !== null) {
+      return
+    }
+
+    this.previousSettlingSnapshot = null
+    this.settlingTimer = setInterval(
+      () => this.sampleSettling(),
+      this.settlingConfig.sampleIntervalMs,
+    )
+
+    const nodeTimer = this.settlingTimer as {
+      unref?: () => void
+    }
+    nodeTimer.unref?.()
+  }
+
+  private stopSettlingMonitor() {
+    if (this.settlingTimer !== null) {
+      clearInterval(this.settlingTimer)
+      this.settlingTimer = null
+    }
+
+    this.previousSettlingSnapshot = null
   }
 
   private createLayout() {

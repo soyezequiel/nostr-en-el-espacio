@@ -37,7 +37,6 @@ type NodeRadiusContext = {
   visibleNodeCount: number
   averageVisibleDegree: number
   maxVisibleDegree: number
-  maxKeywordHits: number
 }
 
 type VisibleLayer = Exclude<BuildGraphRenderModelInput['activeLayer'], 'connections'>
@@ -52,7 +51,6 @@ const GRAPH_RADIUS_SETTINGS = {
   followMaxRadius: 16,
   connectionsFollowMaxRadius: 24,
   followMinRadius: 6,
-  keywordBoostCap: 5.2,
   degreeBoostCap: 3,
   sharedBoostCap: 2.4,
   sharedBoostFactor: 1.15,
@@ -303,7 +301,6 @@ const resolveConnectionsVisiblePubkeys = ({
   mutualLayerLinks,
   followerLayerLinks,
   nonReciprocalFollowerLayerLinks,
-  nodes,
   rootNodePubkey,
   expandedNodePubkeys,
 }: {
@@ -314,7 +311,6 @@ const resolveConnectionsVisiblePubkeys = ({
   mutualLayerLinks: readonly GraphLink[]
   followerLayerLinks: readonly GraphLink[]
   nonReciprocalFollowerLayerLinks: readonly GraphLink[]
-  nodes: BuildGraphRenderModelInput['nodes']
   rootNodePubkey: string | null
   expandedNodePubkeys: ReadonlySet<string>
 }) => {
@@ -330,7 +326,6 @@ const resolveConnectionsVisiblePubkeys = ({
     return removeRootPubkey(buildVisiblePubkeysForLayer({
       layer: 'following',
       layerLinks: followingLayerLinks,
-      nodes,
       rootNodePubkey,
       expandedNodePubkeys,
     }))
@@ -340,7 +335,6 @@ const resolveConnectionsVisiblePubkeys = ({
     return removeRootPubkey(buildVisiblePubkeysForLayer({
       layer: 'following-non-followers',
       layerLinks: nonReciprocalFollowingLayerLinks,
-      nodes,
       rootNodePubkey,
       expandedNodePubkeys,
     }))
@@ -350,7 +344,6 @@ const resolveConnectionsVisiblePubkeys = ({
     return removeRootPubkey(buildVisiblePubkeysForLayer({
       layer: 'mutuals',
       layerLinks: mutualLayerLinks,
-      nodes,
       rootNodePubkey,
       expandedNodePubkeys,
     }))
@@ -360,7 +353,6 @@ const resolveConnectionsVisiblePubkeys = ({
     return removeRootPubkey(buildVisiblePubkeysForLayer({
       layer: 'followers',
       layerLinks: followerLayerLinks,
-      nodes,
       rootNodePubkey,
       expandedNodePubkeys,
     }))
@@ -370,7 +362,6 @@ const resolveConnectionsVisiblePubkeys = ({
     return removeRootPubkey(buildVisiblePubkeysForLayer({
       layer: 'nonreciprocal-followers',
       layerLinks: nonReciprocalFollowerLayerLinks,
-      nodes,
       rootNodePubkey,
       expandedNodePubkeys,
     }))
@@ -408,13 +399,11 @@ const createVisiblePubkeysFromRenderEdges = (
 const buildVisiblePubkeysForLayer = ({
   layer,
   layerLinks,
-  nodes,
   rootNodePubkey,
   expandedNodePubkeys,
 }: {
   layer: VisibleLayer
   layerLinks: readonly VisibleLink[]
-  nodes: BuildGraphRenderModelInput['nodes']
   rootNodePubkey: string | null
   expandedNodePubkeys: ReadonlySet<string>
 }) => {
@@ -434,14 +423,6 @@ const buildVisiblePubkeysForLayer = ({
   for (const link of layerLinks) {
     visiblePubkeys.add(link.source)
     visiblePubkeys.add(link.target)
-  }
-
-  if (layer === 'keywords') {
-    for (const node of Object.values(nodes)) {
-      if (node.keywordHits > 0) {
-        visiblePubkeys.add(node.pubkey)
-      }
-    }
   }
 
   return visiblePubkeys
@@ -609,27 +590,6 @@ const getDegreeBoost = ({
   return Math.min(cap, absoluteBoost + relativeBoost)
 }
 
-const getKeywordBoost = ({
-  keywordHits,
-  maxKeywordHits,
-  activeLayer,
-}: Pick<NodeRadiusContext, 'activeLayer' | 'maxKeywordHits'> & {
-  keywordHits: number
-}) => {
-  if (activeLayer !== 'keywords' || keywordHits <= 0) {
-    return 0
-  }
-
-  const absoluteBoost = Math.log2(keywordHits + 1) * 1.05
-  const relativeBoost =
-    maxKeywordHits > 1 ? (keywordHits / maxKeywordHits) * 1.9 : 1.15
-
-  return Math.min(
-    GRAPH_RADIUS_SETTINGS.keywordBoostCap,
-    absoluteBoost + relativeBoost,
-  )
-}
-
 const getSharedExpandedBoost = (sharedByExpandedCount: number) => {
   if (sharedByExpandedCount < 2) {
     return 0
@@ -671,11 +631,6 @@ const getNodeRadius = (
     maxVisibleDegree: context.maxVisibleDegree,
     activeLayer: context.activeLayer,
   })
-  const keywordBoost = getKeywordBoost({
-    keywordHits: node.keywordHits,
-    maxKeywordHits: context.maxKeywordHits,
-    activeLayer: context.activeLayer,
-  })
   const avatarBoost = isSafeAvatarUrl(node.picture)
     ? GRAPH_RADIUS_SETTINGS.avatarBoost
     : 0
@@ -695,7 +650,6 @@ const getNodeRadius = (
     clampNumber(
       baseRadius * contextScale +
         degreeBoost +
-        keywordBoost +
         avatarBoost +
         sharedBoost,
       minRadius,
@@ -1363,7 +1317,6 @@ export const buildGraphRenderModel = async ({
     mutualLayerLinks,
     followerLayerLinks,
     nonReciprocalFollowerLayerLinks,
-    nodes,
     rootNodePubkey,
     expandedNodePubkeys,
   })
@@ -1424,7 +1377,6 @@ export const buildGraphRenderModel = async ({
       : buildVisiblePubkeysForLayer({
           layer: activeLayer,
           layerLinks: renderedLinks,
-          nodes,
           rootNodePubkey,
           expandedNodePubkeys,
         })
@@ -1478,13 +1430,6 @@ export const buildGraphRenderModel = async ({
       (maxDegree, degree) => Math.max(maxDegree, degree),
       0,
     ),
-    maxKeywordHits:
-      activeLayer === 'keywords'
-        ? orderedNodes.reduce(
-            (maxHits, node) => Math.max(maxHits, node.keywordHits),
-            0,
-          )
-        : 0,
   }
 
   const layoutKey = buildLayoutKey(

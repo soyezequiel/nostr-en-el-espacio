@@ -29,7 +29,6 @@ import type { AnalysisModule } from '@/features/graph/kernel/modules/analysis'
 import type { PersistenceModule } from '@/features/graph/kernel/modules/persistence'
 import type { ProfileHydrationModule } from '@/features/graph/kernel/modules/profile-hydration'
 import type { RootLoaderModule } from '@/features/graph/kernel/modules/root-loader'
-import type { KeywordLayerModule } from '@/features/graph/kernel/modules/keyword-layer'
 import type { ZapLayerModule } from '@/features/graph/kernel/modules/zap-layer'
 import type { NodeDetailModule } from '@/features/graph/kernel/modules/node-detail'
 import {
@@ -48,7 +47,6 @@ export function createNodeExpansionModule(
     persistence: PersistenceModule
     profileHydration: ProfileHydrationModule
     rootLoader: RootLoaderModule
-    keywordLayer: KeywordLayerModule
     zapLayer: ZapLayerModule
     nodeDetail: NodeDetailModule
     loadDirectInboundFollowerEvidence?: (input: {
@@ -237,16 +235,6 @@ export function createNodeExpansionModule(
       options.relayUrls.slice(),
     ).catch((error) => {
       console.warn('Zap layer prefetch failed after reciprocal enrichment:', error)
-    })
-
-    void collaborators.keywordLayer.prefetchKeywordCorpus(
-      collaborators.keywordLayer.getKeywordCorpusTargetPubkeys(),
-      options.relayUrls.slice(),
-    ).catch((error) => {
-      console.warn(
-        'Keyword corpus prefetch failed after reciprocal enrichment:',
-        error,
-      )
     })
   }
 
@@ -781,12 +769,6 @@ export function createNodeExpansionModule(
       options.relayUrls,
     ).catch((err) => {
       console.warn('Zap layer prefetch failed after expansion:', err)
-    })
-    void collaborators.keywordLayer.prefetchKeywordCorpus(
-      collaborators.keywordLayer.getKeywordCorpusTargetPubkeys(),
-      options.relayUrls,
-    ).catch((err) => {
-      console.warn('Keyword corpus prefetch failed after expansion:', err)
     })
 
     const rejectedPubkeys = Array.from(

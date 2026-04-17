@@ -1,4 +1,4 @@
-/* eslint-disable @next/next/no-assign-module-variable, react-hooks/refs */
+/* eslint-disable @next/next/no-assign-module-variable */
 
 import {
   memo,
@@ -7,7 +7,6 @@ import {
   lazy,
   startTransition,
   useCallback,
-  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -86,14 +85,6 @@ const selectGraphCanvasRenderState = (state: AppStore) => ({
   zapEdges: state.zapLayer.edges,
   zapLayerStatus: state.zapLayer.status,
   zapLayerRevision: state.zapLayer.revision,
-  keywordLayerStatus: state.keywordLayer.status,
-  keywordLayerMessage: state.keywordLayer.message,
-  keywordExtractCount: state.keywordLayer.extractCount,
-  keywordCorpusNodeCount: state.keywordLayer.corpusNodeCount,
-  keywordLoadedFrom: state.keywordLayer.loadedFrom,
-  keywordIsPartial: state.keywordLayer.isPartial,
-  keywordMatchCount: state.keywordLayer.matchCount,
-  keywordMatchNodeCount: state.keywordLayer.matchNodeCount,
   rootNodePubkey: state.rootNodePubkey,
   selectedNodePubkey: state.selectedNodePubkey,
   comparedNodePubkeys: state.comparedNodePubkeys,
@@ -119,14 +110,6 @@ const selectGraphCanvasRenderState = (state: AppStore) => ({
 
 const selectGraphCanvasPanelState = (state: AppStore) => ({
   openPanel: state.openPanel,
-})
-
-const selectGraphCanvasKeywordSearchState = (state: AppStore) => ({
-  activeLayer: state.activeLayer,
-  currentKeyword: state.currentKeyword,
-  keywordLayerStatus: state.keywordLayer.status,
-  keywordExtractCount: state.keywordLayer.extractCount,
-  keywordMatchCount: state.keywordLayer.matchCount,
 })
 
 const NodeDetailPanel = lazy(async () => {
@@ -161,7 +144,6 @@ export interface GraphCanvasDiagnostics {
     meta: string
     activeLayer: string
     zapLayerStatus: string
-    keywordLayerStatus: string
   }
 }
 
@@ -743,82 +725,6 @@ const GraphCanvasPanels = memo(function GraphCanvasPanels({
   )
 })
 
-interface GraphCanvasKeywordSearchProps {
-  runtime: RootLoader
-}
-
-const GraphCanvasKeywordSearch = memo(function GraphCanvasKeywordSearch({
-  runtime,
-}: GraphCanvasKeywordSearchProps) {
-  const {
-    activeLayer,
-    currentKeyword,
-    keywordLayerStatus,
-    keywordExtractCount,
-    keywordMatchCount,
-  } = useAppStore(useShallow(selectGraphCanvasKeywordSearchState))
-  const [draft, setDraft] = useState(currentKeyword)
-  const [isSearching, setIsSearching] = useState(false)
-  const deferredDraft = useDeferredValue(draft)
-  const requestSequenceRef = useRef(0)
-
-  useEffect(() => {
-    if (activeLayer !== 'keywords' || keywordLayerStatus !== 'enabled') {
-      return
-    }
-
-    const requestId = requestSequenceRef.current + 1
-    requestSequenceRef.current = requestId
-    const timer = window.setTimeout(() => {
-      setIsSearching(true)
-      void runtime
-        .searchKeyword(deferredDraft)
-        .catch((error) => {
-          console.warn('[graph] Keyword search failed.', error)
-        })
-        .finally(() => {
-          if (requestSequenceRef.current === requestId) {
-            setIsSearching(false)
-          }
-        })
-    }, 180)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [activeLayer, deferredDraft, keywordLayerStatus, runtime])
-
-  const isKeywordSearchUsable = keywordLayerStatus === 'enabled'
-  const keywordInputPlaceholder =
-    keywordLayerStatus === 'enabled'
-      ? 'Buscar keyword o interes'
-      : 'Esperando corpus de notas'
-  const keywordMeta = isKeywordSearchUsable && isSearching
-    ? 'Buscando...'
-    : keywordMatchCount > 0
-      ? `${keywordMatchCount} hits`
-      : keywordExtractCount > 0
-        ? `${keywordExtractCount} extractos`
-        : 'Sin corpus'
-
-  return (
-    <div className="graph-panel__keyword-search">
-      <input
-        aria-label="Buscar keyword o interes"
-        className="graph-panel__keyword-input"
-        disabled={!isKeywordSearchUsable}
-        onChange={(event) => {
-          setDraft(event.target.value)
-        }}
-        placeholder={keywordInputPlaceholder}
-        type="search"
-        value={draft}
-      />
-      <span className="graph-panel__keyword-meta">{keywordMeta}</span>
-    </div>
-  )
-})
-
 export const GraphCanvas = memo(function GraphCanvas({
   runtime,
   onTrySampleRoot,
@@ -835,14 +741,6 @@ export const GraphCanvas = memo(function GraphCanvas({
     zapEdges,
     zapLayerStatus,
     zapLayerRevision,
-    keywordLayerStatus,
-    keywordLayerMessage,
-    keywordExtractCount,
-    keywordCorpusNodeCount,
-    keywordLoadedFrom,
-    keywordIsPartial,
-    keywordMatchCount,
-    keywordMatchNodeCount,
     rootNodePubkey,
     selectedNodePubkey,
     comparedNodePubkeys,
@@ -2666,73 +2564,7 @@ export const GraphCanvas = memo(function GraphCanvas({
       ? `Camino de ${Math.max(0, pathfinding.path.length - 1)} saltos`
     : activeLayer === 'zaps'
       ? `${zapEdges.length} zaps visibles`
-      : activeLayer === 'keywords'
-        ? keywordMatchCount > 0
-          ? `${keywordMatchCount} hits en ${keywordMatchNodeCount} nodos`
-          : keywordExtractCount > 0
-            ? `${keywordExtractCount} extractos listos`
-            : keywordLayerMessage ?? 'Keywords sin corpus'
       : `${model.edges.length} links visibles`
-  const layerStatusNote =
-    activeLayer === 'connections'
-      ? model.edges.length > 0
-        ? connectionsSourceLayer === 'following'
-          ? 'Solo enlaces internos entre cuentas seguidas por el root.'
-          : connectionsSourceLayer === 'following-non-followers'
-            ? 'Solo enlaces internos entre cuentas seguidas por el root sin follow-back.'
-            : connectionsSourceLayer === 'followers'
-              ? 'Solo enlaces internos entre cuentas que siguen al root.'
-              : connectionsSourceLayer === 'nonreciprocal-followers'
-                ? 'Solo enlaces internos entre seguidores sin reciprocidad hacia el root.'
-                : connectionsSourceLayer === 'mutuals'
-                  ? 'Solo enlaces internos entre cuentas con relacion reciproca con el root.'
-                  : 'Solo enlaces internos entre los nodos visibles de la vista anterior.'
-        : connectionsSourceLayer === 'following'
-          ? 'Todavia no hay enlaces internos entre las cuentas que sigue el root.'
-          : connectionsSourceLayer === 'following-non-followers'
-            ? 'Todavia no hay enlaces internos entre las cuentas que sigue el root sin reciprocidad.'
-            : connectionsSourceLayer === 'followers'
-              ? 'Todavia no hay enlaces internos entre las cuentas que siguen al root.'
-              : connectionsSourceLayer === 'nonreciprocal-followers'
-                ? 'Todavia no hay enlaces internos entre seguidores sin reciprocidad.'
-                : connectionsSourceLayer === 'mutuals'
-                  ? 'Todavia no hay enlaces internos entre los mutuos detectados.'
-                  : 'Todavia no hay enlaces internos entre los nodos visibles de esa vista.'
-    : activeLayer === 'following'
-      ? model.edges.length > 0
-        ? 'Cuentas seguidas por el root en esta sesion.'
-        : 'No hay follows salientes visibles todavia para el root.'
-    : activeLayer === 'following-non-followers'
-      ? model.edges.length > 0
-        ? 'Cuentas seguidas por el root sin follow-back.'
-        : 'No hay follows sin reciprocidad visibles todavia para el root.'
-    : activeLayer === 'followers'
-      ? model.edges.length > 0
-        ? 'Cuentas que siguen al root en esta sesion.'
-        : 'No hay follows entrantes visibles todavia para el root.'
-    : activeLayer === 'nonreciprocal-followers'
-      ? model.edges.length > 0
-        ? 'Cuentas que siguen al root sin recibir follow-back.'
-        : 'No hay seguidores sin reciprocidad visibles todavia para el root.'
-    : activeLayer === 'mutuals'
-      ? model.edges.length > 0
-        ? 'Relaciones reciprocas detectadas para el root.'
-        : 'No hay relaciones reciprocas visibles todavia.'
-    : activeLayer === 'keywords'
-      ? keywordLayerMessage
-      : activeLayer === 'zaps'
-        ? zapLayerStatus === 'enabled'
-          ? `${zapEdges.length} relaciones de zap visibles.`
-          : 'La capa de zaps depende de recibos disponibles.'
-        : graphAnalysis.message
-  const keywordLayerDisabledReason =
-    keywordLayerStatus === 'unavailable'
-      ? keywordLayerMessage ?? 'La capa de keywords no esta disponible.'
-      : keywordLayerStatus === 'loading'
-        ? keywordLayerMessage ?? 'Preparando corpus de notas...'
-        : keywordLayerStatus === 'disabled'
-          ? keywordLayerMessage ?? 'La capa de keywords todavia no esta lista.'
-          : ''
   const streamLabel =
     pathfinding.status === 'computing'
       ? 'Calculando camino'
@@ -2779,8 +2611,6 @@ export const GraphCanvas = memo(function GraphCanvas({
           rootLoadStatus === 'error'
         ? rootLoadMessage ??
           'La cobertura quedo parcial; el grafo conserva la evidencia disponible.'
-      : activeLayer === 'keywords' && keywordLayerMessage
-        ? keywordLayerMessage
       : activeLayer === 'zaps'
         ? zapLayerStatus === 'enabled'
           ? `${zapEdges.length} relaciones de zap visibles desde evidencia decodificada.`
@@ -2819,7 +2649,6 @@ export const GraphCanvas = memo(function GraphCanvas({
           meta: streamMeta,
           activeLayer,
           zapLayerStatus,
-          keywordLayerStatus,
         },
       }
     },
@@ -2836,7 +2665,6 @@ export const GraphCanvas = memo(function GraphCanvas({
       streamMeta,
       streamLabel,
       visibleLabels.length,
-      keywordLayerStatus,
       shouldCollectDiagnostics,
       zapLayerStatus,
     ],
@@ -3002,18 +2830,6 @@ export const GraphCanvas = memo(function GraphCanvas({
             relationshipToggleState={relationshipToggleState}
           />
 
-          {activeLayer === 'keywords' && layerStatusNote ? (
-            <div className="graph-panel__status-note" aria-live="polite">
-              <p>{layerStatusNote}</p>
-              {activeLayer === 'keywords' ? (
-                <p>
-                  Corpus {keywordExtractCount} extractos / {keywordCorpusNodeCount}{' '}
-                  nodos / origen {keywordLoadedFrom}
-                  {keywordIsPartial ? ' / parcial' : ''}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       </section>
     </Profiler>

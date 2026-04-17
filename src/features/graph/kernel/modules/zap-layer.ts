@@ -5,7 +5,6 @@ import type { AnalysisModule } from '@/features/graph/kernel/modules/analysis'
 import type { PersistenceModule } from '@/features/graph/kernel/modules/persistence'
 import type { ProfileHydrationModule } from '@/features/graph/kernel/modules/profile-hydration'
 import type { RelaySessionModule } from '@/features/graph/kernel/modules/relay-session'
-import type { KeywordLayerModule } from '@/features/graph/kernel/modules/keyword-layer'
 import {
   buildZapReceiptsFilter,
   collectRelayEvents,
@@ -30,7 +29,6 @@ export function createZapLayerModule(
       getLoadSequence: () => number
       isStaleLoad: (loadId: number) => boolean
     }
-    keywordLayer: KeywordLayerModule
   },
 ) {
   let activeZapSession: ActiveZapSession | null = null
@@ -312,10 +310,6 @@ export function createZapLayerModule(
         {
           persistProfileEvent: collaborators.persistence.persistProfileEvent,
         },
-      )
-      void collaborators.keywordLayer.prefetchKeywordCorpus(
-        collaborators.keywordLayer.getKeywordCorpusTargetPubkeys(),
-        relayUrls,
       )
     }
   }

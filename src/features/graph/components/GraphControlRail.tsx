@@ -108,13 +108,6 @@ const resolveControlFeedback = (
         detail: 'Relaciones reciprocas detectadas para el root.',
         tone: 'mint',
       }
-    case 'keywords':
-      return {
-        label: 'Viendo',
-        value: 'Palabras',
-        detail: 'Filtra el grafo por coincidencias de texto.',
-        tone: 'blue',
-      }
     case 'zaps':
       return {
         label: 'Viendo',

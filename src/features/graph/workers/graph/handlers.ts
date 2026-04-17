@@ -247,7 +247,6 @@ function validateUiLayer(value: unknown, path: string): UiLayer {
     value !== 'mutuals' &&
     value !== 'followers' &&
     value !== 'nonreciprocal-followers' &&
-    value !== 'keywords' &&
     value !== 'zaps' &&
     value !== 'pathfinding'
   ) {
@@ -661,7 +660,6 @@ function validateBuildRenderModelRequest(
       request.connectionsSourceLayer === 'mutuals' ||
       request.connectionsSourceLayer === 'followers' ||
       request.connectionsSourceLayer === 'nonreciprocal-followers' ||
-      request.connectionsSourceLayer === 'keywords' ||
       request.connectionsSourceLayer === 'zaps' ||
       request.connectionsSourceLayer === 'pathfinding'
         ? request.connectionsSourceLayer

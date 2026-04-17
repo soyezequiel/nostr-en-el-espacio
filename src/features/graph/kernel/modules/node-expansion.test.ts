@@ -156,10 +156,6 @@ test('expandNode resolves before reciprocal enrichment finishes and merges late 
       getLoadSequence: () => 1,
       isStaleLoad: () => false,
     },
-    keywordLayer: {
-      getKeywordCorpusTargetPubkeys: () => [],
-      prefetchKeywordCorpus: async () => {},
-    },
     zapLayer: {
       getZapTargetPubkeys: () => [],
       prefetchZapLayer: async () => {},

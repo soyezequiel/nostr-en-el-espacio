@@ -2,7 +2,6 @@ import type { UiLayer } from '@/features/graph/app/store'
 import type {
   LoadRootResult,
   ExpandNodeResult,
-  SearchKeywordResult,
   FindPathResult,
   ToggleLayerResult,
   SelectNodeResult,
@@ -13,7 +12,6 @@ import type { KernelFacade } from '@/features/graph/kernel/facade'
 export type ScenarioCommand =
   | { type: 'loadRoot'; pubkey: string }
   | { type: 'expandNode'; pubkey: string }
-  | { type: 'searchKeyword'; keyword: string }
   | { type: 'toggleLayer'; layer: UiLayer }
   | { type: 'findPath'; source: string; target: string; algorithm?: 'bfs' | 'dijkstra' }
   | { type: 'selectNode'; pubkey: string | null }
@@ -21,7 +19,6 @@ export type ScenarioCommand =
 export type ScenarioCommandResult =
   | { type: 'loadRoot'; result: LoadRootResult }
   | { type: 'expandNode'; result: ExpandNodeResult }
-  | { type: 'searchKeyword'; result: SearchKeywordResult }
   | { type: 'toggleLayer'; result: ToggleLayerResult }
   | { type: 'findPath'; result: FindPathResult }
   | { type: 'selectNode'; result: SelectNodeResult }
@@ -65,7 +62,6 @@ export interface ScenarioReport {
     ui: {
       activeLayer: string
       selectedNodePubkey: string | null
-      currentKeyword: string
       rootLoadStatus: string
     }
     analysis: {
@@ -150,7 +146,6 @@ export async function runScenario(
       ui: {
         activeLayer: state.activeLayer,
         selectedNodePubkey: state.selectedNodePubkey,
-        currentKeyword: state.currentKeyword,
         rootLoadStatus: state.rootLoad.status,
       },
       analysis: {
@@ -179,10 +174,6 @@ async function executeCommand(
     case 'expandNode': {
       const result = await kernel.expandNode(command.pubkey)
       return { type: 'expandNode', result }
-    }
-    case 'searchKeyword': {
-      const result = await kernel.searchKeyword(command.keyword)
-      return { type: 'searchKeyword', result }
     }
     case 'toggleLayer': {
       const result = kernel.toggleLayer(command.layer)

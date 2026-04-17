@@ -30,31 +30,6 @@ export interface ParseContactListResult {
   diagnostics: WorkerDiagnostic[]
 }
 
-export interface KeywordExtractInput {
-  noteId: string
-  pubkey: string
-  text: string
-}
-
-export interface SearchKeywordsRequest {
-  keyword: string
-  extracts: KeywordExtractInput[]
-}
-
-export interface KeywordExcerptMatch {
-  noteId: string
-  pubkey: string
-  excerpt: string
-  matchedTokens: string[]
-  score: number
-}
-
-export interface SearchKeywordsResult {
-  tokens: string[]
-  hitCounts: Record<string, number>
-  excerptMatches: KeywordExcerptMatch[]
-}
-
 export interface ZapReceiptInput {
   id: string
   kind: number
@@ -83,10 +58,6 @@ export interface EventsWorkerActionMap extends WorkerActionMap {
   PARSE_CONTACT_LIST: {
     request: ParseContactListRequest
     response: ParseContactListResult
-  }
-  SEARCH_KEYWORDS: {
-    request: SearchKeywordsRequest
-    response: SearchKeywordsResult
   }
   DECODE_ZAPS: {
     request: DecodeZapsRequest

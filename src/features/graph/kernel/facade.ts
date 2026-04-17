@@ -10,7 +10,6 @@ import {
   selectLatestReplaceableEventsByPubkey,
   serializeContactListEvent,
 } from '@/features/graph/kernel/modules/helpers'
-import { createKeywordLayerModule } from '@/features/graph/kernel/modules/keyword-layer'
 import { createNodeDetailModule } from '@/features/graph/kernel/modules/node-detail'
 import { createNodeExpansionModule } from '@/features/graph/kernel/modules/node-expansion'
 import { createPersistenceModule } from '@/features/graph/kernel/modules/persistence'
@@ -119,7 +118,6 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
   const persistence = createPersistenceModule(ctx, { profileHydration })
   const exportOrch = createExportModule(ctx)
   const relaySession = createRelaySessionModule(ctx)
-  const keywordLayer = createKeywordLayerModule(ctx, { persistence })
   const nodeDetail = createNodeDetailModule(ctx, {
     persistence,
     profileHydration,
@@ -151,7 +149,6 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
     persistence,
     profileHydration,
     relaySession,
-    keywordLayer,
     zapLayer: zapLayerRef,
   })
 
@@ -161,7 +158,6 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
     profileHydration,
     relaySession,
     rootLoader: rootLoaderRef,
-    keywordLayer,
   })
 
   relaySession.bindLoadRoot(rootLoader.loadRoot)
@@ -171,7 +167,6 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
     persistence,
     profileHydration,
     rootLoader,
-    keywordLayer,
     zapLayer,
     nodeDetail,
   })
@@ -455,9 +450,7 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
       message:
         layer === 'zaps'
           ? state.zapLayer.message
-          : layer === 'keywords'
-            ? state.keywordLayer.message
-            : null,
+          : null,
     }
   }
 
@@ -466,9 +459,7 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
 
     while (
       attempts < 20 &&
-      (analysis.isInFlight() ||
-        analysis.isFlushScheduled() ||
-        keywordLayer.isCorpusInFlight())
+      (analysis.isInFlight() || analysis.isFlushScheduled())
     ) {
       await new Promise((resolve) => setTimeout(resolve, 50))
       attempts += 1
@@ -488,7 +479,6 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
     relaySession.flushPendingRelayHealth()
     rootLoader.cancelActiveLoad()
     zapLayer.cancelActiveZapLoad()
-    keywordLayer.cancelActiveKeywordLoad()
     ctx.eventsWorker.dispose()
     ctx.graphWorker.dispose()
   }
@@ -498,7 +488,6 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
     reconfigureRelays: relaySession.reconfigureRelays,
     revertRelayOverride: relaySession.revertRelayOverride,
     expandNode: nodeExpansion.expandNode,
-    searchKeyword: keywordLayer.searchKeyword,
     toggleLayer,
     findPath: nodeDetail.findPath,
     selectNode: nodeDetail.selectNode,

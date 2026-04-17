@@ -29,13 +29,6 @@ const createRuntimeStub = () => ({
     rejectedPubkeys: [],
     message: 'ok',
   }),
-  searchKeyword: async () => ({
-    keyword: '',
-    tokens: [],
-    totalHits: 0,
-    nodeHits: {},
-    matchesByPubkey: {},
-  }),
   toggleLayer: () => ({
     previousLayer: 'graph' as const,
     activeLayer: 'graph' as const,

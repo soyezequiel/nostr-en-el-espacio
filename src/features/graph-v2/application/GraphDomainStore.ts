@@ -13,6 +13,7 @@ const EMPTY_ROOT_LOAD_STATE: CanonicalGraphState['discoveryState']['rootLoad'] =
 const createEmptyState = (): CanonicalGraphState => ({
   nodesByPubkey: {},
   edgesById: {},
+  sceneSignature: 'empty',
   rootPubkey: null,
   activeLayer: DEFAULT_GRAPH_V2_LAYER,
   connectionsSourceLayer: 'graph',

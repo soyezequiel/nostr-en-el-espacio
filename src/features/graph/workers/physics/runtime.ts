@@ -158,7 +158,6 @@ const isUiLayer = (value: unknown): value is UiLayer =>
   value === 'mutuals' ||
   value === 'followers' ||
   value === 'nonreciprocal-followers' ||
-  value === 'keywords' ||
   value === 'zaps' ||
   value === 'pathfinding'
 

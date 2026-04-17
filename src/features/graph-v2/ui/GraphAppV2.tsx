@@ -56,6 +56,27 @@ const getInitials = (value: string | null) => {
   )
 }
 
+const createClientSceneSignature = (state: CanonicalGraphState) =>
+  [
+    state.rootPubkey ?? 'no-root',
+    state.activeLayer,
+    state.connectionsSourceLayer,
+    state.selectedNodePubkey ?? 'no-selection',
+    state.discoveryState.graphRevision,
+    state.discoveryState.inboundGraphRevision,
+    state.discoveryState.connectionsLinksRevision,
+    Object.keys(state.nodesByPubkey).length,
+    Object.keys(state.edgesById).length,
+    Array.from(state.pinnedNodePubkeys).sort().join(','),
+  ].join('|')
+
+const withClientSceneSignature = (
+  state: CanonicalGraphState,
+): CanonicalGraphState => ({
+  ...state,
+  sceneSignature: createClientSceneSignature(state),
+})
+
 function RelayEditor({
   relayUrls,
   overrideStatus,
@@ -403,7 +424,6 @@ export default function GraphAppV2() {
     )
   const [physicsTuning, setPhysicsTuning] =
     useState<ForceAtlasPhysicsTuning>(DEFAULT_FORCE_ATLAS_PHYSICS_TUNING)
-
   useEffect(() => {
     bridge.connect()
 
@@ -447,7 +467,13 @@ export default function GraphAppV2() {
         : controller.callbacks,
     [controller, isFixtureMode],
   )
-  const scene = useMemo(() => buildGraphSceneSnapshot(domainState), [domainState])
+  const scene = useMemo(
+    () => buildGraphSceneSnapshot(domainState),
+    // domainState also carries relay/progress objects; sceneSignature is the
+    // structural key that decides when Sigma must receive a new scene.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [domainState.sceneSignature],
+  )
   const deferredScene = useDeferredValue(scene)
   const detail = useMemo(() => buildNodeDetailProjection(domainState), [domainState])
   const rootLoadMessage = domainState.discoveryState.rootLoad.message
@@ -460,7 +486,9 @@ export default function GraphAppV2() {
   const updateFixtureState = (
     updater: (current: CanonicalGraphState) => CanonicalGraphState,
   ) => {
-    setFixtureState((current) => (current ? updater(current) : current))
+    setFixtureState((current) =>
+      current ? withClientSceneSignature(updater(current)) : current,
+    )
   }
 
   const togglePinnedNode = (pubkey: string) => {

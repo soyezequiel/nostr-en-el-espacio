@@ -71,7 +71,6 @@ const selectGraphAppState = (state: AppStore) => ({
   isGraphStale: state.isGraphStale,
   openPanel: state.openPanel,
   activeLayer: state.activeLayer,
-  currentKeyword: state.currentKeyword,
   rootLoadStatus: state.rootLoad.status,
   rootLoadSource: state.rootLoad.loadedFrom,
   selectedDeepUserCount: state.selectedDeepUserPubkeys.length,
@@ -254,7 +253,6 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
     isGraphStale,
     openPanel,
     activeLayer,
-    currentKeyword,
     rootLoadStatus,
     rootLoadSource,
     selectedDeepUserCount,
@@ -773,7 +771,7 @@ function App({ rootLoader = browserAppKernel }: AppProps) {
                     <dt>UI</dt>
                     <dd>
                       panel={openPanel} / capa={activeLayer} / comparando=
-                      {comparedNodeCount} / kw={currentKeyword || '-'}
+                      {comparedNodeCount}
                     </dd>
                   </div>
                   <div>

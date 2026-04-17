@@ -35,12 +35,6 @@ const GRAPH_NODE_LEGIBILITY_SETTINGS = {
   spacingCapGapPx: 0.5,
 } as const
 
-const GRAPH_NODE_KEYWORD_EMPHASIS_SETTINGS = {
-  maxScaleBoost: 0.6,
-  minScaleBoost: 0.3,
-  scaleLogFactor: 0.18,
-} as const
-
 const GRAPH_NODE_PROMINENCE_SETTINGS = {
   capBoostFactor: 0.22,
   connectionsCapBoostFactor: 0.52,
@@ -165,25 +159,6 @@ type VisibleNodeRadiusStats = {
   maxVisibleDegree: number
 }
 
-const getKeywordMatchScreenScale = ({
-  activeLayer,
-  keywordHits,
-}: {
-  activeLayer: UiLayer
-  keywordHits: number
-}) => {
-  if (activeLayer !== 'keywords' || keywordHits <= 0) {
-    return 1
-  }
-
-  return 1 + Math.min(
-    GRAPH_NODE_KEYWORD_EMPHASIS_SETTINGS.maxScaleBoost,
-    GRAPH_NODE_KEYWORD_EMPHASIS_SETTINGS.minScaleBoost +
-      Math.log2(keywordHits + 1) *
-        GRAPH_NODE_KEYWORD_EMPHASIS_SETTINGS.scaleLogFactor,
-  )
-}
-
 const getNodeProminenceScale = ({
   node,
   activeLayer,
@@ -279,10 +254,6 @@ const resolveNodeGlobalScreenRadius = ({
     visibleNodeCount,
     zoomLevel,
   })
-  const keywordScale = getKeywordMatchScreenScale({
-    activeLayer,
-    keywordHits: node.keywordHits,
-  })
   const prominenceScale = getNodeProminenceScale({
     node,
     activeLayer,
@@ -309,7 +280,7 @@ const resolveNodeGlobalScreenRadius = ({
     prominenceScale,
     radius: roundRadius(
       clampNumber(
-        globalRadius * keywordScale * prominenceScale * relativeSizeScale,
+        globalRadius * prominenceScale * relativeSizeScale,
         minRadius,
         maxRadius,
       ),

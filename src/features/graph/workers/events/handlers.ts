@@ -2,11 +2,8 @@ import type {
   DecodeZapsRequest,
   DecodeZapsResult,
   EventsWorkerActionMap,
-  KeywordExtractInput,
   ParseContactListRequest,
   ParseContactListResult,
-  SearchKeywordsRequest,
-  SearchKeywordsResult,
   SerializedContactListEvent,
   ZapReceiptInput,
 } from '@/features/graph/workers/events/contracts'
@@ -25,7 +22,6 @@ import {
 } from '@/features/graph/workers/shared/validation'
 
 const DEFAULT_MAX_FOLLOW_TAGS = 5_000
-const DEFAULT_EXCERPT_LENGTH = 160
 
 function validateSerializedContactListEvent(payload: unknown): SerializedContactListEvent {
   const event = expectRecord(payload, 'payload.event')
@@ -45,26 +41,6 @@ function validateParseContactListRequest(payload: unknown): ParseContactListRequ
   return {
     event: validateSerializedContactListEvent(request.event),
     maxFollowTags: expectOptionalPositiveInteger(request.maxFollowTags, 'payload.maxFollowTags'),
-  }
-}
-
-function validateKeywordExtract(payload: unknown, index: number): KeywordExtractInput {
-  const extract = expectRecord(payload, `payload.extracts[${index}]`)
-
-  return {
-    noteId: normalizeEventId(extract.noteId, `payload.extracts[${index}].noteId`),
-    pubkey: normalizePubkey(extract.pubkey, `payload.extracts[${index}].pubkey`),
-    text: expectString(extract.text, `payload.extracts[${index}].text`),
-  }
-}
-
-function validateSearchKeywordsRequest(payload: unknown): SearchKeywordsRequest {
-  const request = expectRecord(payload, 'payload')
-  const extracts = expectArray(request.extracts, 'payload.extracts')
-
-  return {
-    keyword: expectString(request.keyword, 'payload.keyword'),
-    extracts: extracts.map((extract, index) => validateKeywordExtract(extract, index)),
   }
 }
 
@@ -172,68 +148,6 @@ export function parseContactList(request: ParseContactListRequest): ParseContact
     followPubkeys: orderedFollowPubkeys,
     relayHints: [...relayHints].sort(),
     diagnostics,
-  }
-}
-
-function tokenizeKeyword(keyword: string): string[] {
-  return [...new Set(keyword.toLowerCase().split(/\s+/).filter((token) => token.length > 1))].sort()
-}
-
-function countOccurrences(text: string, token: string): number {
-  let count = 0
-  let index = text.indexOf(token)
-
-  while (index !== -1) {
-    count += 1
-    index = text.indexOf(token, index + token.length)
-  }
-
-  return count
-}
-
-export function searchKeywords(request: SearchKeywordsRequest): SearchKeywordsResult {
-  const tokens = tokenizeKeyword(request.keyword)
-
-  if (tokens.length === 0) {
-    throw new WorkerProtocolError(
-      'INVALID_KEYWORD_QUERY',
-      'Keyword search expects at least one searchable token.',
-    )
-  }
-
-  const hitCounts = new Map<string, number>()
-  const excerptMatches = request.extracts.flatMap((extract) => {
-    const normalizedText = extract.text.toLowerCase()
-    const matchedTokens = tokens.filter((token) => normalizedText.includes(token))
-
-    if (matchedTokens.length === 0) {
-      return []
-    }
-
-    const score = matchedTokens.reduce((total, token) => total + countOccurrences(normalizedText, token), 0)
-    hitCounts.set(extract.pubkey, (hitCounts.get(extract.pubkey) ?? 0) + score)
-
-    return [
-      {
-        noteId: extract.noteId,
-        pubkey: extract.pubkey,
-        excerpt: extract.text.slice(0, DEFAULT_EXCERPT_LENGTH),
-        matchedTokens,
-        score,
-      },
-    ]
-  })
-
-  const orderedHitCounts = Object.fromEntries(
-    [...hitCounts.entries()].sort(([leftPubkey], [rightPubkey]) =>
-      leftPubkey.localeCompare(rightPubkey),
-    ),
-  )
-
-  return {
-    tokens,
-    hitCounts: orderedHitCounts,
-    excerptMatches,
   }
 }
 
@@ -371,10 +285,6 @@ export function createEventsWorkerRegistry(): WorkerHandlerRegistry<EventsWorker
     PARSE_CONTACT_LIST: {
       validate: validateParseContactListRequest,
       handle: parseContactList,
-    },
-    SEARCH_KEYWORDS: {
-      validate: validateSearchKeywordsRequest,
-      handle: searchKeywords,
     },
     DECODE_ZAPS: {
       validate: validateDecodeZapsRequest,

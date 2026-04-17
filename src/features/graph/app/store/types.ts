@@ -40,7 +40,6 @@ export type UiLayer =
   | 'mutuals'
   | 'followers'
   | 'nonreciprocal-followers'
-  | 'keywords'
   | 'zaps'
   | 'pathfinding'
 export type ConnectionsSourceLayer = Exclude<UiLayer, 'connections'>

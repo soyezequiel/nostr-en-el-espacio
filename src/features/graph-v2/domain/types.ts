@@ -62,6 +62,7 @@ export interface CanonicalDiscoveryState {
 export interface CanonicalGraphState {
   nodesByPubkey: Record<string, CanonicalNode>
   edgesById: Record<string, CanonicalEdge>
+  sceneSignature: string
   rootPubkey: string | null
   activeLayer: GraphV2Layer
   connectionsSourceLayer: ConnectionsSourceLayer
@@ -70,4 +71,3 @@ export interface CanonicalGraphState {
   relayState: CanonicalRelayState
   discoveryState: CanonicalDiscoveryState
 }
-

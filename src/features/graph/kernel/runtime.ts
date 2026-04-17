@@ -1,4 +1,4 @@
-import type { KeywordMatch, UiLayer } from '@/features/graph/app/store'
+import type { UiLayer } from '@/features/graph/app/store'
 import { appStore } from '@/features/graph/app/store/createAppStore'
 import { createNostrGraphDatabase, createRepositories } from '@/features/graph/db'
 import type { RelayHealthSnapshot } from '@/features/graph/nostr'
@@ -42,14 +42,6 @@ export interface ExpandNodeResult {
   discoveredFollowCount: number
   rejectedPubkeys: string[]
   message: string
-}
-
-export interface SearchKeywordResult {
-  keyword: string
-  tokens: string[]
-  totalHits: number
-  nodeHits: Record<string, number>
-  matchesByPubkey: Record<string, KeywordMatch[]>
 }
 
 export interface FindPathResult {
@@ -97,7 +89,6 @@ export interface RootLoader {
   ) => Promise<ReconfigureRelaysResult>
   revertRelayOverride: () => Promise<ReconfigureRelaysResult | null>
   expandNode: (pubkey: string) => Promise<ExpandNodeResult>
-  searchKeyword: (keyword: string) => Promise<SearchKeywordResult>
   toggleLayer: (layer: UiLayer) => ToggleLayerResult
   findPath: (
     sourcePubkey: string,

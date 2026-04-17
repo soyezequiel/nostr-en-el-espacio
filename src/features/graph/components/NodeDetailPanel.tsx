@@ -26,8 +26,6 @@ interface ExpandFeedback {
   message: string
 }
 
-const EMPTY_KEYWORD_MATCHES = [] as const
-
 const buildNodeProfileSnapshot = (
   node: GraphNode | null,
 ): GraphNodeProfile | null => {
@@ -116,12 +114,6 @@ export function NodeDetailPanel({
   } = useAppStore(useShallow(selectNodeDetailContext))
   const toggleDeepUserSelection = useAppStore(
     (state) => state.toggleDeepUserSelection,
-  )
-  const keywordMatches = useAppStore((state) =>
-    selectedNodePubkey
-      ? state.keywordLayer.matchesByPubkey[selectedNodePubkey] ??
-        EMPTY_KEYWORD_MATCHES
-      : EMPTY_KEYWORD_MATCHES,
   )
   const setOpenPanel = useAppStore((state) => state.setOpenPanel)
   const setPathfindingEndpoint = useAppStore((state) => state.setPathfindingEndpoint)
@@ -630,31 +622,6 @@ export function NodeDetailPanel({
               </p>
             </div>
           </div>
-
-          {keywordMatches.length > 0 ? (
-            <section className="node-detail-panel__matches">
-              <div className="node-detail-panel__matches-header">
-                <div>
-                  <p className="node-detail-panel__metric-label">Coincidencias</p>
-                  <p className="node-detail-panel__matches-copy">
-                    {keywordMatches.length} extractos relevantes para la keyword activa.
-                  </p>
-                </div>
-              </div>
-
-              <div className="node-detail-panel__matches-list">
-                {keywordMatches.slice(0, 3).map((match) => (
-                  <article className="node-detail-panel__match-card" key={match.noteId}>
-                    <p className="node-detail-panel__match-excerpt">{match.excerpt}</p>
-                    <div className="node-detail-panel__match-meta">
-                      <span>score {match.score}</span>
-                      <span>{match.matchedTokens.join(', ')}</span>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-          ) : null}
 
           <div className="node-detail-panel__actions">
             {showExpandAction ? (

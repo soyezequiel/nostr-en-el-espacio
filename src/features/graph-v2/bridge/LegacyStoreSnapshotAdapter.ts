@@ -55,6 +55,25 @@ const createCanonicalRelayEndpoint = (
   lastNotice: state.relayHealth[relayUrl]?.lastNotice ?? null,
 })
 
+const createSceneSignature = (
+  state: AppStore,
+  activeLayer: CanonicalGraphState['activeLayer'],
+) =>
+  [
+    state.rootNodePubkey ?? 'no-root',
+    activeLayer,
+    state.connectionsSourceLayer,
+    state.selectedNodePubkey ?? 'no-selection',
+    state.graphRevision,
+    state.inboundGraphRevision,
+    state.connectionsLinksRevision,
+    Object.keys(state.nodes).length,
+    state.links.length,
+    state.inboundLinks.length,
+    state.connectionsLinks.length,
+    Array.from(state.pinnedNodePubkeys).sort().join(','),
+  ].join('|')
+
 export class LegacyStoreSnapshotAdapter {
   private previousLinks: AppStore['links'] | null = null
 
@@ -109,11 +128,13 @@ export class LegacyStoreSnapshotAdapter {
     const activeLayer = isGraphV2Layer(state.activeLayer)
       ? state.activeLayer
       : DEFAULT_GRAPH_V2_LAYER
+    const sceneSignature = createSceneSignature(state, activeLayer)
 
     if (
       this.previousSnapshot &&
       this.previousSnapshot.edgesById === edgesById &&
       this.previousSnapshot.nodesByPubkey === nodesByPubkey &&
+      this.previousSnapshot.sceneSignature === sceneSignature &&
       this.previousSnapshot.rootPubkey === state.rootNodePubkey &&
       this.previousSnapshot.activeLayer === activeLayer &&
       this.previousSnapshot.connectionsSourceLayer === state.connectionsSourceLayer &&
@@ -128,6 +149,7 @@ export class LegacyStoreSnapshotAdapter {
     const snapshot: CanonicalGraphState = {
       nodesByPubkey,
       edgesById,
+      sceneSignature,
       rootPubkey: state.rootNodePubkey,
       activeLayer,
       connectionsSourceLayer: state.connectionsSourceLayer,

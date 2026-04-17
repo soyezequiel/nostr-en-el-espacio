@@ -86,6 +86,7 @@ const createState = (
       weight: 1,
     },
   },
+  sceneSignature: 'test-scene',
   rootPubkey: 'root',
   activeLayer: 'following',
   connectionsSourceLayer: 'following',

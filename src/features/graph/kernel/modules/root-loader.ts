@@ -42,7 +42,6 @@ import type { AnalysisModule } from '@/features/graph/kernel/modules/analysis'
 import type { PersistenceModule } from '@/features/graph/kernel/modules/persistence'
 import type { ProfileHydrationModule } from '@/features/graph/kernel/modules/profile-hydration'
 import type { RelaySessionModule } from '@/features/graph/kernel/modules/relay-session'
-import type { KeywordLayerModule } from '@/features/graph/kernel/modules/keyword-layer'
 import { createFollowerDiscoveryModule } from '@/features/graph/kernel/modules/follower-discovery'
 import type { ParseContactListResult } from '@/features/graph/workers/events/contracts'
 import {
@@ -105,7 +104,6 @@ export function createRootLoaderModule(
     persistence: PersistenceModule
     profileHydration: ProfileHydrationModule
     relaySession: RelaySessionModule
-    keywordLayer: KeywordLayerModule
     zapLayer: {
       cancelActiveZapLoad: () => void
       getZapTargetPubkeys: () => string[]
@@ -167,7 +165,6 @@ export function createRootLoaderModule(
     }
     cancelActiveLoad()
     collaborators.zapLayer.cancelActiveZapLoad()
-    collaborators.keywordLayer.cancelActiveKeywordLoad()
     const loadId = loadSequence + 1
     loadSequence = loadId
     const loadStartedAt = ctx.now()
@@ -334,6 +331,7 @@ export function createRootLoaderModule(
       adapter,
       detachRelayHealth,
     }
+    let handoffToBackground = false
     let inboundCountProbeResults: RelayCountResult[] = []
     void followerDiscovery.refreshRelayList(
       adapter,
@@ -713,110 +711,122 @@ export function createRootLoaderModule(
             },
           }),
         ])
-      let [contactListResult, inboundFollowerResult] =
-        await collectRootDiscoveryWave(initialRelayUrls)
-      if (finalRelayUrls.length > 0) {
-        const orderedFinalRelayUrls = orderRelayUrlsByCountProbe(
-          finalRelayUrls,
-          inboundCountProbeResults,
-        )
-        ctx.store.getState().setRootLoadState({
-          message: `Primera wave lista en ${initialRelayUrls.length} relays. Reconciliando ${orderedFinalRelayUrls.length} relays restantes para el merge final...`,
-        })
-        const [finalContactListResult, finalInboundFollowerResult] =
-          await collectRootDiscoveryWave(orderedFinalRelayUrls, {
-            contactListEventCount: contactListResult.events.length,
-            inboundCandidateEventCount: inboundFollowerResult.events.length,
-          })
-        contactListResult = mergeRelayCollectionResults(
-          contactListResult,
-          finalContactListResult,
-        )
-        inboundFollowerResult = mergeRelayCollectionResults(
-          inboundFollowerResult,
-          finalInboundFollowerResult,
-        )
-      }
-      discoveryProgressActive = false
-      if (inboundProgressTimer !== null) {
-        clearTimeout(inboundProgressTimer)
-        inboundProgressTimer = null
-      }
-      if (isStaleLoad(loadId)) {
-        return finalize(rootPubkey, createCancelledResult(relayUrls))
-      }
-      void ctx.repositories.relayDiscoveryStats
-        .recordInboundFetch(
-          rootPubkey,
-          relayUrls,
-          inboundFollowerResult.events.map((envelope) => ({
-            relayUrl: envelope.relayUrl,
-            eventId: envelope.event.id,
-          })),
-          ctx.now(),
-        )
-        .catch((error) => {
-          console.warn('Relay inbound fetch stats persistence failed:', error)
-        })
-      ctx.store.getState().setRootLoadState({
-        message: 'Correlacionando followers inbound con evidencia recibida de relays...',
-      })
-      let inboundFollowerEvidence = await collectInboundFollowerEvidence(
-        ctx.eventsWorker,
-        selectLatestReplaceableEventsByPubkey(inboundFollowerResult.events),
-        rootPubkey,
+      const completeRootDiscovery = async (
+        initialContactListResult: RelayCollectionResult,
+        initialInboundFollowerResult: RelayCollectionResult,
         {
-          onContactListParsed: (envelope, parsed) =>
-            collaborators.persistence.persistContactListEvent(envelope, parsed),
-        },
-      )
-      if (inboundFollowerEvidence.followerPubkeys.length > 0) {
-        void followerDiscovery.persistInboundFollowerSnapshot(
-          rootPubkey,
-          inboundFollowerEvidence.followerPubkeys,
-          inboundFollowerResult.events,
-          relayUrls,
-          'partial',
-        )
-      }
-      if (isStaleLoad(loadId)) {
-        return finalize(rootPubkey, createCancelledResult(relayUrls))
-      }
-      const relayHealth = collaborators.relaySession.resolveRelayHealthSnapshot(
-        relayUrls,
-        contactListResult,
-        activeLoadSession?.adapter.getRelayHealth(),
-      )
-      const latestContactListEvent = selectLatestReplaceableEvent(
-        contactListResult.events,
-      )
-      if (!latestContactListEvent) {
-        const fallbackResult = buildMissingContactListResult(
-          rootPubkey,
-          cachedSnapshot,
-          relayHealth,
-          contactListResult.error,
-          preserveExistingGraph,
-        )
-        if (!isStaleLoad(loadId)) {
-          const action =
-            fallbackResult.status === 'partial' ? 'live-partial' : 'error'
-          setRootLoadState(action, {
-            message: fallbackResult.message,
-            loadedFrom: fallbackResult.loadedFrom,
-            visibleLinkProgress: buildVisibleLinkProgressSnapshot(
-              ctx.now(),
-              'complete',
-              {
-                visibleLinkCount:
-                  visibleLinkCount ?? followingLoadedCount ?? null,
-                contactListEventCount,
-                inboundCandidateEventCount,
-                lastRelayUrl,
-              },
-            ),
+          collectRemainingRelays,
+          emitCompletion,
+        }: { collectRemainingRelays: boolean; emitCompletion: boolean },
+      ): Promise<LoadRootResult> => {
+        const finishLoad = (result: LoadRootResult) =>
+          emitCompletion ? finalize(rootPubkey, result) : result
+        let contactListResult = initialContactListResult
+        let inboundFollowerResult = initialInboundFollowerResult
+
+        if (collectRemainingRelays && finalRelayUrls.length > 0) {
+          const orderedFinalRelayUrls = orderRelayUrlsByCountProbe(
+            finalRelayUrls,
+            inboundCountProbeResults,
+          )
+          ctx.store.getState().setRootLoadState({
+            message: `Grafo inicial cargado. Enriqueciendo followers, perfiles y zaps...`,
           })
+          const [finalContactListResult, finalInboundFollowerResult] =
+            await collectRootDiscoveryWave(orderedFinalRelayUrls, {
+              contactListEventCount: contactListResult.events.length,
+              inboundCandidateEventCount: inboundFollowerResult.events.length,
+            })
+          contactListResult = mergeRelayCollectionResults(
+            contactListResult,
+            finalContactListResult,
+          )
+          inboundFollowerResult = mergeRelayCollectionResults(
+            inboundFollowerResult,
+            finalInboundFollowerResult,
+          )
         }
+
+        discoveryProgressActive = false
+        if (inboundProgressTimer !== null) {
+          clearTimeout(inboundProgressTimer)
+          inboundProgressTimer = null
+        }
+        if (isStaleLoad(loadId)) {
+          return finishLoad(createCancelledResult(relayUrls))
+        }
+        void ctx.repositories.relayDiscoveryStats
+          .recordInboundFetch(
+            rootPubkey,
+            relayUrls,
+            inboundFollowerResult.events.map((envelope) => ({
+              relayUrl: envelope.relayUrl,
+              eventId: envelope.event.id,
+            })),
+            ctx.now(),
+          )
+          .catch((error) => {
+            console.warn('Relay inbound fetch stats persistence failed:', error)
+          })
+        ctx.store.getState().setRootLoadState({
+          message: 'Correlacionando followers inbound con evidencia recibida de relays...',
+        })
+        let inboundFollowerEvidence = await collectInboundFollowerEvidence(
+          ctx.eventsWorker,
+          selectLatestReplaceableEventsByPubkey(inboundFollowerResult.events),
+          rootPubkey,
+          {
+            onContactListParsed: (envelope, parsed) =>
+              collaborators.persistence.persistContactListEvent(envelope, parsed),
+          },
+        )
+        if (inboundFollowerEvidence.followerPubkeys.length > 0) {
+          void followerDiscovery.persistInboundFollowerSnapshot(
+            rootPubkey,
+            inboundFollowerEvidence.followerPubkeys,
+            inboundFollowerResult.events,
+            relayUrls,
+            'partial',
+          )
+        }
+        if (isStaleLoad(loadId)) {
+          return finishLoad(createCancelledResult(relayUrls))
+        }
+        const relayHealth = collaborators.relaySession.resolveRelayHealthSnapshot(
+          relayUrls,
+          contactListResult,
+          activeLoadSession?.adapter.getRelayHealth(),
+        )
+        const latestContactListEvent = selectLatestReplaceableEvent(
+          contactListResult.events,
+        )
+        if (!latestContactListEvent) {
+          const fallbackResult = buildMissingContactListResult(
+            rootPubkey,
+            cachedSnapshot,
+            relayHealth,
+            contactListResult.error,
+            preserveExistingGraph,
+          )
+          if (!isStaleLoad(loadId)) {
+            const action =
+              fallbackResult.status === 'partial' ? 'live-partial' : 'error'
+            setRootLoadState(action, {
+              message: fallbackResult.message,
+              loadedFrom: fallbackResult.loadedFrom,
+              visibleLinkProgress: buildVisibleLinkProgressSnapshot(
+                ctx.now(),
+                'complete',
+                {
+                  visibleLinkCount:
+                    visibleLinkCount ?? followingLoadedCount ?? null,
+                  contactListEventCount,
+                  inboundCandidateEventCount,
+                  lastRelayUrl,
+                },
+              ),
+            })
+          }
           if (!preserveExistingGraph) {
             const profileHydrationRelayUrls = mergeBoundedRelayUrlSets(
               MAX_PROFILE_HYDRATION_RELAY_URLS,
@@ -836,182 +846,247 @@ export function createRootLoaderModule(
                   collaborators.persistence.persistProfileEvent,
               },
             )
-          void collaborators.zapLayer.prefetchZapLayer(
-            collaborators.zapLayer.getZapTargetPubkeys(),
-            relayUrls,
+            void collaborators.zapLayer.prefetchZapLayer(
+              collaborators.zapLayer.getZapTargetPubkeys(),
+              relayUrls,
+            )
+          }
+          return finishLoad(fallbackResult)
+        }
+        ctx.store.getState().setRootLoadState({
+          message: 'Parseando contact list kind:3 en worker antes de actualizar el grafo...',
+        })
+        const parsedContactList = await ctx.eventsWorker.invoke(
+          'PARSE_CONTACT_LIST',
+          {
+            event: serializeContactListEvent(latestContactListEvent.event),
+          },
+        )
+        followingTotalCount = parsedContactList.followPubkeys.length
+        followingTotalKnown = true
+        if (isStaleLoad(loadId)) {
+          return finishLoad(createCancelledResult(relayUrls))
+        }
+        let targetedReciprocalFollowerPartial = false
+        try {
+          ctx.store.getState().setRootLoadState({
+            message:
+              'Buscando reciprocidad entre follows del root y followers inbound...',
+          })
+          const targetedReciprocalFollowerEvidence =
+            await collectTargetedReciprocalFollowerEvidence({
+              adapter,
+              eventsWorker: ctx.eventsWorker,
+              followPubkeys: parsedContactList.followPubkeys,
+              targetPubkey: rootPubkey,
+            })
+          inboundFollowerEvidence = mergeInboundFollowerEvidence(
+            inboundFollowerEvidence,
+            targetedReciprocalFollowerEvidence,
           )
-          void collaborators.keywordLayer.prefetchKeywordCorpus(
-            collaborators.keywordLayer.getKeywordCorpusTargetPubkeys(),
-            relayUrls,
+        } catch (error) {
+          targetedReciprocalFollowerPartial = true
+          console.warn(
+            'Targeted reciprocal follower evidence failed during root load:',
+            error,
           )
         }
-        return finalize(rootPubkey, fallbackResult)
-      }
-      ctx.store.getState().setRootLoadState({
-        message: 'Parseando contact list kind:3 en worker antes de actualizar el grafo...',
-      })
-      const parsedContactList = await ctx.eventsWorker.invoke(
-        'PARSE_CONTACT_LIST',
-        {
-          event: serializeContactListEvent(latestContactListEvent.event),
-        },
-      )
-      followingTotalCount = parsedContactList.followPubkeys.length
-      followingTotalKnown = true
-      if (isStaleLoad(loadId)) {
-        return finalize(rootPubkey, createCancelledResult(relayUrls))
-      }
-      let targetedReciprocalFollowerPartial = false
-      try {
+        followersTotalCount = inboundFollowerEvidence.followerPubkeys.length
+        followersTotalKnown = true
+        if (isStaleLoad(loadId)) {
+          return finishLoad(createCancelledResult(relayUrls))
+        }
+        ctx.store.getState().setRootLoadState({
+          message: 'Persistiendo contact list y preparando merge del vecindario...',
+        })
+        await collaborators.persistence.persistContactListEvent(
+          latestContactListEvent,
+          parsedContactList,
+        )
+        void followerDiscovery.persistInboundFollowerSnapshot(
+          rootPubkey,
+          inboundFollowerEvidence.followerPubkeys,
+          inboundFollowerResult.events,
+          relayUrls,
+          'final',
+        )
+        const preservedExpandedNeighborhood =
+          captureExpandedNeighborhood(rootPubkey)
         ctx.store.getState().setRootLoadState({
           message:
-            'Buscando reciprocidad entre follows del root y followers inbound...',
+            'Integrando nodos, follows y followers inbound sin perder expansiones visibles...',
         })
-        const targetedReciprocalFollowerEvidence =
-          await collectTargetedReciprocalFollowerEvidence({
-            adapter,
-            eventsWorker: ctx.eventsWorker,
-            followPubkeys: parsedContactList.followPubkeys,
-            targetPubkey: rootPubkey,
-          })
-        inboundFollowerEvidence = mergeInboundFollowerEvidence(
-          inboundFollowerEvidence,
-          targetedReciprocalFollowerEvidence,
+        const replacementResult = replaceRootGraph(
+          rootPubkey,
+          parsedContactList.followPubkeys,
+          inboundFollowerEvidence.followerPubkeys,
+          cachedSnapshot.rootProfile?.name ?? cachedSnapshot.rootLabel,
+          cachedSnapshot.rootProfile,
         )
-      } catch (error) {
-        targetedReciprocalFollowerPartial = true
-        console.warn(
-          'Targeted reciprocal follower evidence failed during root load:',
-          error,
+        followingLoadedCount = replacementResult.discoveredFollowCount
+        followersLoadedCount = getCurrentInboundFollowerPubkeys(rootPubkey).length
+        const restoredExpandedPubkeys = restoreExpandedNeighborhood(
+          preservedExpandedNeighborhood,
         )
-      }
-      followersTotalCount = inboundFollowerEvidence.followerPubkeys.length
-      followersTotalKnown = true
-      if (isStaleLoad(loadId)) {
-        return finalize(rootPubkey, createCancelledResult(relayUrls))
-      }
-      ctx.store.getState().setRootLoadState({
-        message: 'Persistiendo contact list y preparando merge del vecindario...',
-      })
-      await collaborators.persistence.persistContactListEvent(
-        latestContactListEvent,
-        parsedContactList,
-      )
-      void followerDiscovery.persistInboundFollowerSnapshot(
-        rootPubkey,
-        inboundFollowerEvidence.followerPubkeys,
-        inboundFollowerResult.events,
-        relayUrls,
-        'final',
-      )
-      const preservedExpandedNeighborhood =
-        captureExpandedNeighborhood(rootPubkey)
-      ctx.store.getState().setRootLoadState({
-        message:
-          'Integrando nodos, follows y followers inbound sin perder expansiones visibles...',
-      })
-      const replacementResult = replaceRootGraph(
-        rootPubkey,
-        parsedContactList.followPubkeys,
-        inboundFollowerEvidence.followerPubkeys,
-        cachedSnapshot.rootProfile?.name ?? cachedSnapshot.rootLabel,
-        cachedSnapshot.rootProfile,
-      )
-      followingLoadedCount = replacementResult.discoveredFollowCount
-      followersLoadedCount = getCurrentInboundFollowerPubkeys(rootPubkey).length
-      const restoredExpandedPubkeys = restoreExpandedNeighborhood(
-        preservedExpandedNeighborhood,
-      )
-      const profileHydrationRelayUrls = mergeBoundedRelayUrlSets(
-        MAX_PROFILE_HYDRATION_RELAY_URLS,
-        relayUrls,
-        parsedContactList.relayHints,
-        cachedSnapshot.relayHints,
-      )
-      ctx.store.getState().setRootLoadState({
-        message:
-          'Grafo base visible. Hidratando perfiles, zaps e intereses en paralelo...',
-      })
-      void collaborators.profileHydration.hydrateNodeProfiles(
-        Array.from(
-          new Set([
-            ...replacementResult.visiblePubkeys,
-            ...restoredExpandedPubkeys,
-          ]),
-        ),
-        profileHydrationRelayUrls,
-        () => isStaleLoad(loadId),
-        {
-          persistProfileEvent: collaborators.persistence.persistProfileEvent,
-        },
-      )
-      void collaborators.zapLayer.prefetchZapLayer(
-        collaborators.zapLayer.getZapTargetPubkeys(),
-        relayUrls,
-      )
-      void collaborators.keywordLayer.prefetchKeywordCorpus(
-        collaborators.keywordLayer.getKeywordCorpusTargetPubkeys(),
-        relayUrls,
-      )
-      const hasPartialSignals =
-        parsedContactList.diagnostics.length > 0 ||
-        replacementResult.rejectedPubkeys.length > 0 ||
-        inboundFollowerEvidence.partial ||
-        inboundFollowerResult.error !== null ||
-        targetedReciprocalFollowerPartial
-      const status =
-        replacementResult.discoveredFollowCount === 0
-          ? 'empty'
-          : hasPartialSignals
-            ? 'partial'
-            : 'ready'
-      const message =
-        status === 'partial'
-          ? buildContactListPartialMessage({
-              discoveredFollowCount: replacementResult.discoveredFollowCount,
-              diagnostics: parsedContactList.diagnostics,
-              rejectedPubkeyCount: replacementResult.rejectedPubkeys.length,
-              maxGraphNodes: ctx.store.getState().graphCaps.maxNodes,
-            }) ??
-            buildDiscoveredMessage(
-              replacementResult.discoveredFollowCount,
-              hasPartialSignals,
-            )
-          : buildDiscoveredMessage(
-              replacementResult.discoveredFollowCount,
-              hasPartialSignals,
-            )
-      ctx.store.getState().markGraphStale(false)
-      setRootLoadState(
-        status === 'ready'
-          ? 'live-ready'
-          : status === 'partial'
-            ? 'live-partial'
-            : 'live-empty',
-        {
+        const profileHydrationRelayUrls = mergeBoundedRelayUrlSets(
+          MAX_PROFILE_HYDRATION_RELAY_URLS,
+          relayUrls,
+          parsedContactList.relayHints,
+          cachedSnapshot.relayHints,
+        )
+        ctx.store.getState().setRootLoadState({
+          message:
+            'Grafo inicial cargado. Enriqueciendo followers, perfiles y zaps...',
+        })
+        void collaborators.profileHydration.hydrateNodeProfiles(
+          Array.from(
+            new Set([
+              ...replacementResult.visiblePubkeys,
+              ...restoredExpandedPubkeys,
+            ]),
+          ),
+          profileHydrationRelayUrls,
+          () => isStaleLoad(loadId),
+          {
+            persistProfileEvent: collaborators.persistence.persistProfileEvent,
+          },
+        )
+        void collaborators.zapLayer.prefetchZapLayer(
+          collaborators.zapLayer.getZapTargetPubkeys(),
+          relayUrls,
+        )
+        const hasPartialSignals =
+          parsedContactList.diagnostics.length > 0 ||
+          replacementResult.rejectedPubkeys.length > 0 ||
+          inboundFollowerEvidence.partial ||
+          inboundFollowerResult.error !== null ||
+          targetedReciprocalFollowerPartial
+        const status =
+          replacementResult.discoveredFollowCount === 0
+            ? 'empty'
+            : hasPartialSignals
+              ? 'partial'
+              : 'ready'
+        const message =
+          status === 'partial'
+            ? buildContactListPartialMessage({
+                discoveredFollowCount: replacementResult.discoveredFollowCount,
+                diagnostics: parsedContactList.diagnostics,
+                rejectedPubkeyCount: replacementResult.rejectedPubkeys.length,
+                maxGraphNodes: ctx.store.getState().graphCaps.maxNodes,
+              }) ??
+              buildDiscoveredMessage(
+                replacementResult.discoveredFollowCount,
+                hasPartialSignals,
+              )
+            : buildDiscoveredMessage(
+                replacementResult.discoveredFollowCount,
+                hasPartialSignals,
+              )
+        ctx.store.getState().markGraphStale(false)
+        setRootLoadState(
+          status === 'ready'
+            ? 'live-ready'
+            : status === 'partial'
+              ? 'live-partial'
+              : 'live-empty',
+          {
+            message,
+            loadedFrom: 'live',
+            visibleLinkProgress: buildVisibleLinkProgressSnapshot(
+              ctx.now(),
+              'complete',
+              {
+                visibleLinkCount: followingLoadedCount,
+                contactListEventCount: contactListResult.events.length,
+                inboundCandidateEventCount: inboundFollowerResult.events.length,
+                lastRelayUrl,
+              },
+            ),
+          },
+        )
+        return finishLoad({
+          status,
+          loadedFrom: 'live',
+          discoveredFollowCount: replacementResult.discoveredFollowCount,
           message,
+          relayHealth,
+        })
+      }
+
+      const [initialContactListResult, initialInboundFollowerResult] =
+        await collectRootDiscoveryWave(initialRelayUrls)
+      if (firstFastContactListAppliedAt !== null && !isStaleLoad(loadId)) {
+        discoveryProgressActive = false
+        if (inboundProgressTimer !== null) {
+          clearTimeout(inboundProgressTimer)
+          inboundProgressTimer = null
+        }
+        const relayHealth = collaborators.relaySession.resolveRelayHealthSnapshot(
+          relayUrls,
+          initialContactListResult,
+          activeLoadSession?.adapter.getRelayHealth(),
+        )
+        const initialMessage =
+          'Grafo inicial cargado. Enriqueciendo followers, perfiles y zaps...'
+        setRootLoadState('live-partial', {
+          message: initialMessage,
           loadedFrom: 'live',
           visibleLinkProgress: buildVisibleLinkProgressSnapshot(
             ctx.now(),
-            'complete',
+            'partial',
             {
               visibleLinkCount: followingLoadedCount,
-              contactListEventCount: contactListResult.events.length,
-              inboundCandidateEventCount: inboundFollowerResult.events.length,
+              contactListEventCount: initialContactListResult.events.length,
+              inboundCandidateEventCount: initialInboundFollowerResult.events.length,
               lastRelayUrl,
             },
           ),
+        })
+        handoffToBackground = true
+        void completeRootDiscovery(
+          initialContactListResult,
+          initialInboundFollowerResult,
+          {
+            collectRemainingRelays: true,
+            emitCompletion: false,
+          },
+        )
+          .catch((error) => {
+            if (!isStaleLoad(loadId)) {
+              console.warn('Background root enrichment failed:', error)
+              setRootLoadState('live-partial', {
+                message:
+                  'Grafo inicial cargado. La mejora de followers/perfiles/zaps quedo parcial.',
+              })
+            }
+          })
+          .finally(() => {
+            if (activeLoadSession?.loadId === loadId) {
+              activeLoadSession.detachRelayHealth()
+              activeLoadSession.adapter.close()
+              activeLoadSession = null
+            }
+          })
+        return finalize(rootPubkey, {
+          status: 'partial',
+          loadedFrom: 'live',
+          discoveredFollowCount: followingLoadedCount,
+          message: initialMessage,
+          relayHealth,
+        })
+      }
+
+      return completeRootDiscovery(
+        initialContactListResult,
+        initialInboundFollowerResult,
+        {
+          collectRemainingRelays: true,
+          emitCompletion: true,
         },
       )
-      return finalize(rootPubkey, {
-        status,
-        loadedFrom: 'live',
-        discoveredFollowCount: replacementResult.discoveredFollowCount,
-        message,
-        relayHealth,
-      })
     } finally {
-      if (activeLoadSession?.loadId === loadId) {
+      if (!handoffToBackground && activeLoadSession?.loadId === loadId) {
         activeLoadSession.detachRelayHealth()
         activeLoadSession.adapter.close()
         activeLoadSession = null
@@ -1052,13 +1127,8 @@ export function createRootLoaderModule(
     state.resetGraphAnalysis()
     state.resetGraph()
     state.resetZapLayer()
-    state.resetKeywordLayer()
-    state.setCurrentKeyword('')
     state.setSelectedNodePubkey(null)
     state.clearComparedNodes()
-    if (state.activeLayer === 'keywords') {
-      state.setActiveLayer('graph')
-    }
     state.setRootNodePubkey(rootPubkey)
     const discoveredAt = ctx.now()
     const outboundFollowSet = new Set(followPubkeys)

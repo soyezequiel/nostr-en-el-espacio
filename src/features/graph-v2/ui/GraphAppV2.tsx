@@ -188,10 +188,10 @@ const PHYSICS_TUNING_SLIDERS: Array<{
   },
   {
     key: 'linkDistance',
-    label: 'Distancia de enlace',
-    description: 'Aproxima distancia: mas alto abre enlaces sin cambiar FA2.',
+    label: 'Separacion de nodos',
+    description: 'Abre el layout cuando necesitas mas aire entre cuentas.',
     min: 0.5,
-    max: 2,
+    max: 3,
     step: 0.05,
   },
   {

@@ -238,20 +238,24 @@ test('ForceAtlas tuning clamps slider input into supported ranges', () => {
       centripetalForce: 10,
       repulsionForce: -1,
       linkForce: 20,
-      linkDistance: 0,
+      linkDistance: 10,
       damping: 99,
     }),
     {
       centripetalForce: 2.5,
       repulsionForce: 0.25,
       linkForce: 2.5,
-      linkDistance: 0.5,
+      linkDistance: 3,
       damping: 2.5,
     },
   )
   assert.equal(
     createForceAtlasPhysicsTuning({ repulsionForce: 99 }).repulsionForce,
     5,
+  )
+  assert.equal(
+    createForceAtlasPhysicsTuning({ linkDistance: 0 }).linkDistance,
+    0.5,
   )
 })
 

@@ -193,7 +193,7 @@ export const createForceAtlasPhysicsTuning = (
   linkDistance: clampNumber(
     tuning.linkDistance ?? DEFAULT_FORCE_ATLAS_PHYSICS_TUNING.linkDistance,
     0.5,
-    2,
+    3,
   ),
   damping: clampNumber(
     tuning.damping ?? DEFAULT_FORCE_ATLAS_PHYSICS_TUNING.damping,

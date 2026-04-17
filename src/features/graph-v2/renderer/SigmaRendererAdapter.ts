@@ -1,4 +1,8 @@
 import Sigma from 'sigma'
+import type {
+  NodeHoverDrawingFunction,
+  NodeLabelDrawingFunction,
+} from 'sigma/rendering'
 
 import type {
   GraphInteractionCallbacks,
@@ -51,6 +55,11 @@ const HOVER_DIM_EDGE_COLOR = '#10171f'
 const STAGE_CLICK_SUPPRESS_AFTER_DRAG_MS = 160
 const NODE_ZOOM_OUT_MIN_SCALE = 0.42
 const NODE_ZOOM_OUT_SCALE_EXPONENT = 0.55
+const NODE_LABEL_FONT_SCALE = 0.95
+const NODE_LABEL_MIN_SIZE = 9
+const NODE_LABEL_MAX_SIZE = 24
+const NODE_LABEL_MIN_GAP = 3
+const NODE_LABEL_MAX_GAP = 7
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
@@ -61,6 +70,98 @@ const resolveZoomOutNodeScale = (cameraRatio: number) =>
     NODE_ZOOM_OUT_MIN_SCALE,
     1,
   )
+
+const resolveNodeLabelSize = (nodeSize: number) =>
+  clampNumber(
+    nodeSize * NODE_LABEL_FONT_SCALE,
+    NODE_LABEL_MIN_SIZE,
+    NODE_LABEL_MAX_SIZE,
+  )
+
+const resolveNodeLabelGap = (nodeSize: number) =>
+  clampNumber(nodeSize * 0.25, NODE_LABEL_MIN_GAP, NODE_LABEL_MAX_GAP)
+
+type ProportionalNodeLabelData = Parameters<
+  NodeLabelDrawingFunction<SigmaNodeAttributes, SigmaEdgeAttributes>
+>[1]
+
+type ProportionalNodeLabelSettings = Parameters<
+  NodeLabelDrawingFunction<SigmaNodeAttributes, SigmaEdgeAttributes>
+>[2]
+
+const resolveNodeLabelColor = (
+  data: ProportionalNodeLabelData,
+  settings: ProportionalNodeLabelSettings,
+) =>
+  settings.labelColor.attribute
+    ? data[settings.labelColor.attribute] || settings.labelColor.color || '#000'
+    : settings.labelColor.color
+
+const drawProportionalNodeLabel: NodeLabelDrawingFunction<
+  SigmaNodeAttributes,
+  SigmaEdgeAttributes
+> = (context, data, settings) => {
+  if (!data.label) {
+    return
+  }
+
+  const labelSize = resolveNodeLabelSize(data.size)
+  const labelGap = resolveNodeLabelGap(data.size)
+
+  context.fillStyle = resolveNodeLabelColor(data, settings)
+  context.font = `${settings.labelWeight} ${labelSize}px ${settings.labelFont}`
+  context.fillText(
+    data.label,
+    data.x + data.size + labelGap,
+    data.y + labelSize / 3,
+  )
+}
+
+const drawProportionalNodeHover: NodeHoverDrawingFunction<
+  SigmaNodeAttributes,
+  SigmaEdgeAttributes
+> = (context, data, settings) => {
+  const labelSize = resolveNodeLabelSize(data.size)
+  const labelGap = resolveNodeLabelGap(data.size)
+  const padding = 2
+
+  context.font = `${settings.labelWeight} ${labelSize}px ${settings.labelFont}`
+  context.fillStyle = '#fff'
+  context.shadowOffsetX = 0
+  context.shadowOffsetY = 0
+  context.shadowBlur = 8
+  context.shadowColor = '#000'
+
+  if (typeof data.label === 'string') {
+    const textWidth = context.measureText(data.label).width
+    const boxWidth = Math.round(textWidth + labelGap + 2)
+    const boxHeight = Math.round(labelSize + 2 * padding)
+    const radius = Math.max(data.size, labelSize / 2) + padding
+    const angleRadian = Math.asin(boxHeight / 2 / radius)
+    const xDeltaCoord = Math.sqrt(
+      Math.abs(radius ** 2 - (boxHeight / 2) ** 2),
+    )
+
+    context.beginPath()
+    context.moveTo(data.x + xDeltaCoord, data.y + boxHeight / 2)
+    context.lineTo(data.x + radius + boxWidth, data.y + boxHeight / 2)
+    context.lineTo(data.x + radius + boxWidth, data.y - boxHeight / 2)
+    context.lineTo(data.x + xDeltaCoord, data.y - boxHeight / 2)
+    context.arc(data.x, data.y, radius, angleRadian, -angleRadian)
+    context.closePath()
+    context.fill()
+  } else {
+    context.beginPath()
+    context.arc(data.x, data.y, data.size + padding, 0, Math.PI * 2)
+    context.closePath()
+    context.fill()
+  }
+
+  context.shadowOffsetX = 0
+  context.shadowOffsetY = 0
+  context.shadowBlur = 0
+  drawProportionalNodeLabel(context, data, settings)
+}
 
 export class SigmaRendererAdapter implements RendererAdapter {
   private sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null
@@ -454,6 +555,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
       enableEdgeEvents: false,
       defaultEdgeColor: '#7a92bd',
       defaultNodeColor: '#7dd3a7',
+      defaultDrawNodeLabel: drawProportionalNodeLabel,
+      defaultDrawNodeHover: drawProportionalNodeHover,
       minCameraRatio: 0.05,
       maxCameraRatio: 6,
       zoomingRatio: 1.45,

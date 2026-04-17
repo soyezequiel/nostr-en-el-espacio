@@ -46,7 +46,7 @@ export const DEFAULT_FORCE_ATLAS_PHYSICS_TUNING: ForceAtlasPhysicsTuning = {
   repulsionForce: 2.5,
   linkForce: 1,
   linkDistance: 1,
-  damping: 1,
+  damping: 0.5,
 }
 
 export interface ForceAtlasPhysicsDiagnostics {

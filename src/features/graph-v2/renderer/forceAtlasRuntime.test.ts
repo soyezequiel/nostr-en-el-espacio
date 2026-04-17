@@ -138,11 +138,11 @@ test('ForceAtlas settings scale repulsion and damping for dense sigma graphs', (
   assert.equal(resolveForceAtlasDenseFactor(2200), 1)
   assert.equal(smallSettings.scalingRatio, 11.25)
   assert.equal(smallSettings.gravity, 0.35)
-  assert.equal(smallSettings.slowDown, 14)
+  assert.equal(smallSettings.slowDown, 7)
   assert.equal(smallSettings.edgeWeightInfluence, 1.25)
   assert.equal(denseSettings.scalingRatio, 22.5)
   assert.equal(denseSettings.gravity, 0.55)
-  assert.equal(denseSettings.slowDown, 22)
+  assert.equal(denseSettings.slowDown, 11)
   assert.equal(denseSettings.edgeWeightInfluence, 0.65)
   assert.ok(
     (denseSettings.scalingRatio ?? 0) > (smallSettings.scalingRatio ?? 0),

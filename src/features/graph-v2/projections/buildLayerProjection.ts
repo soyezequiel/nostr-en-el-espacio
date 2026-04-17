@@ -151,9 +151,22 @@ const buildNonReciprocalEdges = (
   )
 
 const projectionCache = new WeakMap<
-  CanonicalGraphState,
-  Map<GraphV2Layer, LayerProjection>
+  CanonicalGraphState['edgesById'],
+  Map<string, LayerProjection>
 >()
+
+const createProjectionCacheKey = (
+  state: CanonicalGraphState,
+  layer: GraphV2Layer,
+) =>
+  [
+    layer,
+    state.rootPubkey ?? 'no-root',
+    isGraphV2Layer(state.connectionsSourceLayer)
+      ? state.connectionsSourceLayer
+      : 'graph',
+    Array.from(state.discoveryState.expandedNodePubkeys).sort().join(','),
+  ].join('|')
 
 let _projCalls = 0
 let _projHits = 0
@@ -170,7 +183,8 @@ export const buildLayerProjection = (
     _projCalls++
   }
 
-  const cached = projectionCache.get(state)?.get(layer)
+  const cacheKey = createProjectionCacheKey(state, layer)
+  const cached = projectionCache.get(state.edgesById)?.get(cacheKey)
   if (cached) {
     if (isPerfEnabled) {
       _projHits++
@@ -179,12 +193,12 @@ export const buildLayerProjection = (
   }
 
   const projection = computeLayerProjection(state, layer)
-  let byLayer = projectionCache.get(state)
-  if (!byLayer) {
-    byLayer = new Map()
-    projectionCache.set(state, byLayer)
+  let byKey = projectionCache.get(state.edgesById)
+  if (!byKey) {
+    byKey = new Map()
+    projectionCache.set(state.edgesById, byKey)
   }
-  byLayer.set(layer, projection)
+  byKey.set(cacheKey, projection)
   return projection
 }
 

@@ -55,6 +55,20 @@ const createCanonicalRelayEndpoint = (
   lastNotice: state.relayHealth[relayUrl]?.lastNotice ?? null,
 })
 
+const createSceneNodeVisualSignature = (nodes: AppStore['nodes']) =>
+  Object.values(nodes)
+    .map((node) =>
+      JSON.stringify([
+        node.pubkey,
+        node.label ?? '',
+        node.picture ?? '',
+        node.source,
+        node.discoveredAt ?? '',
+      ]),
+    )
+    .sort()
+    .join('|')
+
 const createSceneSignature = (
   state: AppStore,
   activeLayer: CanonicalGraphState['activeLayer'],
@@ -64,9 +78,7 @@ const createSceneSignature = (
     activeLayer,
     state.connectionsSourceLayer,
     state.selectedNodePubkey ?? 'no-selection',
-    state.graphRevision,
-    state.inboundGraphRevision,
-    state.connectionsLinksRevision,
+    createSceneNodeVisualSignature(state.nodes),
     Object.keys(state.nodes).length,
     state.links.length,
     state.inboundLinks.length,

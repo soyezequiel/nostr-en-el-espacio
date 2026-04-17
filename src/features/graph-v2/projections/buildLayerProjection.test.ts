@@ -185,3 +185,39 @@ test('keeps expanded nodes visible in mutuals without inventing non-mutual edges
     ['alice->root:follow', 'root->alice:follow'],
   )
 })
+
+test('reuses projections when only discovery revisions change', () => {
+  const state = createState({ activeLayer: 'graph' })
+  const first = buildLayerProjection(state)
+  const second = buildLayerProjection({
+    ...state,
+    discoveryState: {
+      ...state.discoveryState,
+      graphRevision: state.discoveryState.graphRevision + 1,
+      expandedNodePubkeys: new Set(state.discoveryState.expandedNodePubkeys),
+    },
+  })
+
+  assert.strictEqual(second, first)
+})
+
+test('invalidates projection cache when topology changes', () => {
+  const state = createState({ activeLayer: 'graph' })
+  const first = buildLayerProjection(state)
+  const second = buildLayerProjection({
+    ...state,
+    edgesById: {
+      ...state.edgesById,
+      'root->bob:follow': {
+        id: 'root->bob:follow',
+        source: 'root',
+        target: 'bob',
+        relation: 'follow',
+        origin: 'graph',
+        weight: 1,
+      },
+    },
+  })
+
+  assert.notStrictEqual(second, first)
+})

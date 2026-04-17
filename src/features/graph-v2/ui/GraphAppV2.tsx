@@ -67,9 +67,18 @@ const createClientSceneSignature = (state: CanonicalGraphState) =>
     state.activeLayer,
     state.connectionsSourceLayer,
     state.selectedNodePubkey ?? 'no-selection',
-    state.discoveryState.graphRevision,
-    state.discoveryState.inboundGraphRevision,
-    state.discoveryState.connectionsLinksRevision,
+    Object.values(state.nodesByPubkey)
+      .map((node) =>
+        JSON.stringify([
+          node.pubkey,
+          node.label ?? '',
+          node.picture ?? '',
+          node.source,
+          node.discoveredAt ?? '',
+        ]),
+      )
+      .sort()
+      .join('|'),
     Object.keys(state.nodesByPubkey).length,
     Object.keys(state.edgesById).length,
     Array.from(state.pinnedNodePubkeys).sort().join(','),
@@ -496,8 +505,7 @@ export default function GraphAppV2() {
       const nextParts = sig.split('|')
       const KEYS = [
         'rootPubkey', 'activeLayer', 'connectionsSourceLayer',
-        'selectedNodePubkey', 'graphRevision', 'inboundGraphRevision',
-        'connectionsLinksRevision', 'nodeCount', 'linkCount',
+        'selectedNodePubkey', 'nodeVisuals', 'nodeCount', 'linkCount',
         'inboundLinkCount', 'connectionsLinkCount', 'pinnedNodePubkeys',
       ]
       const changed = KEYS.filter((k, i) => prevParts[i] !== nextParts[i])

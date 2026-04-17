@@ -62,3 +62,89 @@ test('keeps the scene signature stable for progress and relay health updates', (
 
   assert.equal(second.sceneSignature, first.sceneSignature)
 })
+
+test('keeps the scene signature stable for non-visual node updates', () => {
+  const store = createAppStore()
+  const state = store.getState()
+  state.setRootNodePubkey('root')
+  state.upsertNodes([
+    {
+      pubkey: 'root',
+      label: 'Root',
+      keywordHits: 0,
+      discoveredAt: 0,
+      profileState: 'ready',
+      source: 'root',
+    },
+    {
+      pubkey: 'alice',
+      label: 'Alice',
+      keywordHits: 0,
+      discoveredAt: 1,
+      profileState: 'ready',
+      source: 'follow',
+    },
+  ])
+  state.upsertLinks([{ source: 'root', target: 'alice', relation: 'follow' }])
+
+  const adapter = new LegacyStoreSnapshotAdapter()
+  const first = adapter.adapt(store.getState())
+
+  store.getState().upsertNodes([
+    {
+      pubkey: 'alice',
+      label: 'Alice',
+      keywordHits: 0,
+      discoveredAt: 1,
+      profileFetchedAt: 2,
+      profileState: 'loading',
+      source: 'follow',
+    },
+  ])
+  const second = adapter.adapt(store.getState())
+
+  assert.equal(second.discoveryState.graphRevision, first.discoveryState.graphRevision + 1)
+  assert.equal(second.sceneSignature, first.sceneSignature)
+})
+
+test('changes the scene signature for visual node updates', () => {
+  const store = createAppStore()
+  const state = store.getState()
+  state.setRootNodePubkey('root')
+  state.upsertNodes([
+    {
+      pubkey: 'root',
+      label: 'Root',
+      keywordHits: 0,
+      discoveredAt: 0,
+      profileState: 'ready',
+      source: 'root',
+    },
+    {
+      pubkey: 'alice',
+      label: 'Alice',
+      keywordHits: 0,
+      discoveredAt: 1,
+      profileState: 'ready',
+      source: 'follow',
+    },
+  ])
+  state.upsertLinks([{ source: 'root', target: 'alice', relation: 'follow' }])
+
+  const adapter = new LegacyStoreSnapshotAdapter()
+  const first = adapter.adapt(store.getState())
+
+  store.getState().upsertNodes([
+    {
+      pubkey: 'alice',
+      label: 'Alice Updated',
+      keywordHits: 0,
+      discoveredAt: 1,
+      profileState: 'ready',
+      source: 'follow',
+    },
+  ])
+  const second = adapter.adapt(store.getState())
+
+  assert.notEqual(second.sceneSignature, first.sceneSignature)
+})

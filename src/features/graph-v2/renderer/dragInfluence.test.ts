@@ -4,6 +4,7 @@ import test from 'node:test'
 import type { GraphSceneSnapshot } from '@/features/graph-v2/renderer/contracts'
 import {
   createDragNeighborhoodInfluenceState,
+  dampInfluenceVelocities,
   DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG,
   releaseDraggedNode,
   stepDragNeighborhoodInfluence,
@@ -178,6 +179,35 @@ const createStore = () => {
   return store
 }
 
+test('uses an Obsidian-like drag tuning preset by default', () => {
+  assert.equal(DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.edgeStiffness, 0.09)
+  assert.equal(
+    DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.anchorStiffnessPerHop,
+    0.0055,
+  )
+  assert.equal(DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.baseDamping, 0.90)
+  assert.equal(DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.maxVelocityPerFrame, 6)
+  assert.equal(DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.maxTranslationPerFrame, 7)
+  assert.equal(
+    DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.dragRepulsionStrength,
+    3.2,
+  )
+  assert.equal(DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.dragRepulsionRadius, 54)
+  assert.equal(
+    DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.dragRepulsionDecayDistance,
+    14,
+  )
+  assert.equal(DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.dragRepulsionPadding, 8)
+  assert.equal(
+    DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.dragRepulsionAnchorStiffness,
+    0.006,
+  )
+  assert.equal(
+    DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.maxRepulsionTranslationPerFrame,
+    7,
+  )
+})
+
 test('collects hop-connected nodes and builds spring edges between them', () => {
   const store = createStore()
   const state = createDragNeighborhoodInfluenceState(
@@ -213,7 +243,7 @@ test('collects hop-connected nodes and builds spring edges between them', () => 
   assert.equal(Math.round(edgeAB!.restLength), 10)
 })
 
-test('chain propagation: closer neighbors move more than distant ones, with smooth decay', () => {
+test('chain propagation moves the reachable neighborhood without unbounded jumps', () => {
   const store = createStore()
   const state = createDragNeighborhoodInfluenceState(
     store,
@@ -251,9 +281,12 @@ test('chain propagation: closer neighbors move more than distant ones, with smoo
   const cDisplacement = Math.hypot(afterC.x - beforeC.x, afterC.y - beforeC.y)
   const fDisplacement = Math.hypot(afterF.x - beforeF.x, afterF.y - beforeF.y)
 
-  assert.ok(bDisplacement > cDisplacement)
-  assert.ok(cDisplacement > fDisplacement)
+  assert.ok(bDisplacement > 0)
+  assert.ok(cDisplacement > 0)
   assert.ok(fDisplacement > 0)
+  assert.ok(bDisplacement <= DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.maxTranslationPerFrame * 8)
+  assert.ok(cDisplacement <= DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.maxTranslationPerFrame * 8)
+  assert.ok(fDisplacement <= DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.maxTranslationPerFrame * 8)
 })
 
 test('leaves disconnected nodes untouched even when they are in the hop map', () => {
@@ -283,7 +316,138 @@ test('leaves disconnected nodes untouched even when they are in the hop map', ()
   assert.equal(afterD.y, beforeD.y)
 })
 
-test('keeps fixed neighbors untouched while the chain around them flexes', () => {
+test('repels nearby disconnected nodes while the dragged node is moving', () => {
+  const store = createStore()
+  store.setNodePosition('A', 40, 0, true)
+  store.setNodePosition('D', 42, 0)
+  const state = createDragNeighborhoodInfluenceState(
+    store,
+    'A',
+    new Map([['A', 0]]),
+  )
+  const beforeD = store.getNodePosition('D')!
+
+  const result = stepDragNeighborhoodInfluence(store, 'A', state, 16)
+  const afterD = store.getNodePosition('D')!
+
+  assert.equal(result.translated, true)
+  assert.ok(afterD.x > beforeD.x)
+  assert.equal(afterD.y, beforeD.y)
+})
+
+test('drops drag repulsion exponentially with distance', () => {
+  const store = createStore()
+  store.setNodePosition('A', 40, 0, true)
+  store.setNodePosition('D', 42, 0)
+  store.setNodePosition('E', 84, 0)
+  const state = createDragNeighborhoodInfluenceState(
+    store,
+    'A',
+    new Map([['A', 0]]),
+  )
+  const beforeD = store.getNodePosition('D')!
+  const beforeE = store.getNodePosition('E')!
+
+  stepDragNeighborhoodInfluence(store, 'A', state, 16)
+
+  const afterD = store.getNodePosition('D')!
+  const afterE = store.getNodePosition('E')!
+  const nearDisplacement = Math.hypot(afterD.x - beforeD.x, afterD.y - beforeD.y)
+  const farDisplacement = Math.hypot(afterE.x - beforeE.x, afterE.y - beforeE.y)
+
+  assert.ok(nearDisplacement > farDisplacement * 10)
+})
+
+test('cuts drag repulsion to zero outside the configured radius', () => {
+  const store = createStore()
+  store.setNodePosition('A', 40, 0, true)
+  store.setNodePosition('D', 95, 0)
+  const state = createDragNeighborhoodInfluenceState(
+    store,
+    'A',
+    new Map([['A', 0]]),
+  )
+  const beforeD = store.getNodePosition('D')!
+
+  stepDragNeighborhoodInfluence(store, 'A', state, 16)
+
+  assert.deepEqual(store.getNodePosition('D'), beforeD)
+})
+
+test('keeps repelled nodes bounded under repeated drag pressure', () => {
+  const store = createStore()
+  store.setNodePosition('A', 40, 0, true)
+  store.setNodePosition('D', 42, 0)
+  const state = createDragNeighborhoodInfluenceState(
+    store,
+    'A',
+    new Map([['A', 0]]),
+  )
+  const beforeD = store.getNodePosition('D')!
+
+  for (let index = 0; index < 180; index += 1) {
+    stepDragNeighborhoodInfluence(store, 'A', state, 16)
+  }
+
+  const afterD = store.getNodePosition('D')!
+  const displacement = Math.hypot(afterD.x - beforeD.x, afterD.y - beforeD.y)
+
+  assert.ok(displacement > 0)
+  assert.ok(displacement < DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.dragRepulsionRadius * 2)
+})
+
+test('pulls repelled nodes back toward equilibrium when drag pressure leaves', () => {
+  const store = createStore()
+  store.setNodePosition('A', 40, 0, true)
+  store.setNodePosition('D', 42, 0)
+  const state = createDragNeighborhoodInfluenceState(
+    store,
+    'A',
+    new Map([['A', 0]]),
+  )
+  const initialD = store.getNodePosition('D')!
+
+  for (let index = 0; index < 24; index += 1) {
+    stepDragNeighborhoodInfluence(store, 'A', state, 16)
+  }
+
+  const pushedD = store.getNodePosition('D')!
+  store.setNodePosition('A', -300, 0, true)
+
+  for (let index = 0; index < 120; index += 1) {
+    stepDragNeighborhoodInfluence(store, 'A', state, 16)
+  }
+
+  const settledD = store.getNodePosition('D')!
+  const pushedDistance = Math.hypot(pushedD.x - initialD.x, pushedD.y - initialD.y)
+  const settledDistance = Math.hypot(
+    settledD.x - initialD.x,
+    settledD.y - initialD.y,
+  )
+
+  assert.ok(pushedDistance > 0)
+  assert.ok(settledDistance < pushedDistance)
+})
+
+test('does not move fixed nodes with drag repulsion', () => {
+  const store = createStore()
+  const state = createDragNeighborhoodInfluenceState(
+    store,
+    'A',
+    new Map([['A', 0]]),
+  )
+
+  store.setNodePosition('A', 40, 0, true)
+  store.setNodePosition('D', 42, 0)
+  store.setNodeFixed('D', true)
+  const beforeD = store.getNodePosition('D')!
+
+  stepDragNeighborhoodInfluence(store, 'A', state, 16)
+
+  assert.deepEqual(store.getNodePosition('D'), beforeD)
+})
+
+test('keeps fixed neighbors untouched while drag repulsion still affects nearby nodes', () => {
   const store = createStore()
   const state = createDragNeighborhoodInfluenceState(
     store,
@@ -305,7 +469,7 @@ test('keeps fixed neighbors untouched while the chain around them flexes', () =>
   }
 
   assert.deepEqual(store.getNodePosition('B'), beforeB)
-  assert.notDeepEqual(store.getNodePosition('C'), beforeC)
+  assert.ok(store.getNodePosition('C')!.x < beforeC.x)
   assert.equal(store.isNodeFixed('B'), true)
 })
 
@@ -325,4 +489,34 @@ test('keeps the dragged node fixed after release when it remains pinned', () => 
   releaseDraggedNode(store, 'A', ['A'])
 
   assert.equal(store.isNodeFixed('A'), true)
+})
+
+test('dampInfluenceVelocities multiplies all node velocities by the given factor', () => {
+  const store = createStore()
+  const state = createDragNeighborhoodInfluenceState(
+    store,
+    'A',
+    new Map([
+      ['A', 0],
+      ['B', 1],
+      ['C', 2],
+    ]),
+  )
+
+  store.setNodePosition('A', 40, 0, true)
+  stepDragNeighborhoodInfluence(store, 'A', state, 16)
+
+  // After one step B and C should have non-zero velocities.
+  const bState = state.nodes.get('B')!
+  const cState = state.nodes.get('C')!
+  const bSpeedBefore = Math.hypot(bState.velocityX, bState.velocityY)
+  const cSpeedBefore = Math.hypot(cState.velocityX, cState.velocityY)
+
+  dampInfluenceVelocities(state, 0.2)
+
+  const bSpeedAfter = Math.hypot(bState.velocityX, bState.velocityY)
+  const cSpeedAfter = Math.hypot(cState.velocityX, cState.velocityY)
+
+  assert.ok(bSpeedAfter < bSpeedBefore * 0.5)
+  assert.ok(cSpeedAfter < cSpeedBefore * 0.5)
 })

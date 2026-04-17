@@ -24,6 +24,10 @@ import {
   DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING,
   type DragNeighborhoodInfluenceTuning,
 } from '@/features/graph-v2/renderer/dragInfluence'
+import {
+  DEFAULT_FORCE_ATLAS_PHYSICS_TUNING,
+  type ForceAtlasPhysicsTuning,
+} from '@/features/graph-v2/renderer/forceAtlasRuntime'
 import { createDragLocalFixture } from '@/features/graph-v2/testing/fixtures/dragLocalFixture'
 import { SigmaCanvasHost } from '@/features/graph-v2/ui/SigmaCanvasHost'
 
@@ -146,6 +150,124 @@ function RelayEditor({
       </div>
 
       {message ? <p className="mt-3 text-xs text-white/60">{message}</p> : null}
+    </section>
+  )
+}
+
+const PHYSICS_TUNING_SLIDERS: Array<{
+  key: keyof ForceAtlasPhysicsTuning
+  label: string
+  description: string
+  min: number
+  max: number
+  step: number
+}> = [
+  {
+    key: 'centripetalForce',
+    label: 'Fuerza centripeta',
+    description: 'Multiplica gravity: compacta el grafo hacia el centro.',
+    min: 0.25,
+    max: 2.5,
+    step: 0.05,
+  },
+  {
+    key: 'repulsionForce',
+    label: 'Fuerza de repelencia',
+    description: 'Multiplica scalingRatio: separa nodos y clusters.',
+    min: 0.25,
+    max: 5,
+    step: 0.05,
+  },
+  {
+    key: 'linkForce',
+    label: 'Fuerza de enlace',
+    description: 'Multiplica edgeWeightInfluence: cohesion por aristas.',
+    min: 0.25,
+    max: 2.5,
+    step: 0.05,
+  },
+  {
+    key: 'linkDistance',
+    label: 'Distancia de enlace',
+    description: 'Aproxima distancia: mas alto abre enlaces sin cambiar FA2.',
+    min: 0.5,
+    max: 2,
+    step: 0.05,
+  },
+  {
+    key: 'damping',
+    label: 'Amortiguacion',
+    description: 'Multiplica slowDown: controla velocidad e inercia.',
+    min: 0.5,
+    max: 2.5,
+    step: 0.05,
+  },
+]
+
+function PhysicsTuningPanel({
+  tuning,
+  onChange,
+  onReset,
+}: {
+  tuning: ForceAtlasPhysicsTuning
+  onChange: <K extends keyof ForceAtlasPhysicsTuning>(
+    key: K,
+    value: ForceAtlasPhysicsTuning[K],
+  ) => void
+  onReset: () => void
+}) {
+  return (
+    <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-white/50">Physics</p>
+          <h2 className="mt-1 text-sm font-semibold text-white">
+            Preset Obsidian
+          </h2>
+        </div>
+        <button
+          className="rounded-xl border border-white/10 px-3 py-2 text-xs text-white/70 hover:border-white/20"
+          onClick={onReset}
+          type="button"
+        >
+          Reset
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-4">
+        {PHYSICS_TUNING_SLIDERS.map((slider) => {
+          const value = tuning[slider.key]
+          return (
+            <label className="block" key={slider.key}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-white/85">{slider.label}</span>
+                <span className="rounded-full border border-white/10 px-2 py-1 font-mono text-[11px] text-[#7dd3a7]">
+                  {value.toFixed(2)}x
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-white/50">{slider.description}</p>
+              <input
+                className="mt-3 h-2 w-full cursor-pointer accent-[#7dd3a7]"
+                max={slider.max}
+                min={slider.min}
+                onChange={(event) => {
+                  onChange(
+                    slider.key,
+                    Number.parseFloat(event.target.value) as ForceAtlasPhysicsTuning[typeof slider.key],
+                  )
+                }}
+                step={slider.step}
+                type="range"
+                value={value}
+              />
+              <div className="mt-1 flex items-center justify-between text-[11px] text-white/35">
+                <span>{slider.min.toFixed(2)}x</span>
+                <span>{slider.max.toFixed(2)}x</span>
+              </div>
+            </label>
+          )
+        })}
+      </div>
     </section>
   )
 }
@@ -279,6 +401,8 @@ export default function GraphAppV2() {
     useState<DragNeighborhoodInfluenceTuning>(
       DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING,
     )
+  const [physicsTuning, setPhysicsTuning] =
+    useState<ForceAtlasPhysicsTuning>(DEFAULT_FORCE_ATLAS_PHYSICS_TUNING)
 
   useEffect(() => {
     bridge.connect()
@@ -380,6 +504,16 @@ export default function GraphAppV2() {
     value: DragNeighborhoodInfluenceTuning[K],
   ) => {
     setDragInfluenceTuning((current) => ({
+      ...current,
+      [key]: value,
+    }))
+  }
+
+  const updatePhysicsTuning = <K extends keyof ForceAtlasPhysicsTuning>(
+    key: K,
+    value: ForceAtlasPhysicsTuning[K],
+  ) => {
+    setPhysicsTuning((current) => ({
       ...current,
       [key]: value,
     }))
@@ -511,6 +645,14 @@ export default function GraphAppV2() {
               relayUrls={domainState.relayState.urls}
             />
 
+            <PhysicsTuningPanel
+              onChange={updatePhysicsTuning}
+              onReset={() => {
+                setPhysicsTuning(DEFAULT_FORCE_ATLAS_PHYSICS_TUNING)
+              }}
+              tuning={physicsTuning}
+            />
+
             {isDragFixtureLab ? (
               <DragTuningPanel
                 onChange={updateDragInfluenceTuning}
@@ -579,6 +721,7 @@ export default function GraphAppV2() {
                   callbacks={callbacks}
                   dragInfluenceTuning={dragInfluenceTuning}
                   enableDebugProbe={isTestMode}
+                  physicsTuning={physicsTuning}
                   scene={deferredScene}
                 />
               </div>

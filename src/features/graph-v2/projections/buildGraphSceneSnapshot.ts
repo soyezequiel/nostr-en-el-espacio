@@ -166,21 +166,23 @@ export const buildGraphSceneSnapshot = (
     )
     .sort((left, right) => left.id.localeCompare(right.id))
 
-  const selectedPubkey = state.selectedNodePubkey
-  const hasSelection =
-    selectedPubkey !== null && visibleNodePubkeys.has(selectedPubkey)
+  // Visual focus is intentionally renderer-local: hover and drag should
+  // highlight neighbors, but a clicked/selected node should only drive
+  // semantic UI like the detail panel.
+  const visualFocusPubkey: string | null = null
+  const hasVisualFocus = false
 
   const depth1Neighbors = new Set<string>()
-  if (selectedPubkey && hasSelection) {
+  if (visualFocusPubkey && hasVisualFocus) {
     for (const edge of forceEdges) {
-      if (edge.source === selectedPubkey) {
+      if (edge.source === visualFocusPubkey) {
         depth1Neighbors.add(edge.target)
       }
-      if (edge.target === selectedPubkey) {
+      if (edge.target === visualFocusPubkey) {
         depth1Neighbors.add(edge.source)
       }
     }
-    depth1Neighbors.delete(selectedPubkey)
+    depth1Neighbors.delete(visualFocusPubkey)
   }
 
   const sortedNodes = Array.from(visibleNodePubkeys)
@@ -207,10 +209,10 @@ export const buildGraphSceneSnapshot = (
     const isNeighbor = depth1Neighbors.has(node.pubkey)
     const focusState = resolveFocusState({
       isRoot,
-      isSelected,
+      isSelected: node.pubkey === visualFocusPubkey,
       isPinned,
       isNeighbor,
-      hasSelection,
+      hasSelection: hasVisualFocus,
     })
     const baseColor = nodeColorBySource[node.source]
     const baseSize = isRoot ? SIZE_ROOT : isPinned ? SIZE_PINNED : SIZE_DEFAULT
@@ -231,15 +233,15 @@ export const buildGraphSceneSnapshot = (
   })
 
   const touchesFocus = (edge: CanonicalEdge) => {
-    if (!hasSelection || !selectedPubkey) {
+    if (!hasVisualFocus || !visualFocusPubkey) {
       return false
     }
-    return edge.source === selectedPubkey || edge.target === selectedPubkey
+    return edge.source === visualFocusPubkey || edge.target === visualFocusPubkey
   }
 
   const visibleEdges = layerProjection.visibleEdges.map((edge) =>
     mapSceneEdge(edge, false, {
-      hasSelection,
+      hasSelection: hasVisualFocus,
       touchesFocus: touchesFocus(edge),
     }),
   )
@@ -248,9 +250,9 @@ export const buildGraphSceneSnapshot = (
 
     return mapSceneEdge(
       edge,
-      !visibleEdgeIds.has(edge.id) && !(hasSelection && edgeTouchesFocus),
+      !visibleEdgeIds.has(edge.id) && !(hasVisualFocus && edgeTouchesFocus),
       {
-        hasSelection,
+        hasSelection: hasVisualFocus,
         touchesFocus: edgeTouchesFocus,
       },
     )

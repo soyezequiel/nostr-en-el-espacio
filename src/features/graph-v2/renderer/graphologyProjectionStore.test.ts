@@ -155,3 +155,30 @@ test('projects selected neighborhoods into prominent sigma attributes', () => {
   assert.equal(edge.touchesFocus, true)
   assert.equal(edge.zIndex, 6)
 })
+
+test('does not promote semantic selection without visual focus state', () => {
+  const store = new GraphologyProjectionStore()
+  const scene = createScene('follow:A:B')
+  scene.nodes = scene.nodes.map((node) =>
+    node.pubkey === 'B'
+      ? {
+          ...node,
+          isSelected: true,
+          focusState: 'idle',
+        }
+      : node,
+  )
+  scene.selection = {
+    selectedNodePubkey: 'B',
+    hoveredNodePubkey: null,
+  }
+
+  store.applyScene(scene)
+
+  const semanticSelection = store.getGraph().getNodeAttributes('B')
+
+  assert.equal(semanticSelection.isSelected, true)
+  assert.equal(semanticSelection.highlighted, false)
+  assert.equal(semanticSelection.forceLabel, false)
+  assert.equal(semanticSelection.zIndex, 0)
+})

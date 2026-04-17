@@ -6,6 +6,7 @@ import type {
   RendererAdapter,
 } from '@/features/graph-v2/renderer/contracts'
 import { ForceAtlasRuntime } from '@/features/graph-v2/renderer/forceAtlasRuntime'
+import type { ForceAtlasPhysicsTuning } from '@/features/graph-v2/renderer/forceAtlasRuntime'
 import type {
   SigmaEdgeAttributes,
   SigmaNodeAttributes,
@@ -17,6 +18,7 @@ import {
 import {
   createDragNeighborhoodInfluenceConfig,
   createDragNeighborhoodInfluenceState,
+  dampInfluenceVelocities,
   DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG,
   releaseDraggedNode,
   stepDragNeighborhoodInfluence,
@@ -38,6 +40,7 @@ import type {
   DebugNeighborGroups,
   DebugDragRuntimeState,
   DebugNodePosition,
+  DebugPhysicsDiagnostics,
 } from '@/features/graph-v2/testing/browserDebug'
 
 const HOVER_SELECTED_NODE_COLOR = '#ffb25b'
@@ -46,6 +49,18 @@ const HOVER_DIM_NODE_COLOR = '#121a22'
 const HOVER_EDGE_BRIGHT_COLOR = '#f4fbff'
 const HOVER_DIM_EDGE_COLOR = '#10171f'
 const STAGE_CLICK_SUPPRESS_AFTER_DRAG_MS = 160
+const NODE_ZOOM_OUT_MIN_SCALE = 0.42
+const NODE_ZOOM_OUT_SCALE_EXPONENT = 0.55
+
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max)
+
+const resolveZoomOutNodeScale = (cameraRatio: number) =>
+  clampNumber(
+    1 / Math.pow(Math.max(cameraRatio, 1), NODE_ZOOM_OUT_SCALE_EXPONENT),
+    NODE_ZOOM_OUT_MIN_SCALE,
+    1,
+  )
 
 export class SigmaRendererAdapter implements RendererAdapter {
   private sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null
@@ -248,6 +263,14 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
   }
 
+  public getPhysicsDiagnostics(): DebugPhysicsDiagnostics | null {
+    return this.forceRuntime?.getDiagnostics() ?? null
+  }
+
+  public setPhysicsTuning(tuning: Partial<ForceAtlasPhysicsTuning>) {
+    this.forceRuntime?.setPhysicsTuning(tuning)
+  }
+
   public setDragInfluenceTuning(
     tuning: Partial<DragNeighborhoodInfluenceTuning>,
   ) {
@@ -353,6 +376,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.projectionStore.setNodeFixed(pubkey, true)
     this.setGraphBoundsLocked(true)
     this.forceRuntime?.suspend()
+    // Force-lock highlight on the dragged node regardless of pointer position.
+    this.setHoveredNode(pubkey, true)
     this.callbacks.onNodeDragStart(pubkey)
   }
 
@@ -374,6 +399,12 @@ export class SigmaRendererAdapter implements RendererAdapter {
     const draggedNodePubkey = this.draggedNodePubkey
     const position = this.projectionStore.getNodePosition(draggedNodePubkey)
 
+    // Drain residual spring velocities before resuming FA2 so small clusters
+    // don't get kicked out by leftover momentum from the influence engine.
+    if (this.dragInfluenceState) {
+      dampInfluenceVelocities(this.dragInfluenceState, 0.2)
+    }
+
     releaseDraggedNode(
       this.projectionStore,
       draggedNodePubkey,
@@ -389,14 +420,15 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.suppressedStageClickUntil =
       Date.now() + STAGE_CLICK_SUPPRESS_AFTER_DRAG_MS
 
-    // Reheat FA2 so it absorbs the drag's kinetic energy and relaxes the
-    // graph back toward equilibrium from the new positions, instead of
-    // running a separate settling pipeline.
+    // Resume FA2 from current positions without reheat so the layout
+    // continues smoothly rather than restarting and kicking clusters.
     this.forceRuntime?.resume()
-    this.forceRuntime?.reheat()
     this.setCameraLocked(false)
     this.setGraphBoundsLocked(false)
     this.sigma?.refresh()
+
+    // Recalculate hover based on actual pointer position after release.
+    this.recalculateHoverAfterDrag()
 
     if (position) {
       this.callbacks.onNodeDragEnd(draggedNodePubkey, position)
@@ -626,13 +658,22 @@ export class SigmaRendererAdapter implements RendererAdapter {
     node: string,
     data: SigmaNodeAttributes,
   ) => {
+    const cameraRatio = this.sigma?.getCamera().getState().ratio ?? 1
+    const zoomScaledSize = data.size * resolveZoomOutNodeScale(cameraRatio)
+
     if (!this.hoveredNodePubkey) {
-      return data
+      return zoomScaledSize === data.size
+        ? data
+        : {
+            ...data,
+            size: zoomScaledSize,
+          }
     }
 
     if (node === this.hoveredNodePubkey) {
       return {
         ...data,
+        size: zoomScaledSize,
         color: HOVER_SELECTED_NODE_COLOR,
         forceLabel: true,
         highlighted: true,
@@ -643,6 +684,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     if (this.hoveredNeighbors.has(node)) {
       return {
         ...data,
+        size: zoomScaledSize,
         color: HOVER_NEIGHBOR_NODE_COLOR,
         forceLabel: true,
         highlighted: true,
@@ -652,6 +694,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
     return {
       ...data,
+      size: zoomScaledSize,
       color: HOVER_DIM_NODE_COLOR,
       forceLabel: false,
       highlighted: false,
@@ -692,7 +735,16 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
   }
 
-  private readonly setHoveredNode = (pubkey: string | null) => {
+  private readonly setHoveredNode = (
+    pubkey: string | null,
+    force = false,
+  ) => {
+    // While dragging, external enterNode/leaveNode events must not change
+    // the highlight — the dragged node stays highlighted until release.
+    if (!force && this.draggedNodePubkey) {
+      return
+    }
+
     if (this.hoveredNodePubkey === pubkey) {
       return
     }
@@ -710,6 +762,24 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
 
     this.sigma?.refresh()
+  }
+
+  // After releasing a drag, check what node (if any) sits under the last
+  // known pointer and restore the hover highlight accordingly.
+  private readonly recalculateHoverAfterDrag = () => {
+    if (!this.sigma || !this.lastMoveBodyPointer) {
+      this.setHoveredNode(null, true)
+      return
+    }
+
+    // getNodeAtPosition is marked private in Sigma's types but is a stable
+    // public method at runtime used by Sigma's own event handlers.
+    const nodeUnderPointer = (
+      this.sigma as unknown as {
+        getNodeAtPosition(pos: { x: number; y: number }): string | null
+      }
+    ).getNodeAtPosition(this.lastMoveBodyPointer)
+    this.setHoveredNode(nodeUnderPointer ?? null, true)
   }
 
   private readonly setCameraLocked = (locked: boolean) => {

@@ -45,6 +45,10 @@ export interface FixtureScenario {
 }
 
 export const createDragLocalFixture = (): FixtureScenario => {
+  const extraNodePubkeys = Array.from(
+    { length: 20 },
+    (_, index) => `fixture-extra-${index + 1}`,
+  )
   const nodes = [
     createNode(ROOT_PUBKEY, {
       label: 'Root Fixture',
@@ -60,17 +64,30 @@ export const createDragLocalFixture = (): FixtureScenario => {
     createNode('fixture-hop1-a', { label: 'Hop 1 A', discoveredAt: 2 }),
     createNode('fixture-hop1-b', { label: 'Hop 1 B', discoveredAt: 3 }),
     createNode('fixture-hop1-c', { label: 'Hop 1 C', discoveredAt: 4 }),
+    createNode('fixture-hop1-d', { label: 'Hop 1 D', discoveredAt: 5 }),
     createNode(PINNED_NEIGHBOR_PUBKEY, {
       label: 'Pinned Neighbor',
-      discoveredAt: 5,
+      discoveredAt: 6,
     }),
-    createNode('fixture-hop2-a', { label: 'Hop 2 A', discoveredAt: 6 }),
-    createNode('fixture-hop2-b', { label: 'Hop 2 B', discoveredAt: 7 }),
-    createNode('fixture-hop2-c', { label: 'Hop 2 C', discoveredAt: 8 }),
-    createNode('fixture-hop2-d', { label: 'Hop 2 D', discoveredAt: 9 }),
-    createNode('fixture-hop3-a', { label: 'Hop 3 A', discoveredAt: 10 }),
-    createNode('fixture-outside-a', { label: 'Outside A', discoveredAt: 11 }),
-    createNode('fixture-outside-b', { label: 'Outside B', discoveredAt: 12 }),
+    createNode('fixture-hop2-a', { label: 'Hop 2 A', discoveredAt: 7 }),
+    createNode('fixture-hop2-b', { label: 'Hop 2 B', discoveredAt: 8 }),
+    createNode('fixture-hop2-c', { label: 'Hop 2 C', discoveredAt: 9 }),
+    createNode('fixture-hop2-d', { label: 'Hop 2 D', discoveredAt: 10 }),
+    createNode('fixture-hop2-e', { label: 'Hop 2 E', discoveredAt: 11 }),
+    createNode('fixture-hop2-f', { label: 'Hop 2 F', discoveredAt: 12 }),
+    createNode('fixture-hop3-a', { label: 'Hop 3 A', discoveredAt: 13 }),
+    createNode('fixture-hop3-b', { label: 'Hop 3 B', discoveredAt: 14 }),
+    createNode('fixture-hop3-c', { label: 'Hop 3 C', discoveredAt: 15 }),
+    createNode('fixture-outside-a', { label: 'Outside A', discoveredAt: 16 }),
+    createNode('fixture-outside-b', { label: 'Outside B', discoveredAt: 17 }),
+    createNode('fixture-outside-c', { label: 'Outside C', discoveredAt: 18 }),
+    createNode('fixture-outside-d', { label: 'Outside D', discoveredAt: 19 }),
+    ...extraNodePubkeys.map((pubkey, index) =>
+      createNode(pubkey, {
+        label: `Extra ${index + 1}`,
+        discoveredAt: 20 + index,
+      }),
+    ),
   ]
 
   const edges = [
@@ -80,14 +97,40 @@ export const createDragLocalFixture = (): FixtureScenario => {
     createEdge('fixture-hop1-a', DRAG_TARGET_PUBKEY),
     createEdge(DRAG_TARGET_PUBKEY, 'fixture-hop1-b'),
     createEdge(DRAG_TARGET_PUBKEY, 'fixture-hop1-c'),
+    createEdge(DRAG_TARGET_PUBKEY, 'fixture-hop1-d'),
     createEdge(DRAG_TARGET_PUBKEY, PINNED_NEIGHBOR_PUBKEY),
     createEdge('fixture-hop1-a', 'fixture-hop2-a'),
     createEdge('fixture-hop1-b', 'fixture-hop2-b'),
     createEdge('fixture-hop1-c', 'fixture-hop2-c'),
+    createEdge('fixture-hop1-d', 'fixture-hop2-e'),
     createEdge(PINNED_NEIGHBOR_PUBKEY, 'fixture-hop2-d'),
+    createEdge(PINNED_NEIGHBOR_PUBKEY, 'fixture-hop2-f'),
     createEdge('fixture-hop2-a', 'fixture-hop3-a'),
+    createEdge('fixture-hop2-b', 'fixture-hop3-b'),
+    createEdge('fixture-hop2-c', 'fixture-hop3-c'),
     createEdge('fixture-outside-a', 'fixture-outside-b'),
     createEdge('fixture-outside-b', 'fixture-outside-a'),
+    createEdge('fixture-outside-b', 'fixture-outside-c'),
+    createEdge('fixture-outside-c', 'fixture-outside-d'),
+    createEdge('fixture-outside-d', 'fixture-outside-a'),
+    createEdge('fixture-hop2-a', 'fixture-extra-1'),
+    createEdge('fixture-hop2-b', 'fixture-extra-6'),
+    createEdge('fixture-hop2-c', 'fixture-extra-11'),
+    createEdge('fixture-hop2-d', 'fixture-extra-16'),
+    ...extraNodePubkeys.slice(0, 5).flatMap((pubkey, index, cluster) => {
+      const nextPubkey = cluster[(index + 1) % cluster.length]!
+      return [createEdge(pubkey, nextPubkey), createEdge(nextPubkey, pubkey)]
+    }),
+    ...extraNodePubkeys.slice(5, 10).map((pubkey, index, cluster) =>
+      createEdge(pubkey, cluster[(index + 1) % cluster.length]!),
+    ),
+    ...extraNodePubkeys.slice(10, 15).flatMap((pubkey, index, cluster) => {
+      const nextPubkey = cluster[(index + 1) % cluster.length]!
+      return [createEdge(pubkey, nextPubkey), createEdge(nextPubkey, pubkey)]
+    }),
+    ...extraNodePubkeys.slice(15, 20).map((pubkey, index, cluster) =>
+      createEdge(pubkey, cluster[(index + 1) % cluster.length]!),
+    ),
   ]
 
   return {
@@ -100,7 +143,7 @@ export const createDragLocalFixture = (): FixtureScenario => {
       activeLayer: 'graph',
       connectionsSourceLayer: 'graph',
       selectedNodePubkey: null,
-      pinnedNodePubkeys: new Set([PINNED_NEIGHBOR_PUBKEY]),
+      pinnedNodePubkeys: new Set<string>(),
       relayState: {
         urls: ['wss://fixture.local'],
         endpoints: {

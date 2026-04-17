@@ -147,11 +147,11 @@ export class GraphologyProjectionStore {
         : this.positionCache.get(node.pubkey)
       const seedPosition =
         existingPosition ?? createSeedPosition(index, scene.nodes.length)
-      const zIndex = node.isSelected
+      const zIndex = node.focusState === 'selected'
         ? 8
         : node.isRoot
           ? 6
-          : node.isNeighbor
+          : node.focusState === 'neighbor'
             ? 5
             : node.isPinned
               ? 4
@@ -165,9 +165,13 @@ export class GraphologyProjectionStore {
         color: node.color,
         label: node.label,
         hidden: false,
-        highlighted: node.isSelected || node.isNeighbor,
+        highlighted:
+          node.focusState === 'selected' || node.focusState === 'neighbor',
         forceLabel:
-          node.isRoot || node.isSelected || node.isPinned || node.isNeighbor,
+          node.isRoot ||
+          node.isPinned ||
+          node.focusState === 'selected' ||
+          node.focusState === 'neighbor',
         fixed: node.isPinned,
         pictureUrl: node.pictureUrl,
         isDimmed: node.isDimmed,

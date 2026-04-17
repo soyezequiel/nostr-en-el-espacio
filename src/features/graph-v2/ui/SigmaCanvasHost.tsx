@@ -8,6 +8,7 @@ import type {
 } from '@/features/graph-v2/renderer/contracts'
 import { SigmaRendererAdapter } from '@/features/graph-v2/renderer/SigmaRendererAdapter'
 import type { DragNeighborhoodInfluenceTuning } from '@/features/graph-v2/renderer/dragInfluence'
+import type { ForceAtlasPhysicsTuning } from '@/features/graph-v2/renderer/forceAtlasRuntime'
 import type { SigmaLabDebugApi } from '@/features/graph-v2/testing/browserDebug'
 
 interface SigmaCanvasHostProps {
@@ -15,6 +16,7 @@ interface SigmaCanvasHostProps {
   callbacks: GraphInteractionCallbacks
   enableDebugProbe?: boolean
   dragInfluenceTuning?: Partial<DragNeighborhoodInfluenceTuning>
+  physicsTuning?: Partial<ForceAtlasPhysicsTuning>
 }
 
 export function SigmaCanvasHost({
@@ -22,6 +24,7 @@ export function SigmaCanvasHost({
   callbacks,
   enableDebugProbe = false,
   dragInfluenceTuning,
+  physicsTuning,
 }: SigmaCanvasHostProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const adapterRef = useRef<SigmaRendererAdapter | null>(null)
@@ -50,6 +53,10 @@ export function SigmaCanvasHost({
   useEffect(() => {
     adapterRef.current?.setDragInfluenceTuning(dragInfluenceTuning ?? {})
   }, [dragInfluenceTuning])
+
+  useEffect(() => {
+    adapterRef.current?.setPhysicsTuning(physicsTuning ?? {})
+  }, [physicsTuning])
 
   useEffect(() => {
     sceneRef.current = scene
@@ -107,6 +114,8 @@ export function SigmaCanvasHost({
         maxHopDistance: null,
         influenceHopSample: [],
       },
+      getPhysicsDiagnostics: () =>
+        adapterRef.current?.getPhysicsDiagnostics() ?? null,
     }
 
     window.__sigmaLabDebug = debugApi

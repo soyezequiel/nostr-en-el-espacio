@@ -52,6 +52,45 @@ export interface DebugDragRuntimeState {
   influenceHopSample: DebugInfluenceHopSample[]
 }
 
+export interface DebugPhysicsDiagnostics {
+  presetVersion: string
+  graphOrder: number
+  graphSize: number
+  settingsKey: string | null
+  layoutEligible: boolean
+  running: boolean
+  suspended: boolean
+  denseFactor: number
+  tuning: {
+    centripetalForce: number
+    repulsionForce: number
+    linkForce: number
+    linkDistance: number
+    damping: number
+  }
+  settings: {
+    adjustSizes?: boolean
+    edgeWeightInfluence?: number
+    scalingRatio?: number
+    strongGravityMode?: boolean
+    gravity?: number
+    slowDown?: number
+    barnesHutOptimize?: boolean
+    barnesHutTheta?: number
+  }
+  bounds: {
+    minX: number
+    maxX: number
+    minY: number
+    maxY: number
+    width: number
+    height: number
+  } | null
+  averageEdgeLength: number | null
+  sampledNodeCount: number
+  approximateOverlapCount: number
+}
+
 export interface SigmaLabDebugApi {
   getNodePosition: (pubkey: string) => DebugNodePosition | null
   getViewportPosition: (pubkey: string) => DebugViewportPosition | null
@@ -62,6 +101,7 @@ export interface SigmaLabDebugApi {
   isNodeFixed: (pubkey: string) => boolean
   getSelectionState: () => DebugSelectionState
   getDragRuntimeState: () => DebugDragRuntimeState
+  getPhysicsDiagnostics: () => DebugPhysicsDiagnostics | null
 }
 
 declare global {

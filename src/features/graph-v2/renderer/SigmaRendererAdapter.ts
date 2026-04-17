@@ -5,6 +5,10 @@ import type {
   GraphSceneSnapshot,
   RendererAdapter,
 } from '@/features/graph-v2/renderer/contracts'
+import {
+  drawCachedDiscNodeHover,
+  drawCachedDiscNodeLabel,
+} from '@/features/graph-v2/renderer/cachedNodeLabels'
 import { ForceAtlasRuntime } from '@/features/graph-v2/renderer/forceAtlasRuntime'
 import type { ForceAtlasPhysicsTuning } from '@/features/graph-v2/renderer/forceAtlasRuntime'
 import type {
@@ -35,6 +39,10 @@ import {
   type PendingNodeDragGesture,
   type SuppressedNodeClick,
 } from '@/features/graph-v2/renderer/nodeDragGesture'
+import {
+  installStrictNodeHitTesting,
+  type SpatialNodeHitTester,
+} from '@/features/graph-v2/renderer/spatialNodeHitTest'
 import type {
   DebugDragCandidate,
   DebugNeighborGroups,
@@ -66,6 +74,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null
 
   private projectionStore: GraphologyProjectionStore | null = null
+
+  private nodeHitTester: SpatialNodeHitTester | null = null
 
   private forceRuntime: ForceAtlasRuntime | null = null
 
@@ -317,6 +327,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       graphPosition.y,
       true,
     )
+    this.nodeHitTester?.markDirty()
     this.lastDragGraphPosition = graphPosition
     this.lastFlushedGraphPosition = graphPosition
     if (this.dragInfluenceState) {
@@ -462,11 +473,17 @@ export class SigmaRendererAdapter implements RendererAdapter {
       inertiaRatio: 2.6,
       autoCenter: false,
       autoRescale: false,
+      defaultDrawNodeLabel: drawCachedDiscNodeLabel,
+      defaultDrawNodeHover: drawCachedDiscNodeHover,
       nodeReducer: this.nodeReducer,
       edgeReducer: this.edgeReducer,
     })
 
     const sigma = this.sigma
+    this.nodeHitTester = installStrictNodeHitTesting(
+      sigma,
+      this.projectionStore.getGraph(),
+    )
     this.bindEvents()
     this.forceRuntime.sync(initialScene)
     if (initialScene.nodes.length > 0) {
@@ -490,6 +507,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       draggedNodePubkey !== null ? this.lastDragGraphPosition : null
     this.scene = scene
     this.projectionStore.applyScene(scene)
+    this.nodeHitTester?.markDirty()
 
     if (draggedNodePubkey) {
       this.dragHopDistances = buildDragHopDistances(
@@ -516,6 +534,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
         draggedNodePosition.y,
         true,
       )
+      this.nodeHitTester?.markDirty()
     }
 
     this.forceRuntime.sync(scene)
@@ -544,6 +563,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.setGraphBoundsLocked(false)
     this.forceRuntime?.dispose()
     this.forceRuntime = null
+    this.nodeHitTester?.dispose()
+    this.nodeHitTester = null
     this.sigma?.kill()
     this.sigma = null
     this.projectionStore = null

@@ -1,4 +1,10 @@
-import { Relay, type Filter } from 'nostr-tools'
+import {
+  validateEvent,
+  type Event,
+  type Filter,
+  type VerifiedEvent,
+} from 'nostr-tools'
+import { AbstractRelay } from 'nostr-tools/abstract-relay'
 
 import type {
   RelayConnection,
@@ -32,6 +38,9 @@ interface RelayLike {
 }
 
 type RelayFactory = (url: string) => RelayLike
+
+const validateRelayEvent = (event: Event): event is VerifiedEvent =>
+  validateEvent(event)
 
 interface SharedConnectionEntry {
   connectionPromise?: Promise<NostrToolsRelayConnection>
@@ -231,7 +240,10 @@ export class NostrToolsRelayTransport implements RelayTransport {
   constructor(options: { createRelay?: RelayFactory } = {}) {
     this.createRelay =
       options.createRelay ??
-      ((url: string) => new Relay(url) as unknown as RelayLike)
+      ((url: string) =>
+        new AbstractRelay(url, {
+          verifyEvent: validateRelayEvent,
+        }) as unknown as RelayLike)
   }
 
   async connect(url: string): Promise<RelayConnection> {

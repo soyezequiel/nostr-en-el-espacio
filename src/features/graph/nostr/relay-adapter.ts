@@ -278,7 +278,7 @@ export class RelayPoolAdapter {
     const priority: RelaySubscriptionPriority =
       options.priority ?? 'interactive'
     const verificationMode: RelayVerificationMode =
-      options.verificationMode ?? 'trusted-relay'
+      options.verificationMode ?? 'verify-worker'
     const flushDelayMs =
       priority === 'background'
         ? BACKGROUND_FLUSH_DELAY_MS
@@ -302,6 +302,7 @@ export class RelayPoolAdapter {
     let cancelled = false
     let completed = false
     let pendingRelays = activeRelayUrls.length
+    let pendingVerifications = 0
 
     const flushPendingEvents = () => {
       if (flushHandle !== null) {
@@ -335,7 +336,12 @@ export class RelayPoolAdapter {
     }
 
     const finalize = () => {
-      if (completed || cancelled || pendingRelays > 0) {
+      if (
+        completed ||
+        cancelled ||
+        pendingRelays > 0 ||
+        pendingVerifications > 0
+      ) {
         return
       }
 
@@ -548,8 +554,8 @@ export class RelayPoolAdapter {
 
       try {
         activeAttempt.subscription = connection.subscribe(filters, {
-          // PERF: non-async for trusted-relay (the common path) to avoid allocating
-          // a Promise object per event. Noisy relays emit thousands of events/session.
+          // PERF: keep the trusted-relay path non-async for callers that
+          // explicitly opt into relay-side verification.
           onEvent: (event) => {
             if (cancelled || activeAttempt.finished) {
               return
@@ -566,30 +572,47 @@ export class RelayPoolAdapter {
 
             if (verificationMode === 'verify-worker') {
               // Async path only allocated when verification is required
-              void isVerifiedEventAsync(event).then((isValid) => {
-                if (cancelled || activeAttempt.finished) {
-                  return
-                }
+              pendingVerifications += 1
+              void isVerifiedEventAsync(event)
+                .then((isValid) => {
+                  if (cancelled || completed) {
+                    return
+                  }
 
-                if (!isValid) {
+                  if (!isValid) {
+                    stats.rejectedEvents += 1
+                    this.updateRelayHealth(url, (current) => ({
+                      ...current,
+                      lastErrorCode: 'RELAY_EVENT_INVALID',
+                    }))
+                    return
+                  }
+
+                  stats.acceptedEvents += 1
+                  this.acceptRelayEvent(url)
+                  pendingEvents.push({
+                    event,
+                    relayUrl: url,
+                    receivedAtMs: this.clock.now(),
+                    attempt: attemptNumber,
+                  })
+                  scheduleFlush()
+                })
+                .catch(() => {
+                  if (cancelled || completed) {
+                    return
+                  }
+
                   stats.rejectedEvents += 1
                   this.updateRelayHealth(url, (current) => ({
                     ...current,
                     lastErrorCode: 'RELAY_EVENT_INVALID',
                   }))
-                  return
-                }
-
-                stats.acceptedEvents += 1
-                this.acceptRelayEvent(url)
-                pendingEvents.push({
-                  event,
-                  relayUrl: url,
-                  receivedAtMs: this.clock.now(),
-                  attempt: attemptNumber,
                 })
-                scheduleFlush()
-              })
+                .finally(() => {
+                  pendingVerifications = Math.max(0, pendingVerifications - 1)
+                  finalize()
+                })
               return
             }
 

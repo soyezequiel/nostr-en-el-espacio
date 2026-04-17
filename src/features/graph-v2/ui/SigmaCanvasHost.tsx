@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 
 import type {
   GraphInteractionCallbacks,
@@ -10,6 +10,8 @@ import { SigmaRendererAdapter } from '@/features/graph-v2/renderer/SigmaRenderer
 import type { DragNeighborhoodInfluenceTuning } from '@/features/graph-v2/renderer/dragInfluence'
 import type { ForceAtlasPhysicsTuning } from '@/features/graph-v2/renderer/forceAtlasRuntime'
 import type { SigmaLabDebugApi } from '@/features/graph-v2/testing/browserDebug'
+import { ZapElectronOverlay } from '@/features/graph-v2/zaps/zapElectronOverlay'
+import type { ParsedZap } from '@/features/graph-v2/zaps/zapParser'
 
 interface SigmaCanvasHostProps {
   scene: GraphSceneSnapshot
@@ -19,15 +21,18 @@ interface SigmaCanvasHostProps {
   physicsTuning?: Partial<ForceAtlasPhysicsTuning>
 }
 
-export function SigmaCanvasHost({
-  scene,
-  callbacks,
-  enableDebugProbe = false,
-  dragInfluenceTuning,
-  physicsTuning,
-}: SigmaCanvasHostProps) {
+export interface SigmaCanvasHostHandle {
+  playZap: (zap: Pick<ParsedZap, 'fromPubkey' | 'toPubkey' | 'sats'>) => boolean
+}
+
+export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHostProps>(
+  function SigmaCanvasHost(
+    { scene, callbacks, enableDebugProbe = false, dragInfluenceTuning, physicsTuning },
+    ref,
+  ) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const adapterRef = useRef<SigmaRendererAdapter | null>(null)
+  const overlayRef = useRef<ZapElectronOverlay | null>(null)
   const initialSceneRef = useRef(scene)
   const sceneRef = useRef(scene)
 
@@ -36,15 +41,42 @@ export function SigmaCanvasHost({
       return
     }
 
+    const container = containerRef.current
     const adapter = new SigmaRendererAdapter()
-    adapter.mount(containerRef.current, initialSceneRef.current, callbacks)
+    adapter.mount(container, initialSceneRef.current, callbacks)
     adapterRef.current = adapter
 
+    const overlay = new ZapElectronOverlay(container, (pubkey) => {
+      const viewportPosition = adapter.getViewportPosition(pubkey)
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement | null
+      if (!viewportPosition || !canvas) {
+        return null
+      }
+      const canvasRect = canvas.getBoundingClientRect()
+      const scaleX = canvas.width > 0 ? canvasRect.width / canvas.width : 1
+      const scaleY = canvas.height > 0 ? canvasRect.height / canvas.height : 1
+      return {
+        x: viewportPosition.x * scaleX,
+        y: viewportPosition.y * scaleY,
+      }
+    })
+    overlayRef.current = overlay
+
     return () => {
+      overlay.dispose()
+      overlayRef.current = null
       adapter.dispose()
       adapterRef.current = null
     }
   }, [callbacks])
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      playZap: (zap) => overlayRef.current?.play(zap) ?? false,
+    }),
+    [],
+  )
 
   useEffect(() => {
     adapterRef.current?.update(scene)
@@ -129,9 +161,10 @@ export function SigmaCanvasHost({
 
   return (
     <div
-      className="h-full min-h-[32rem] w-full"
+      className="relative h-full min-h-[32rem] w-full"
       data-testid="sigma-canvas-host"
       ref={containerRef}
     />
   )
-}
+  },
+)

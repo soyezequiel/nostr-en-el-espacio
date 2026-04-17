@@ -34,7 +34,9 @@ import {
   type ForceAtlasPhysicsTuning,
 } from '@/features/graph-v2/renderer/forceAtlasRuntime'
 import { createDragLocalFixture } from '@/features/graph-v2/testing/fixtures/dragLocalFixture'
-import { SigmaCanvasHost } from '@/features/graph-v2/ui/SigmaCanvasHost'
+import { SigmaCanvasHost, type SigmaCanvasHostHandle } from '@/features/graph-v2/ui/SigmaCanvasHost'
+import { useLiveZapFeed } from '@/features/graph-v2/zaps/useLiveZapFeed'
+import type { ParsedZap } from '@/features/graph-v2/zaps/zapParser'
 
 const LAYER_LABELS: Record<(typeof GRAPH_V2_LAYERS)[number], string> = {
   graph: 'Graph',
@@ -438,6 +440,8 @@ export default function GraphAppV2() {
     )
   const [physicsTuning, setPhysicsTuning] =
     useState<ForceAtlasPhysicsTuning>(DEFAULT_FORCE_ATLAS_PHYSICS_TUNING)
+  const sigmaHostRef = useRef<SigmaCanvasHostHandle | null>(null)
+  const [zapFeedback, setZapFeedback] = useState<string | null>(null)
   useEffect(() => {
     bridge.connect()
 
@@ -584,6 +588,75 @@ export default function GraphAppV2() {
       ...current,
       [key]: value,
     }))
+  }
+
+  const visiblePubkeys = useMemo(
+    () => deferredScene.nodes.map((node) => node.pubkey),
+    [deferredScene],
+  )
+  const visibleEdgeKeys = useMemo(() => {
+    const set = new Set<string>()
+    for (const edge of deferredScene.visibleEdges) {
+      if (edge.hidden) continue
+      // Store both directions so a zap from A->B matches a visible edge B->A too.
+      set.add(`${edge.source}|${edge.target}`)
+      set.add(`${edge.target}|${edge.source}`)
+    }
+    return set
+  }, [deferredScene])
+  const visibleNodeSet = useMemo(
+    () => new Set(visiblePubkeys),
+    [visiblePubkeys],
+  )
+
+  const handleZap = (zap: Pick<ParsedZap, 'fromPubkey' | 'toPubkey' | 'sats'>) => {
+    if (!visibleNodeSet.has(zap.fromPubkey)) return false
+    if (!visibleNodeSet.has(zap.toPubkey)) return false
+    if (!visibleEdgeKeys.has(`${zap.fromPubkey}|${zap.toPubkey}`)) return false
+    return sigmaHostRef.current?.playZap(zap) ?? false
+  }
+
+  useLiveZapFeed({
+    visiblePubkeys,
+    enabled: !isFixtureMode,
+    onZap: (zap) => {
+      handleZap(zap)
+    },
+  })
+
+  const isDev = process.env.NODE_ENV === 'development'
+  const findSimulationPair = ():
+    | { from: string; to: string }
+    | null => {
+    for (const edge of deferredScene.visibleEdges) {
+      if (edge.hidden) continue
+      if (!visibleNodeSet.has(edge.source)) continue
+      if (!visibleNodeSet.has(edge.target)) continue
+      return { from: edge.source, to: edge.target }
+    }
+    return null
+  }
+  const simulationPair = isDev ? findSimulationPair() : null
+
+  const handleSimulateZap = () => {
+    const pair = findSimulationPair()
+    if (!pair) {
+      setZapFeedback('Sin pares visibles conectados para simular.')
+      return
+    }
+    // Random direction so sender/receiver alternate on repeated clicks.
+    const flipped = Math.random() < 0.5
+    const fromPubkey = flipped ? pair.to : pair.from
+    const toPubkey = flipped ? pair.from : pair.to
+    // Skewed sats sample to exercise the radius scale across its range.
+    const buckets = [21, 210, 2_100, 21_000, 210_000]
+    const sats = buckets[Math.floor(Math.random() * buckets.length)]
+    const played = handleZap({ fromPubkey, toPubkey, sats })
+    setZapFeedback(
+      played
+        ? `Zap simulado: ${sats} sats ${fromPubkey.slice(0, 8)}… → ${toPubkey.slice(0, 8)}…`
+        : 'No se pudo reproducir el zap simulado (nodos o arista ya no visibles).',
+    )
   }
 
   const updatePhysicsTuning = <K extends keyof ForceAtlasPhysicsTuning>(
@@ -777,6 +850,27 @@ export default function GraphAppV2() {
                 })}
               </div>
             </section>
+
+            {isDev ? (
+              <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-white/50">Zaps (dev)</p>
+                <h2 className="mt-1 text-sm font-semibold text-white">Simulador</h2>
+                <p className="mt-2 text-xs leading-5 text-white/55">
+                  Reproduce el pipeline visual de zaps sobre una arista visible. Solo en modo desarrollo.
+                </p>
+                <button
+                  className="mt-3 w-full rounded-xl bg-[#ffd86b] px-3 py-2 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={!simulationPair}
+                  onClick={handleSimulateZap}
+                  type="button"
+                >
+                  {simulationPair ? 'Simular zap' : 'Sin pares conectados'}
+                </button>
+                {zapFeedback ? (
+                  <p className="mt-3 text-xs text-white/60">{zapFeedback}</p>
+                ) : null}
+              </section>
+            ) : null}
           </aside>
 
           <section className="min-h-0 overflow-hidden rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(125,211,167,0.08),rgba(7,10,12,0.96)_45%)]">
@@ -799,6 +893,7 @@ export default function GraphAppV2() {
                   dragInfluenceTuning={dragInfluenceTuning}
                   enableDebugProbe={isTestMode}
                   physicsTuning={physicsTuning}
+                  ref={sigmaHostRef}
                   scene={deferredScene}
                 />
               </div>

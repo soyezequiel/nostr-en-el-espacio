@@ -339,6 +339,45 @@ export class SigmaRendererAdapter implements RendererAdapter {
   }
 
   /**
+   * Pan the camera so that a graph-space coordinate lands at the viewport
+   * center. Used by the minimap for click/drag navigation. The two-step
+   * graph→viewport→framedGraph transform is a round-trip that yields the
+   * target's framed-graph position (what the camera state expects).
+   */
+  public panCameraToGraph(graphX: number, graphY: number, options?: { animate?: boolean }) {
+    const sigma = this.sigma
+    if (!sigma) return
+    const viewportPoint = sigma.graphToViewport({ x: graphX, y: graphY })
+    const framed = sigma.viewportToFramedGraph(viewportPoint)
+    const camera = sigma.getCamera()
+    const state = camera.getState()
+    if (options?.animate === false) {
+      camera.setState({ ...state, x: framed.x, y: framed.y })
+    } else {
+      camera.animate({ x: framed.x, y: framed.y, ratio: state.ratio, angle: state.angle }, { duration: 180 })
+    }
+  }
+
+  /**
+   * Subscribe to camera-updated events. The minimap uses this to redraw
+   * only when the viewport or layout shifts — no more continuous RAF.
+   * Returns an unsubscribe fn.
+   */
+  public subscribeToRenderTicks(listener: () => void): () => void {
+    const sigma = this.sigma
+    if (!sigma) return () => {}
+    const camera = sigma.getCamera()
+    const onCam = () => listener()
+    const onRender = () => listener()
+    camera.on('updated', onCam)
+    sigma.on('afterRender', onRender)
+    return () => {
+      camera.off('updated', onCam)
+      sigma.off('afterRender', onRender)
+    }
+  }
+
+  /**
    * Snapshot of current node positions + selection used to render the
    * minimap. Returns graph-space coordinates and a bounding box so the
    * caller can map to its own canvas. Null when the renderer isn't mounted.

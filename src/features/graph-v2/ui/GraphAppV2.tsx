@@ -74,6 +74,7 @@ import { SigmaMinimap } from '@/features/graph-v2/ui/SigmaMinimap'
 import { SigmaSidePanel } from '@/features/graph-v2/ui/SigmaSidePanel'
 import { SigmaRootLoader } from '@/features/graph-v2/ui/SigmaRootLoader'
 import { SigmaEmptyState } from '@/features/graph-v2/ui/SigmaEmptyState'
+import { SigmaLoadingOverlay } from '@/features/graph-v2/ui/SigmaLoadingOverlay'
 import { SigmaToasts, type SigmaToast } from '@/features/graph-v2/ui/SigmaToasts'
 import { useLiveZapFeed } from '@/features/graph-v2/zaps/useLiveZapFeed'
 import type { ParsedZap } from '@/features/graph-v2/zaps/zapParser'
@@ -718,6 +719,15 @@ export default function GraphAppV2() {
     loadFeedback === 'Cargando root...' && rootLoadMessage
       ? rootLoadMessage
       : loadFeedback ?? rootLoadMessage
+  const rootLoadStatus = domainState.discoveryState.rootLoad.status
+  // Show overlay while the root is actively being fetched, but not inside the
+  // loader modal (the modal has its own feedback) and not if we already have
+  // a meaningful number of nodes drawn.
+  const isGraphLoading =
+    domainState.rootPubkey !== null &&
+    !isRootSheetOpen &&
+    (rootLoadStatus === 'loading' || rootLoadStatus === 'partial') &&
+    scene.nodes.length < 3
   const isDragFixtureLab = fixtureName === 'drag-local'
   const hasSavedRoots = savedRoots.length > 0
   const shouldShowSavedRootsSection = !savedRootsHydrated || hasSavedRoots
@@ -1392,6 +1402,14 @@ export default function GraphAppV2() {
         scene={deferredScene}
       />
 
+      {/* Loading overlay — while root data is arriving */}
+      {isGraphLoading && (
+        <SigmaLoadingOverlay
+          message={visibleLoadFeedback}
+          nodeCount={scene.nodes.length}
+        />
+      )}
+
       {/* Top bar: root chip (left) + brand (right) */}
       <SigmaTopBar
         onSwitchRoot={() => setIsRootSheetOpen(true)}
@@ -1412,10 +1430,16 @@ export default function GraphAppV2() {
           <SigmaHud stats={hudStats} />
           <SigmaMinimap
             getSnapshot={() => sigmaHostRef.current?.getMinimapSnapshot() ?? null}
-            isPhysicsActive={physicsEnabled}
             onFit={() => sigmaHostRef.current?.recenterCamera()}
             onZoomIn={() => sigmaHostRef.current?.zoomIn()}
             onZoomOut={() => sigmaHostRef.current?.zoomOut()}
+            panCameraToGraph={(x, y, opts) =>
+              sigmaHostRef.current?.panCameraToGraph(x, y, opts)
+            }
+            subscribeToRenderTicks={(listener) =>
+              sigmaHostRef.current?.subscribeToRenderTicks(listener) ??
+              (() => {})
+            }
             zoomRatio={viewportRatio}
           />
         </>

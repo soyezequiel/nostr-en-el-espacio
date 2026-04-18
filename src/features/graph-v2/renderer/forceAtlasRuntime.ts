@@ -24,6 +24,15 @@ const DENSE_EDGE_WEIGHT_INFLUENCE = 0.65
 const BASE_BARNES_HUT_THETA = 0.55
 const DENSE_BARNES_HUT_THETA = 0.82
 const OVERLAP_SAMPLE_LIMIT = 600
+// Convergence watcher: sample node positions periodically; once per-node
+// average displacement stays below the threshold for several consecutive
+// samples the FA2 worker is stopped, freezing the graph until something
+// meaningful changes (new nodes, drag, reheat, settings change).
+const STABILIZATION_SAMPLE_INTERVAL_MS = 400
+const STABILIZATION_SAMPLE_NODE_LIMIT = 200
+const STABILIZATION_AVG_DISPLACEMENT_THRESHOLD = 0.08
+const STABILIZATION_CONSECUTIVE_QUIET_SAMPLES = 5
+const STABILIZATION_MAX_RUN_MS = 20_000
 const MIN_SCALING_RATIO = 0.5
 const MAX_SCALING_RATIO = 72
 const MIN_GRAVITY = 0.01
@@ -298,6 +307,14 @@ export class ForceAtlasRuntime {
 
   private physicsTuning = DEFAULT_FORCE_ATLAS_PHYSICS_TUNING
 
+  private stabilizationTimer: ReturnType<typeof setInterval> | null = null
+
+  private stabilizationSample: Map<string, { x: number; y: number }> | null = null
+
+  private stabilizationQuietSamples = 0
+
+  private stabilizationStartedAt = 0
+
   public constructor(
     private readonly graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>,
     private readonly layoutFactory: (
@@ -330,6 +347,7 @@ export class ForceAtlasRuntime {
       this.layout = this.createLayout()
       this.lastSettingsKey = settingsKey
       this.layout.start()
+      this.startStabilizationWatcher()
       return
     }
 
@@ -339,11 +357,17 @@ export class ForceAtlasRuntime {
       this.layout = this.createLayout()
       this.lastSettingsKey = settingsKey
       this.layout.start()
+      this.startStabilizationWatcher()
       return
     }
 
     if (!this.layout.isRunning()) {
       this.layout.start()
+      this.startStabilizationWatcher()
+    } else {
+      // New scene sync with existing running layout: reset the quiet
+      // counter so newly-added nodes get time to settle before we stop.
+      this.stabilizationQuietSamples = 0
     }
   }
 
@@ -361,6 +385,7 @@ export class ForceAtlasRuntime {
     this.layout = this.createLayout()
     this.lastSettingsKey = createSettingsKey(this.graph.order, this.physicsTuning)
     this.layout.start()
+    this.startStabilizationWatcher()
   }
 
   public setPhysicsTuning(tuning: Partial<ForceAtlasPhysicsTuning> = {}) {
@@ -385,17 +410,20 @@ export class ForceAtlasRuntime {
     this.layout = this.createLayout()
     this.lastSettingsKey = nextKey
     this.layout.start()
+    this.startStabilizationWatcher()
   }
 
   public stop() {
     if (this.layout?.isRunning()) {
       this.layout.stop()
     }
+    this.stopStabilizationWatcher()
   }
 
   public suspend() {
     this.suspended = true
     this.stop()
+    this.stopStabilizationWatcher()
   }
 
   public resume() {
@@ -413,11 +441,13 @@ export class ForceAtlasRuntime {
       this.layout = this.createLayout()
       this.lastSettingsKey = createSettingsKey(this.graph.order, this.physicsTuning)
       this.layout.start()
+      this.startStabilizationWatcher()
       return
     }
 
     if (!this.layout.isRunning()) {
       this.layout.start()
+      this.startStabilizationWatcher()
     }
   }
 
@@ -465,5 +495,87 @@ export class ForceAtlasRuntime {
       this.graph,
       resolveForceAtlasSettings(this.graph.order, this.physicsTuning),
     )
+  }
+
+  private startStabilizationWatcher() {
+    if (typeof window === 'undefined') return
+    this.stopStabilizationWatcher()
+    this.stabilizationSample = this.snapshotStabilizationSample()
+    this.stabilizationQuietSamples = 0
+    this.stabilizationStartedAt = Date.now()
+    this.stabilizationTimer = setInterval(
+      () => this.evaluateStabilization(),
+      STABILIZATION_SAMPLE_INTERVAL_MS,
+    )
+  }
+
+  private stopStabilizationWatcher() {
+    if (this.stabilizationTimer !== null) {
+      clearInterval(this.stabilizationTimer)
+      this.stabilizationTimer = null
+    }
+    this.stabilizationSample = null
+    this.stabilizationQuietSamples = 0
+  }
+
+  private snapshotStabilizationSample() {
+    const sample = new Map<string, { x: number; y: number }>()
+    let count = 0
+    for (const node of this.graph.nodes()) {
+      if (count >= STABILIZATION_SAMPLE_NODE_LIMIT) break
+      const attrs = this.graph.getNodeAttributes(node)
+      sample.set(node, { x: attrs.x, y: attrs.y })
+      count += 1
+    }
+    return sample
+  }
+
+  private evaluateStabilization() {
+    if (!this.layout || !this.layout.isRunning() || this.suspended) {
+      this.stopStabilizationWatcher()
+      return
+    }
+
+    const previous = this.stabilizationSample
+    const current = this.snapshotStabilizationSample()
+
+    // Hard cap to avoid pathological oscillation eating CPU forever.
+    if (Date.now() - this.stabilizationStartedAt > STABILIZATION_MAX_RUN_MS) {
+      this.stop()
+      this.stopStabilizationWatcher()
+      return
+    }
+
+    if (!previous || current.size === 0) {
+      this.stabilizationSample = current
+      return
+    }
+
+    let totalDisplacement = 0
+    let measured = 0
+    for (const [node, pos] of current) {
+      const prev = previous.get(node)
+      if (!prev) continue
+      totalDisplacement += Math.hypot(pos.x - prev.x, pos.y - prev.y)
+      measured += 1
+    }
+
+    this.stabilizationSample = current
+
+    if (measured === 0) return
+
+    const averageDisplacement = totalDisplacement / measured
+
+    if (averageDisplacement < STABILIZATION_AVG_DISPLACEMENT_THRESHOLD) {
+      this.stabilizationQuietSamples += 1
+      if (
+        this.stabilizationQuietSamples >= STABILIZATION_CONSECUTIVE_QUIET_SAMPLES
+      ) {
+        this.stop()
+        this.stopStabilizationWatcher()
+      }
+    } else {
+      this.stabilizationQuietSamples = 0
+    }
   }
 }

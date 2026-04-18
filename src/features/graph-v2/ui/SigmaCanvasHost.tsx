@@ -38,6 +38,8 @@ export interface SigmaCanvasHostHandle {
   zoomOut: () => void
   setPhysicsSuspended: (suspended: boolean) => void
   getMinimapSnapshot: () => MinimapSnapshot | null
+  panCameraToGraph: (graphX: number, graphY: number, options?: { animate?: boolean }) => void
+  subscribeToRenderTicks: (listener: () => void) => () => void
 }
 
 export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHostProps>(
@@ -104,6 +106,9 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       zoomOut: () => adapterRef.current?.zoomOut(),
       setPhysicsSuspended: (suspended) => adapterRef.current?.setPhysicsSuspended(suspended),
       getMinimapSnapshot: () => adapterRef.current?.getMinimapSnapshot() ?? null,
+      panCameraToGraph: (x, y, opts) => adapterRef.current?.panCameraToGraph(x, y, opts),
+      subscribeToRenderTicks: (listener) =>
+        adapterRef.current?.subscribeToRenderTicks(listener) ?? (() => {}),
     }),
     [],
   )

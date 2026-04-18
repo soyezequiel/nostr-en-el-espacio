@@ -18,6 +18,8 @@ export interface AvatarLoaderDeps {
   now?: () => number
 }
 
+type CircularBitmapSource = ImageBitmap | HTMLImageElement
+
 const hasCreateImageBitmap = () =>
   typeof globalThis !== 'undefined' && typeof globalThis.createImageBitmap === 'function'
 
@@ -25,29 +27,34 @@ const hasDocumentImageElement = () =>
   typeof document !== 'undefined' &&
   typeof document.createElement === 'function'
 
-const isImageElement = (source: CanvasImageSource): source is HTMLImageElement =>
+const isImageElement = (source: CircularBitmapSource): source is HTMLImageElement =>
   typeof HTMLImageElement !== 'undefined' && source instanceof HTMLImageElement
 
+const isImageBitmap = (source: CircularBitmapSource): source is ImageBitmap =>
+  typeof ImageBitmap !== 'undefined' && source instanceof ImageBitmap
+
+const createCanvasElement = (bucket: ImageLodBucket): HTMLCanvasElement => {
+  const canvas = document.createElement('canvas')
+  canvas.width = bucket
+  canvas.height = bucket
+  return canvas
+}
+
 const composeCircularBitmap = async (
-  source: CanvasImageSource,
+  source: CircularBitmapSource,
   bucket: ImageLodBucket,
 ): Promise<AvatarBitmap> => {
   const canvas =
     typeof OffscreenCanvas !== 'undefined' && !isImageElement(source)
       ? new OffscreenCanvas(bucket, bucket)
-      : (() => {
-          const c = document.createElement('canvas')
-          c.width = bucket
-          c.height = bucket
-          return c
-        })()
+      : createCanvasElement(bucket)
 
   const ctx = canvas.getContext('2d') as
     | CanvasRenderingContext2D
     | OffscreenCanvasRenderingContext2D
     | null
   if (!ctx) {
-    return source
+    return isImageBitmap(source) ? source : createCanvasElement(bucket)
   }
 
   const r = bucket / 2
@@ -60,7 +67,7 @@ const composeCircularBitmap = async (
   ctx.restore()
 
   try {
-    if (typeof ImageBitmap !== 'undefined' && source instanceof ImageBitmap) {
+    if (isImageBitmap(source)) {
       source.close()
     }
   } catch {

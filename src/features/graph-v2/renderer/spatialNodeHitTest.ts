@@ -2,12 +2,12 @@ import type Sigma from 'sigma'
 import type { Coordinates } from 'sigma/types'
 
 import type {
-  GraphologyProjectionStore,
-  SigmaEdgeAttributes,
-  SigmaNodeAttributes,
+  RenderEdgeAttributes,
+  RenderGraphStore,
+  RenderNodeAttributes,
 } from '@/features/graph-v2/renderer/graphologyProjectionStore'
 
-type SigmaGraph = ReturnType<GraphologyProjectionStore['getGraph']>
+type SigmaGraph = ReturnType<RenderGraphStore['getGraph']>
 
 type SigmaRuntimeNodePicker = {
   getNodeAtPosition(position: Coordinates): string | null
@@ -42,7 +42,7 @@ export class SpatialNodeHitTester {
   private dirty = true
 
   public constructor(
-    private readonly sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes>,
+    private readonly sigma: Sigma<RenderNodeAttributes, RenderEdgeAttributes>,
     private readonly graph: SigmaGraph,
     private readonly cellSize = DEFAULT_CELL_SIZE_PX,
   ) {
@@ -217,7 +217,7 @@ export class SpatialNodeHitTester {
 }
 
 export function installStrictNodeHitTesting(
-  sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes>,
+  sigma: Sigma<RenderNodeAttributes, RenderEdgeAttributes>,
   graph: SigmaGraph,
 ) {
   return new SpatialNodeHitTester(sigma, graph).install()

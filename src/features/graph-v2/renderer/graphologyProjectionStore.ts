@@ -1,8 +1,19 @@
 import { DirectedGraph } from 'graphology'
 
-import type { GraphSceneEdge, GraphSceneSnapshot } from '@/features/graph-v2/renderer/contracts'
+import type {
+  GraphPhysicsEdge,
+  GraphRenderEdge,
+  GraphRenderSnapshot,
+  GraphSceneFocusState,
+  GraphSceneSnapshot,
+} from '@/features/graph-v2/renderer/contracts'
 
-export interface SigmaNodeAttributes {
+export interface NodePosition {
+  x: number
+  y: number
+}
+
+export interface RenderNodeAttributes {
   x: number
   y: number
   size: number
@@ -21,7 +32,7 @@ export interface SigmaNodeAttributes {
   zIndex: number
 }
 
-export interface SigmaEdgeAttributes {
+export interface RenderEdgeAttributes {
   size: number
   color: string
   hidden: boolean
@@ -32,9 +43,20 @@ export interface SigmaEdgeAttributes {
   zIndex: number
 }
 
-const hasNodeAttributeChanges = (
-  current: SigmaNodeAttributes,
-  next: SigmaNodeAttributes,
+export interface PhysicsNodeAttributes {
+  x: number
+  y: number
+  size: number
+  fixed: boolean
+}
+
+export interface PhysicsEdgeAttributes {
+  weight: number
+}
+
+const hasRenderNodeAttributeChanges = (
+  current: RenderNodeAttributes,
+  next: RenderNodeAttributes,
 ) =>
   current.x !== next.x ||
   current.y !== next.y ||
@@ -53,9 +75,9 @@ const hasNodeAttributeChanges = (
   current.isPinned !== next.isPinned ||
   current.zIndex !== next.zIndex
 
-const hasEdgeAttributeChanges = (
-  current: SigmaEdgeAttributes,
-  next: SigmaEdgeAttributes,
+const hasRenderEdgeAttributeChanges = (
+  current: RenderEdgeAttributes,
+  next: RenderEdgeAttributes,
 ) =>
   current.size !== next.size ||
   current.color !== next.color ||
@@ -66,7 +88,21 @@ const hasEdgeAttributeChanges = (
   current.touchesFocus !== next.touchesFocus ||
   current.zIndex !== next.zIndex
 
-const createSeedPosition = (index: number, total: number) => {
+const hasPhysicsNodeAttributeChanges = (
+  current: PhysicsNodeAttributes,
+  next: PhysicsNodeAttributes,
+) =>
+  current.x !== next.x ||
+  current.y !== next.y ||
+  current.size !== next.size ||
+  current.fixed !== next.fixed
+
+const hasPhysicsEdgeAttributeChanges = (
+  current: PhysicsEdgeAttributes,
+  next: PhysicsEdgeAttributes,
+) => current.weight !== next.weight
+
+export const createSeedPosition = (index: number, total: number) => {
   const angle = (index / Math.max(total, 1)) * Math.PI * 2
   const radius = Math.max(4, Math.sqrt(total) * 2)
 
@@ -74,28 +110,6 @@ const createSeedPosition = (index: number, total: number) => {
     x: Math.cos(angle) * radius,
     y: Math.sin(angle) * radius,
   }
-}
-
-const mergeEdgeMaps = (scene: GraphSceneSnapshot) => {
-  const edgesByPair = new Map<string, GraphSceneEdge>()
-
-  for (const edge of scene.forceEdges) {
-    edgesByPair.set(createDirectedPairKey(edge.source, edge.target), edge)
-  }
-
-  for (const edge of scene.visibleEdges) {
-    edgesByPair.set(createDirectedPairKey(edge.source, edge.target), {
-      ...edge,
-      hidden: false,
-    })
-  }
-
-  const edges = new Map<string, GraphSceneEdge>()
-  for (const edge of edgesByPair.values()) {
-    edges.set(edge.id, edge)
-  }
-
-  return edges
 }
 
 const createDirectedPairKey = (source: string, target: string) =>
@@ -120,18 +134,74 @@ const shouldRebuildForTopologyChange = ({
     droppedEdgeCount / Math.max(currentEdgeCount, 1) >=
       FULL_REBUILD_EDGE_DROP_RATIO)
 
-export class GraphologyProjectionStore {
-  private readonly graph = new DirectedGraph<SigmaNodeAttributes, SigmaEdgeAttributes>()
+const resolveRenderNodeZIndex = (
+  focusState: GraphSceneFocusState,
+  isRoot: boolean,
+  isPinned: boolean,
+  isDimmed: boolean,
+) =>
+  focusState === 'selected'
+    ? 8
+    : isRoot
+      ? 6
+      : focusState === 'neighbor'
+        ? 5
+        : isPinned
+          ? 4
+          : isDimmed
+            ? -2
+            : 0
 
-  private readonly positionCache = new Map<string, { x: number; y: number }>()
+export class NodePositionLedger {
+  private readonly positions = new Map<string, NodePosition>()
+
+  public get(pubkey: string) {
+    return this.positions.get(pubkey) ?? null
+  }
+
+  public set(pubkey: string, x: number, y: number) {
+    const current = this.positions.get(pubkey)
+    if (current && current.x === x && current.y === y) {
+      return false
+    }
+
+    this.positions.set(pubkey, { x, y })
+    return true
+  }
+
+  public setPosition(pubkey: string, position: NodePosition) {
+    return this.set(pubkey, position.x, position.y)
+  }
+}
+
+export class RenderGraphStore {
+  private readonly graph = new DirectedGraph<
+    RenderNodeAttributes,
+    RenderEdgeAttributes
+  >()
+
+  public constructor(private readonly ledger: NodePositionLedger) {}
 
   public getGraph() {
     return this.graph
   }
 
-  public applyScene(scene: GraphSceneSnapshot) {
+  public getNodePosition(pubkey: string) {
+    if (!this.graph.hasNode(pubkey)) {
+      return null
+    }
+
+    const attrs = this.graph.getNodeAttributes(pubkey)
+    return { x: attrs.x, y: attrs.y }
+  }
+
+  public hasNode(pubkey: string) {
+    return this.graph.hasNode(pubkey)
+  }
+
+  public applyScene(scene: GraphRenderSnapshot) {
     const nextNodeIds = new Set(scene.nodes.map((node) => node.pubkey))
-    const nextEdges = mergeEdgeMaps(scene)
+    const nextEdges = new Map(scene.visibleEdges.map((edge) => [edge.id, edge]))
     const nextEdgeIdsByPair = new Map<string, string>()
     const currentNodeIds = this.graph.nodes()
     const currentEdgeIds = this.graph.edges()
@@ -139,13 +209,16 @@ export class GraphologyProjectionStore {
     const droppedEdgeIds: string[] = []
 
     for (const edge of nextEdges.values()) {
-      nextEdgeIdsByPair.set(createDirectedPairKey(edge.source, edge.target), edge.id)
+      nextEdgeIdsByPair.set(
+        createDirectedPairKey(edge.source, edge.target),
+        edge.id,
+      )
     }
 
     for (const nodeId of currentNodeIds) {
       if (!nextNodeIds.has(nodeId)) {
         const attrs = this.graph.getNodeAttributes(nodeId)
-        this.positionCache.set(nodeId, { x: attrs.x, y: attrs.y })
+        this.ledger.set(nodeId, attrs.x, attrs.y)
         droppedNodeIds.push(nodeId)
       }
     }
@@ -169,7 +242,13 @@ export class GraphologyProjectionStore {
         droppedNodeCount: droppedNodeIds.length,
       })
     ) {
-      this.rebuildGraph(scene, nextEdges, currentNodeIds)
+      for (const nodeId of currentNodeIds) {
+        const attrs = this.graph.getNodeAttributes(nodeId)
+        this.ledger.set(nodeId, attrs.x, attrs.y)
+      }
+      this.graph.clear()
+      this.applySceneNodes(scene)
+      this.applySceneEdges(nextEdges)
       return
     }
 
@@ -185,40 +264,30 @@ export class GraphologyProjectionStore {
     this.applySceneEdges(nextEdges)
   }
 
-  private rebuildGraph(
-    scene: GraphSceneSnapshot,
-    nextEdges: Map<string, GraphSceneEdge>,
-    currentNodeIds: string[],
-  ) {
-    for (const nodeId of currentNodeIds) {
-      const attrs = this.graph.getNodeAttributes(nodeId)
-      this.positionCache.set(nodeId, { x: attrs.x, y: attrs.y })
+  public setNodePosition(pubkey: string, x: number, y: number) {
+    if (!this.graph.hasNode(pubkey)) {
+      return false
     }
 
-    this.graph.clear()
-    this.applySceneNodes(scene)
-    this.applySceneEdges(nextEdges)
+    const current = this.graph.getNodeAttributes(pubkey)
+    if (current.x === x && current.y === y) {
+      this.ledger.set(pubkey, x, y)
+      return false
+    }
+
+    this.graph.mergeNodeAttributes(pubkey, { x, y })
+    this.ledger.set(pubkey, x, y)
+    return true
   }
 
-  private applySceneNodes(scene: GraphSceneSnapshot) {
+  private applySceneNodes(scene: GraphRenderSnapshot) {
     scene.nodes.forEach((node, index) => {
       const existingPosition = this.graph.hasNode(node.pubkey)
         ? this.graph.getNodeAttributes(node.pubkey)
-        : this.positionCache.get(node.pubkey)
+        : this.ledger.get(node.pubkey)
       const seedPosition =
         existingPosition ?? createSeedPosition(index, scene.nodes.length)
-      const zIndex = node.focusState === 'selected'
-        ? 8
-        : node.isRoot
-          ? 6
-          : node.focusState === 'neighbor'
-            ? 5
-            : node.isPinned
-              ? 4
-              : node.isDimmed
-                ? -2
-                : 0
-      const attributes: SigmaNodeAttributes = {
+      const attributes: RenderNodeAttributes = {
         x: seedPosition.x,
         y: seedPosition.y,
         size: node.size,
@@ -239,23 +308,30 @@ export class GraphologyProjectionStore {
         isNeighbor: node.isNeighbor,
         isRoot: node.isRoot,
         isPinned: node.isPinned,
-        zIndex,
+        zIndex: resolveRenderNodeZIndex(
+          node.focusState,
+          node.isRoot,
+          node.isPinned,
+          node.isDimmed,
+        ),
       }
 
       if (this.graph.hasNode(node.pubkey)) {
         const currentAttributes = this.graph.getNodeAttributes(node.pubkey)
-        if (hasNodeAttributeChanges(currentAttributes, attributes)) {
+        if (hasRenderNodeAttributeChanges(currentAttributes, attributes)) {
           this.graph.replaceNodeAttributes(node.pubkey, attributes)
         }
       } else {
         this.graph.addNode(node.pubkey, attributes)
       }
+
+      this.ledger.set(node.pubkey, seedPosition.x, seedPosition.y)
     })
   }
 
-  private applySceneEdges(nextEdges: Map<string, GraphSceneEdge>) {
+  private applySceneEdges(nextEdges: Map<string, GraphRenderEdge>) {
     for (const edge of nextEdges.values()) {
-      const attributes: SigmaEdgeAttributes = {
+      const attributes: RenderEdgeAttributes = {
         size: edge.size,
         color: edge.color,
         hidden: edge.hidden,
@@ -268,7 +344,7 @@ export class GraphologyProjectionStore {
 
       if (this.graph.hasEdge(edge.id)) {
         const currentAttributes = this.graph.getEdgeAttributes(edge.id)
-        if (hasEdgeAttributeChanges(currentAttributes, attributes)) {
+        if (hasRenderEdgeAttributeChanges(currentAttributes, attributes)) {
           this.graph.replaceEdgeAttributes(edge.id, attributes)
         }
       } else if (
@@ -290,19 +366,109 @@ export class GraphologyProjectionStore {
       }
     }
   }
+}
 
-  public setNodePosition(pubkey: string, x: number, y: number, fixed = false) {
-    if (!this.graph.hasNode(pubkey)) {
+export class PhysicsGraphStore {
+  private readonly graph = new DirectedGraph<
+    PhysicsNodeAttributes,
+    PhysicsEdgeAttributes
+  >()
+
+  public constructor(private readonly ledger: NodePositionLedger) {}
+
+  public getGraph() {
+    return this.graph
+  }
+
+  public hasNode(pubkey: string) {
+    return this.graph.hasNode(pubkey)
+  }
+
+  public applyScene(scene: GraphSceneSnapshot['physics']) {
+    const nextNodeIds = new Set(scene.nodes.map((node) => node.pubkey))
+    const nextEdges = new Map(scene.edges.map((edge) => [edge.id, edge]))
+    const nextEdgeIdsByPair = new Map<string, string>()
+    const currentNodeIds = this.graph.nodes()
+    const currentEdgeIds = this.graph.edges()
+    const droppedNodeIds: string[] = []
+    const droppedEdgeIds: string[] = []
+
+    for (const edge of nextEdges.values()) {
+      nextEdgeIdsByPair.set(
+        createDirectedPairKey(edge.source, edge.target),
+        edge.id,
+      )
+    }
+
+    for (const nodeId of currentNodeIds) {
+      if (!nextNodeIds.has(nodeId)) {
+        const attrs = this.graph.getNodeAttributes(nodeId)
+        this.ledger.set(nodeId, attrs.x, attrs.y)
+        droppedNodeIds.push(nodeId)
+      }
+    }
+
+    for (const edgeId of currentEdgeIds) {
+      const source = this.graph.source(edgeId)
+      const target = this.graph.target(edgeId)
+      const nextEdgeIdForPair = nextEdgeIdsByPair.get(
+        createDirectedPairKey(source, target),
+      )
+
+      if (!nextEdges.has(edgeId) || nextEdgeIdForPair !== edgeId) {
+        droppedEdgeIds.push(edgeId)
+      }
+    }
+
+    if (
+      shouldRebuildForTopologyChange({
+        currentEdgeCount: currentEdgeIds.length,
+        droppedEdgeCount: droppedEdgeIds.length,
+        droppedNodeCount: droppedNodeIds.length,
+      })
+    ) {
+      for (const nodeId of currentNodeIds) {
+        const attrs = this.graph.getNodeAttributes(nodeId)
+        this.ledger.set(nodeId, attrs.x, attrs.y)
+      }
+      this.graph.clear()
+      this.applySceneNodes(scene)
+      this.applySceneEdges(nextEdges)
       return
     }
 
-    this.graph.mergeNodeAttributes(pubkey, { x, y, fixed })
-    this.positionCache.set(pubkey, { x, y })
+    for (const edgeId of droppedEdgeIds) {
+      this.graph.dropEdge(edgeId)
+    }
+
+    for (const nodeId of droppedNodeIds) {
+      this.graph.dropNode(nodeId)
+    }
+
+    this.applySceneNodes(scene)
+    this.applySceneEdges(nextEdges)
+  }
+
+  public setNodePosition(pubkey: string, x: number, y: number, fixed?: boolean) {
+    if (!this.graph.hasNode(pubkey)) {
+      return false
+    }
+
+    const current = this.graph.getNodeAttributes(pubkey)
+    const nextFixed = fixed ?? current.fixed
+    if (current.x === x && current.y === y && current.fixed === nextFixed) {
+      this.ledger.set(pubkey, x, y)
+      return false
+    }
+
+    this.graph.mergeNodeAttributes(pubkey, { x, y, fixed: nextFixed })
+    this.ledger.set(pubkey, x, y)
+    return true
   }
 
   public translateNodePosition(pubkey: string, dx: number, dy: number) {
     if (!this.graph.hasNode(pubkey)) {
-      return
+      return false
     }
 
     const attributes = this.graph.getNodeAttributes(pubkey)
@@ -313,7 +479,8 @@ export class GraphologyProjectionStore {
       x: nextX,
       y: nextY,
     })
-    this.positionCache.set(pubkey, { x: nextX, y: nextY })
+    this.ledger.set(pubkey, nextX, nextY)
+    return true
   }
 
   public setNodeFixed(pubkey: string, fixed: boolean) {
@@ -339,5 +506,63 @@ export class GraphologyProjectionStore {
 
     const attrs = this.graph.getNodeAttributes(pubkey)
     return { x: attrs.x, y: attrs.y }
+  }
+
+  private applySceneNodes(scene: GraphSceneSnapshot['physics']) {
+    scene.nodes.forEach((node, index) => {
+      const existingPosition = this.graph.hasNode(node.pubkey)
+        ? this.graph.getNodeAttributes(node.pubkey)
+        : this.ledger.get(node.pubkey)
+      const seedPosition =
+        existingPosition ?? createSeedPosition(index, scene.nodes.length)
+      const attributes: PhysicsNodeAttributes = {
+        x: seedPosition.x,
+        y: seedPosition.y,
+        size: node.size,
+        fixed: node.fixed,
+      }
+
+      if (this.graph.hasNode(node.pubkey)) {
+        const currentAttributes = this.graph.getNodeAttributes(node.pubkey)
+        if (hasPhysicsNodeAttributeChanges(currentAttributes, attributes)) {
+          this.graph.replaceNodeAttributes(node.pubkey, attributes)
+        }
+      } else {
+        this.graph.addNode(node.pubkey, attributes)
+      }
+
+      this.ledger.set(node.pubkey, seedPosition.x, seedPosition.y)
+    })
+  }
+
+  private applySceneEdges(nextEdges: Map<string, GraphPhysicsEdge>) {
+    for (const edge of nextEdges.values()) {
+      const attributes: PhysicsEdgeAttributes = {
+        weight: edge.weight,
+      }
+
+      if (this.graph.hasEdge(edge.id)) {
+        const currentAttributes = this.graph.getEdgeAttributes(edge.id)
+        if (hasPhysicsEdgeAttributeChanges(currentAttributes, attributes)) {
+          this.graph.replaceEdgeAttributes(edge.id, attributes)
+        }
+      } else if (
+        this.graph.hasNode(edge.source) &&
+        this.graph.hasNode(edge.target)
+      ) {
+        const existingEdgeId = this.graph.directedEdge(edge.source, edge.target)
+
+        if (existingEdgeId && existingEdgeId !== edge.id) {
+          this.graph.dropEdge(existingEdgeId)
+        }
+
+        this.graph.addDirectedEdgeWithKey(
+          edge.id,
+          edge.source,
+          edge.target,
+          attributes,
+        )
+      }
+    }
   }
 }

@@ -3,10 +3,10 @@ import type { ForceAtlas2Settings } from 'graphology-layout-forceatlas2'
 import FA2LayoutSupervisor from 'graphology-layout-forceatlas2/worker'
 import type Graph from 'graphology-types'
 
-import type { GraphSceneSnapshot } from '@/features/graph-v2/renderer/contracts'
+import type { GraphPhysicsSnapshot } from '@/features/graph-v2/renderer/contracts'
 import type {
-  SigmaEdgeAttributes,
-  SigmaNodeAttributes,
+  PhysicsEdgeAttributes,
+  PhysicsNodeAttributes,
 } from '@/features/graph-v2/renderer/graphologyProjectionStore'
 
 const MINIMUM_RUNNING_NODES = 2
@@ -228,7 +228,7 @@ const createEmptyBounds = () => ({
 })
 
 const resolveGraphBounds = (
-  graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>,
+  graph: Graph<PhysicsNodeAttributes, PhysicsEdgeAttributes>,
 ): ForceAtlasPhysicsDiagnostics['bounds'] => {
   if (graph.order === 0) {
     return null
@@ -252,7 +252,7 @@ const resolveGraphBounds = (
 }
 
 const resolveAverageEdgeLength = (
-  graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>,
+  graph: Graph<PhysicsNodeAttributes, PhysicsEdgeAttributes>,
 ) => {
   if (graph.size === 0) {
     return null
@@ -272,7 +272,7 @@ const resolveAverageEdgeLength = (
 }
 
 const resolveApproximateOverlapCount = (
-  graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>,
+  graph: Graph<PhysicsNodeAttributes, PhysicsEdgeAttributes>,
 ) => {
   const nodes = graph.nodes().slice(0, OVERLAP_SAMPLE_LIMIT)
   let overlapCount = 0
@@ -316,9 +316,9 @@ export class ForceAtlasRuntime {
   private stabilizationStartedAt = 0
 
   public constructor(
-    private readonly graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>,
+    private readonly graph: Graph<PhysicsNodeAttributes, PhysicsEdgeAttributes>,
     private readonly layoutFactory: (
-      graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>,
+      graph: Graph<PhysicsNodeAttributes, PhysicsEdgeAttributes>,
       settings: ForceAtlas2Settings,
     ) => ForceAtlasLayoutController = (graph, settings) =>
       new FA2LayoutSupervisor(graph, {
@@ -327,9 +327,9 @@ export class ForceAtlasRuntime {
       }),
   ) {}
 
-  public sync(scene: GraphSceneSnapshot) {
+  public sync(scene: GraphPhysicsSnapshot) {
     const shouldRun =
-      scene.nodes.length >= MINIMUM_RUNNING_NODES && scene.forceEdges.length > 0
+      scene.nodes.length >= MINIMUM_RUNNING_NODES && scene.edges.length > 0
     this.layoutEligible = shouldRun
 
     if (!shouldRun) {

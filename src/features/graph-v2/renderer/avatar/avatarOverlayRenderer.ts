@@ -14,8 +14,8 @@ import type {
   AvatarRuntimeOptions,
 } from '@/features/graph-v2/renderer/avatar/types'
 import type {
-  SigmaEdgeAttributes,
-  SigmaNodeAttributes,
+  RenderEdgeAttributes,
+  RenderNodeAttributes,
 } from '@/features/graph-v2/renderer/graphologyProjectionStore'
 
 const AVATAR_NODE_INSET_PX = 1
@@ -42,7 +42,7 @@ interface AvatarDrawItem {
 }
 
 export interface AvatarOverlayRendererDeps {
-  sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes>
+  sigma: Sigma<RenderNodeAttributes, RenderEdgeAttributes>
   cache: AvatarBitmapCache
   scheduler: AvatarScheduler
   budget: PerfBudget
@@ -53,7 +53,7 @@ export interface AvatarOverlayRendererDeps {
 const buildUrlKey = (pubkey: string, url: string): string => `${pubkey}::${url}`
 
 export class AvatarOverlayRenderer {
-  private readonly sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes>
+  private readonly sigma: Sigma<RenderNodeAttributes, RenderEdgeAttributes>
   private readonly cache: AvatarBitmapCache
   private readonly scheduler: AvatarScheduler
   private readonly budget: PerfBudget
@@ -125,7 +125,7 @@ export class AvatarOverlayRenderer {
     const seenNodes = new Set<string>()
 
     graph.forEachNode((pubkey, attrs) => {
-      const nodeAttrs = attrs as SigmaNodeAttributes
+      const nodeAttrs = attrs as RenderNodeAttributes
       if (nodeAttrs.hidden) {
         return
       }
@@ -384,9 +384,9 @@ export class AvatarOverlayRenderer {
 }
 
 const resolvePriority = (
-  attrs: SigmaNodeAttributes,
+  attrs: RenderNodeAttributes,
   viewport: { x: number; y: number },
-  sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes>,
+  sigma: Sigma<RenderNodeAttributes, RenderEdgeAttributes>,
 ): number => {
   if (attrs.isRoot) return 0
   if (attrs.isSelected) return 1

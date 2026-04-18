@@ -203,8 +203,8 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       findDragCandidate: (query) => adapterRef.current?.findDragCandidate(query) ?? null,
       isNodeFixed: (pubkey) => adapterRef.current?.isNodeFixed(pubkey) ?? false,
       getSelectionState: () => ({
-        selectedNodePubkey: sceneRef.current.selection.selectedNodePubkey,
-        pinnedNodePubkeys: [...sceneRef.current.pins.pubkeys],
+        selectedNodePubkey: sceneRef.current.render.selection.selectedNodePubkey,
+        pinnedNodePubkeys: [...sceneRef.current.render.pins.pubkeys],
       }),
       getDragRuntimeState: () => adapterRef.current?.getDragRuntimeState() ?? {
         draggedNodePubkey: null,

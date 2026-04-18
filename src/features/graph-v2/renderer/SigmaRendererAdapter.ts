@@ -11,9 +11,14 @@ import {
 } from '@/features/graph-v2/renderer/cachedNodeLabels'
 import { ForceAtlasRuntime } from '@/features/graph-v2/renderer/forceAtlasRuntime'
 import type { ForceAtlasPhysicsTuning } from '@/features/graph-v2/renderer/forceAtlasRuntime'
+import {
+  NodePositionLedger,
+  PhysicsGraphStore,
+  RenderGraphStore,
+} from '@/features/graph-v2/renderer/graphologyProjectionStore'
 import type {
-  SigmaEdgeAttributes,
-  SigmaNodeAttributes,
+  RenderEdgeAttributes,
+  RenderNodeAttributes,
 } from '@/features/graph-v2/renderer/graphologyProjectionStore'
 import {
   buildDragHopDistances,
@@ -30,7 +35,6 @@ import {
   type DragNeighborhoodInfluenceState,
   type DragNeighborhoodInfluenceTuning,
 } from '@/features/graph-v2/renderer/dragInfluence'
-import { GraphologyProjectionStore } from '@/features/graph-v2/renderer/graphologyProjectionStore'
 import { AvatarBitmapCache } from '@/features/graph-v2/renderer/avatar/avatarBitmapCache'
 import { AvatarLoader } from '@/features/graph-v2/renderer/avatar/avatarLoader'
 import { AvatarOverlayRenderer } from '@/features/graph-v2/renderer/avatar/avatarOverlayRenderer'
@@ -89,9 +93,13 @@ const resolveZoomOutNodeScale = (cameraRatio: number) =>
   )
 
 export class SigmaRendererAdapter implements RendererAdapter {
-  private sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null
+  private sigma: Sigma<RenderNodeAttributes, RenderEdgeAttributes> | null = null
 
-  private projectionStore: GraphologyProjectionStore | null = null
+  private positionLedger: NodePositionLedger | null = null
+
+  private renderStore: RenderGraphStore | null = null
+
+  private physicsStore: PhysicsGraphStore | null = null
 
   private nodeHitTester: SpatialNodeHitTester | null = null
 
@@ -110,6 +118,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private draggedNodePubkey: string | null = null
 
   private pendingDragFrame: number | null = null
+
+  private pendingPhysicsBridgeFrame: number | null = null
 
   private pendingGraphPosition: { x: number; y: number } | null = null
 
@@ -174,7 +184,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
   }
 
   public getNodePosition(pubkey: string): DebugNodePosition | null {
-    return this.projectionStore?.getNodePosition(pubkey) ?? null
+    return this.renderStore?.getNodePosition(pubkey) ?? null
   }
 
   public getViewportPosition(pubkey: string): DebugNodePosition | null {
@@ -192,11 +202,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
   }
 
   public getNeighborGroups(pubkey: string): DebugNeighborGroups | null {
-    if (!this.projectionStore) {
+    if (!this.physicsStore) {
       return null
     }
 
-    const graph = this.projectionStore.getGraph()
+    const graph = this.physicsStore.getGraph()
 
     if (!graph.hasNode(pubkey)) {
       return null
@@ -262,11 +272,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
     minDegree?: number
     maxDegree?: number
   } = {}): DebugDragCandidate | null {
-    if (!this.projectionStore) {
+    if (!this.physicsStore) {
       return null
     }
 
-    const graph = this.projectionStore.getGraph()
+    const graph = this.physicsStore.getGraph()
     const candidates = graph
       .nodes()
       .map((pubkey) => ({
@@ -318,12 +328,18 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   public setPhysicsTuning(tuning: Partial<ForceAtlasPhysicsTuning>) {
     this.forceRuntime?.setPhysicsTuning(tuning)
+    this.ensurePhysicsPositionBridge()
   }
 
   public setPhysicsSuspended(suspended: boolean) {
     if (!this.forceRuntime) return
-    if (suspended) this.forceRuntime.suspend()
-    else this.forceRuntime.resume()
+    if (suspended) {
+      this.forceRuntime.suspend()
+      this.cancelPhysicsPositionBridge()
+    } else {
+      this.forceRuntime.resume()
+      this.ensurePhysicsPositionBridge()
+    }
   }
 
   public recenterCamera() {
@@ -398,8 +414,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     viewport: { minX: number; minY: number; maxX: number; maxY: number } | null
   } | null {
     const sigma = this.sigma
-    if (!this.projectionStore || !sigma) return null
-    const graph = this.projectionStore.getGraph()
+    if (!this.renderStore || !sigma) return null
+    const graph = this.renderStore.getGraph()
     if (graph.order === 0) return null
     let minX = Infinity
     let minY = Infinity
@@ -522,12 +538,12 @@ export class SigmaRendererAdapter implements RendererAdapter {
   ) {
     this.dragInfluenceConfig = createDragNeighborhoodInfluenceConfig(tuning)
 
-    if (!this.projectionStore || !this.draggedNodePubkey) {
+    if (!this.physicsStore || !this.draggedNodePubkey) {
       return
     }
 
     this.dragInfluenceState = createDragNeighborhoodInfluenceState(
-      this.projectionStore,
+      this.physicsStore,
       this.draggedNodePubkey,
       this.dragHopDistances,
       this.dragInfluenceConfig,
@@ -540,7 +556,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
     if (
       !this.sigma ||
-      !this.projectionStore ||
+      !this.renderStore ||
+      !this.physicsStore ||
       !this.callbacks ||
       !this.draggedNodePubkey ||
       !this.pendingGraphPosition
@@ -558,7 +575,12 @@ export class SigmaRendererAdapter implements RendererAdapter {
     const deltaMs =
       previousTimestamp === null ? 16 : Math.max(now - previousTimestamp, 1)
 
-    this.projectionStore.setNodePosition(
+    this.renderStore.setNodePosition(
+      draggedNodePubkey,
+      graphPosition.x,
+      graphPosition.y,
+    )
+    this.physicsStore.setNodePosition(
       draggedNodePubkey,
       graphPosition.x,
       graphPosition.y,
@@ -569,13 +591,14 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.lastFlushedGraphPosition = graphPosition
     if (this.dragInfluenceState) {
       stepDragNeighborhoodInfluence(
-        this.projectionStore,
+        this.physicsStore,
         draggedNodePubkey,
         this.dragInfluenceState,
         deltaMs,
         this.dragInfluenceConfig,
       )
     }
+    this.syncPhysicsPositionsToRender()
     this.lastDragFlushTimestamp = now
     this.sigma.refresh()
     this.callbacks.onNodeDragMove(draggedNodePubkey, graphPosition)
@@ -602,27 +625,29 @@ export class SigmaRendererAdapter implements RendererAdapter {
   }
 
   private readonly startDrag = (pubkey: string) => {
-    if (!this.projectionStore || !this.callbacks) {
+    if (!this.renderStore || !this.physicsStore || !this.callbacks) {
       return
     }
 
     this.draggedNodePubkey = pubkey
     this.markMotion()
     this.dragHopDistances = buildDragHopDistances(
-      this.projectionStore.getGraph(),
+      this.physicsStore.getGraph(),
       pubkey,
       DEFAULT_DRAG_NEIGHBORHOOD_CONFIG,
     )
     this.dragInfluenceState = createDragNeighborhoodInfluenceState(
-      this.projectionStore,
+      this.physicsStore,
       pubkey,
       this.dragHopDistances,
       this.dragInfluenceConfig,
     )
-    this.lastDragGraphPosition = this.projectionStore.getNodePosition(pubkey)
+    this.lastDragGraphPosition =
+      this.renderStore.getNodePosition(pubkey) ??
+      this.physicsStore.getNodePosition(pubkey)
     this.lastDragFlushTimestamp = null
     this.cancelPendingDragFrame()
-    this.projectionStore.setNodeFixed(pubkey, true)
+    this.physicsStore.setNodeFixed(pubkey, true)
     this.setGraphBoundsLocked(true)
     this.forceRuntime?.suspend()
     // Force-lock highlight on the dragged node regardless of pointer position.
@@ -633,7 +658,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private readonly releaseDrag = () => {
     this.pendingDragGesture = null
 
-    if (!this.draggedNodePubkey || !this.projectionStore || !this.callbacks) {
+    if (!this.draggedNodePubkey || !this.renderStore || !this.physicsStore || !this.callbacks) {
       this.setCameraLocked(false)
       this.setGraphBoundsLocked(false)
       this.cancelPendingDragFrame()
@@ -646,7 +671,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.flushPendingDragFrame()
 
     const draggedNodePubkey = this.draggedNodePubkey
-    const position = this.projectionStore.getNodePosition(draggedNodePubkey)
+    const position = this.renderStore.getNodePosition(draggedNodePubkey)
 
     // Drain residual spring velocities before resuming FA2 so small clusters
     // don't get kicked out by leftover momentum from the influence engine.
@@ -655,9 +680,9 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
 
     releaseDraggedNode(
-      this.projectionStore,
+      this.physicsStore,
       draggedNodePubkey,
-      this.scene?.pins.pubkeys ?? [],
+      this.scene?.render.pins.pubkeys ?? [],
     )
     this.dragHopDistances = new Map()
     this.dragInfluenceState = null
@@ -672,6 +697,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     // Resume FA2 from current positions without reheat so the layout
     // continues smoothly rather than restarting and kicking clusters.
     this.forceRuntime?.resume()
+    this.ensurePhysicsPositionBridge()
     this.setCameraLocked(false)
     this.setGraphBoundsLocked(false)
     this.sigma?.refresh()
@@ -691,10 +717,13 @@ export class SigmaRendererAdapter implements RendererAdapter {
   ) {
     this.callbacks = callbacks
     this.scene = initialScene
-    this.projectionStore = new GraphologyProjectionStore()
-    this.projectionStore.applyScene(initialScene)
-    this.forceRuntime = new ForceAtlasRuntime(this.projectionStore.getGraph())
-    this.sigma = new Sigma(this.projectionStore.getGraph(), container, {
+    this.positionLedger = new NodePositionLedger()
+    this.renderStore = new RenderGraphStore(this.positionLedger)
+    this.physicsStore = new PhysicsGraphStore(this.positionLedger)
+    this.renderStore.applyScene(initialScene.render)
+    this.physicsStore.applyScene(initialScene.physics)
+    this.forceRuntime = new ForceAtlasRuntime(this.physicsStore.getGraph())
+    this.sigma = new Sigma(this.renderStore.getGraph(), container, {
       renderEdgeLabels: false,
       hideEdgesOnMove: false,
       hideLabelsOnMove: false,
@@ -725,12 +754,13 @@ export class SigmaRendererAdapter implements RendererAdapter {
     const sigma = this.sigma
     this.nodeHitTester = installStrictNodeHitTesting(
       sigma,
-      this.projectionStore.getGraph(),
+      this.renderStore.getGraph(),
     )
     this.initAvatarPipeline(sigma)
     this.bindEvents()
-    this.forceRuntime.sync(initialScene)
-    if (initialScene.nodes.length > 0) {
+    this.forceRuntime.sync(initialScene.physics)
+    this.ensurePhysicsPositionBridge()
+    if (initialScene.render.nodes.length > 0) {
       sigma
         .getCamera()
         .animatedReset({ duration: 250 })
@@ -740,7 +770,12 @@ export class SigmaRendererAdapter implements RendererAdapter {
   }
 
   public update(scene: GraphSceneSnapshot) {
-    if (!this.sigma || !this.projectionStore || !this.forceRuntime) {
+    if (
+      !this.sigma ||
+      !this.renderStore ||
+      !this.physicsStore ||
+      !this.forceRuntime
+    ) {
       return
     }
 
@@ -750,17 +785,18 @@ export class SigmaRendererAdapter implements RendererAdapter {
     const draggedNodePosition =
       draggedNodePubkey !== null ? this.lastDragGraphPosition : null
     this.scene = scene
-    this.projectionStore.applyScene(scene)
+    this.renderStore.applyScene(scene.render)
+    this.physicsStore.applyScene(scene.physics)
     this.nodeHitTester?.markDirty()
 
     if (draggedNodePubkey) {
       this.dragHopDistances = buildDragHopDistances(
-        this.projectionStore.getGraph(),
+        this.physicsStore.getGraph(),
         draggedNodePubkey,
         DEFAULT_DRAG_NEIGHBORHOOD_CONFIG,
       )
       this.dragInfluenceState = createDragNeighborhoodInfluenceState(
-        this.projectionStore,
+        this.physicsStore,
         draggedNodePubkey,
         this.dragHopDistances,
         this.dragInfluenceConfig,
@@ -772,7 +808,12 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
 
     if (draggedNodePubkey && draggedNodePosition) {
-      this.projectionStore.setNodePosition(
+      this.renderStore.setNodePosition(
+        draggedNodePubkey,
+        draggedNodePosition.x,
+        draggedNodePosition.y,
+      )
+      this.physicsStore.setNodePosition(
         draggedNodePubkey,
         draggedNodePosition.x,
         draggedNodePosition.y,
@@ -781,13 +822,14 @@ export class SigmaRendererAdapter implements RendererAdapter {
       this.nodeHitTester?.markDirty()
     }
 
-    this.forceRuntime.sync(scene)
+    this.forceRuntime.sync(scene.physics)
+    this.ensurePhysicsPositionBridge()
 
-    const previousRoot = previousScene?.cameraHint.rootPubkey ?? null
-    const nextRoot = scene.cameraHint.rootPubkey
+    const previousRoot = previousScene?.render.cameraHint.rootPubkey ?? null
+    const nextRoot = scene.render.cameraHint.rootPubkey
     const rootChangedToSomething =
       previousRoot !== nextRoot && nextRoot !== null
-    if (!this.hasMountedCamera && scene.nodes.length > 0) {
+    if (!this.hasMountedCamera && scene.render.nodes.length > 0) {
       sigma.getCamera().animatedReset({ duration: 250 }).catch(() => {})
       this.hasMountedCamera = true
     } else if (rootChangedToSomething && previousRoot === null) {
@@ -802,6 +844,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
   public dispose() {
     this.releaseDrag()
     this.cancelPendingDragFrame()
+    this.cancelPhysicsPositionBridge()
     window.removeEventListener('keydown', this.handleKeyDown)
     this.setCameraLocked(false)
     this.setGraphBoundsLocked(false)
@@ -812,13 +855,15 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.disposeAvatarPipeline()
     this.sigma?.kill()
     this.sigma = null
-    this.projectionStore = null
+    this.positionLedger = null
+    this.renderStore = null
+    this.physicsStore = null
     this.callbacks = null
     this.scene = null
   }
 
   private initAvatarPipeline(
-    sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes>,
+    sigma: Sigma<RenderNodeAttributes, RenderEdgeAttributes>,
   ) {
     if (typeof window === 'undefined') {
       return
@@ -892,7 +937,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
   }
 
   private bindEvents() {
-    if (!this.sigma || !this.projectionStore || !this.callbacks) {
+    if (!this.sigma || !this.renderStore || !this.physicsStore || !this.callbacks) {
       return
     }
 
@@ -996,7 +1041,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private readonly nodeReducer = (
     node: string,
-    data: SigmaNodeAttributes,
+    data: RenderNodeAttributes,
   ) => {
     const cameraRatio = this.sigma?.getCamera().getState().ratio ?? 1
     const zoomScaledSize = data.size * resolveZoomOutNodeScale(cameraRatio)
@@ -1044,7 +1089,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private readonly edgeReducer = (
     edge: string,
-    data: SigmaEdgeAttributes,
+    data: RenderEdgeAttributes,
   ) => {
     if (!this.hoveredNodePubkey || !this.sigma) {
       return data
@@ -1092,8 +1137,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.hoveredNodePubkey = pubkey
     this.hoveredNeighbors = new Set()
 
-    if (pubkey && this.projectionStore) {
-      const graph = this.projectionStore.getGraph()
+    if (pubkey && this.renderStore) {
+      const graph = this.renderStore.getGraph()
       if (graph.hasNode(pubkey)) {
         graph.forEachNeighbor(pubkey, (neighborPubkey) => {
           this.hoveredNeighbors.add(neighborPubkey)
@@ -1156,7 +1201,80 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.isGraphBoundsLocked = false
   }
 
+  private readonly syncPhysicsPositionsToRender = () => {
+    if (!this.positionLedger || !this.renderStore || !this.physicsStore) {
+      return false
+    }
+
+    let changed = false
+
+    this.physicsStore.getGraph().forEachNode((pubkey, attributes) => {
+      if (this.renderStore.hasNode(pubkey)) {
+        changed =
+          this.renderStore.setNodePosition(pubkey, attributes.x, attributes.y) ||
+          changed
+      } else {
+        changed =
+          this.positionLedger.set(pubkey, attributes.x, attributes.y) || changed
+      }
+    })
+
+    if (changed) {
+      this.nodeHitTester?.markDirty()
+    }
+
+    return changed
+  }
+
+  private readonly flushPhysicsPositionBridge = () => {
+    this.pendingPhysicsBridgeFrame = null
+
+    if (!this.forceRuntime?.isRunning()) {
+      return
+    }
+
+    const changed = this.syncPhysicsPositionsToRender()
+    if (changed) {
+      this.markMotion()
+      this.sigma?.refresh()
+    }
+
+    this.pendingPhysicsBridgeFrame = requestAnimationFrame(
+      this.flushPhysicsPositionBridge,
+    )
+  }
+
+  private ensurePhysicsPositionBridge() {
+    if (
+      !this.forceRuntime?.isRunning() ||
+      this.pendingPhysicsBridgeFrame !== null
+    ) {
+      return
+    }
+
+    this.pendingPhysicsBridgeFrame = requestAnimationFrame(
+      this.flushPhysicsPositionBridge,
+    )
+  }
+
+  private cancelPhysicsPositionBridge() {
+    if (this.pendingPhysicsBridgeFrame === null) {
+      return
+    }
+
+    cancelAnimationFrame(this.pendingPhysicsBridgeFrame)
+    this.pendingPhysicsBridgeFrame = null
+  }
+
   public isNodeFixed(pubkey: string) {
-    return this.projectionStore?.isNodeFixed(pubkey) ?? false
+    if (this.physicsStore?.hasNode(pubkey)) {
+      return this.physicsStore.isNodeFixed(pubkey)
+    }
+
+    if (this.renderStore?.hasNode(pubkey)) {
+      return this.renderStore.getGraph().getNodeAttribute(pubkey, 'fixed')
+    }
+
+    return false
   }
 }

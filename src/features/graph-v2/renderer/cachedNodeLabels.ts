@@ -4,8 +4,8 @@ import type {
 } from 'sigma/rendering'
 
 import type {
-  SigmaEdgeAttributes,
-  SigmaNodeAttributes,
+  RenderEdgeAttributes,
+  RenderNodeAttributes,
 } from '@/features/graph-v2/renderer/graphologyProjectionStore'
 import { measureNodeLabelTextWidth } from '@/features/graph-v2/renderer/textMetricsCache'
 
@@ -35,8 +35,8 @@ export const resolveProportionalNodeLabelSize = (
 }
 
 export const drawCachedDiscNodeLabel: NodeLabelDrawingFunction<
-  SigmaNodeAttributes,
-  SigmaEdgeAttributes
+  RenderNodeAttributes,
+  RenderEdgeAttributes
 > = (context, data, settings) => {
   if (!data.label) {
     return
@@ -67,8 +67,8 @@ export const drawCachedDiscNodeLabel: NodeLabelDrawingFunction<
 }
 
 export const drawCachedDiscNodeHover: NodeHoverDrawingFunction<
-  SigmaNodeAttributes,
-  SigmaEdgeAttributes
+  RenderNodeAttributes,
+  RenderEdgeAttributes
 > = (context, data, settings) => {
   const labelSize = resolveProportionalNodeLabelSize(
     data.size,

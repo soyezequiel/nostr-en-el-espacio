@@ -71,39 +71,23 @@ export default function DevCacheButton() {
 
   return (
     <button
-      className="dev-cache-floating-btn"
+      aria-label={message ?? 'Borrar cache local de desarrollo'}
+      className="fixed bottom-3 right-3 z-[2147483647] inline-flex min-h-10 items-center gap-2 rounded-full border border-white/10 bg-[#070c18]/58 px-3 py-2 text-slate-50 shadow-[0_10px_28px_rgba(2,6,23,0.18)] backdrop-blur-xl transition-opacity duration-150 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f06a67] focus-visible:ring-offset-2 focus-visible:ring-offset-[#020617] sm:bottom-4 sm:right-4"
       disabled={isRunning}
       onClick={() => {
         void handleClearPageCache()
       }}
       style={{
-        position: 'fixed',
-        top: '18px',
-        left: '18px',
-        zIndex: 2147483647,
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '10px',
-        minHeight: '46px',
-        padding: '0 14px 0 12px',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '8px',
-        background: 'rgba(7, 12, 24, 0.72)',
-        boxShadow: '0 14px 34px rgba(2, 6, 23, 0.26)',
-        backdropFilter: 'blur(16px)',
-        color: '#f8fafc',
         cursor: isRunning ? 'not-allowed' : 'pointer',
-        opacity: isRunning ? 0.62 : 1,
+        opacity: isRunning ? 0.82 : 0.42,
       }}
       title={message ?? 'Borrar cache local de desarrollo'}
       type="button"
     >
       <span
         aria-hidden="true"
+        className="h-2.5 w-2.5 rounded-full"
         style={{
-          width: '8px',
-          height: '8px',
-          borderRadius: '999px',
           background: isRunning ? '#e3b56c' : '#f06a67',
           boxShadow: isRunning
             ? '0 0 16px rgba(227, 181, 108, 0.5)'
@@ -111,36 +95,11 @@ export default function DevCacheButton() {
           flex: '0 0 auto',
         }}
       />
-      <span
-        style={{
-          display: 'grid',
-          gap: '2px',
-          textAlign: 'left',
-        }}
-      >
-        <span
-          style={{
-            color: 'rgba(148, 163, 184, 0.88)',
-            fontSize: '10px',
-            fontWeight: 800,
-            letterSpacing: '0.12em',
-            lineHeight: 1,
-            textTransform: 'uppercase',
-          }}
-        >
-          Dev cache
-        </span>
-        <span
-          style={{
-            color: '#f8fafc',
-            fontSize: '13px',
-            fontWeight: 800,
-            letterSpacing: '0.01em',
-            lineHeight: 1.15,
-          }}
-        >
-          {isRunning ? 'Limpiando...' : 'Limpiar local'}
-        </span>
+      <span className="hidden text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300 sm:inline">
+        Cache
+      </span>
+      <span className="hidden text-[12px] font-bold text-slate-50 lg:inline">
+        {isRunning ? 'Limpiando...' : 'Limpiar'}
       </span>
     </button>
   )

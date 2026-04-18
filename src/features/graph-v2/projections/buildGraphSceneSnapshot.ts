@@ -1,23 +1,27 @@
 import type { CanonicalEdge, CanonicalGraphState } from '@/features/graph-v2/domain/types'
 import { buildLayerProjection } from '@/features/graph-v2/projections/buildLayerProjection'
 import type {
-  GraphSceneEdge,
+  GraphPhysicsEdge,
+  GraphPhysicsNode,
+  GraphRenderEdge,
+  GraphRenderNode,
   GraphSceneFocusState,
-  GraphSceneNode,
   GraphSceneSnapshot,
 } from '@/features/graph-v2/renderer/contracts'
 
 const truncatePubkey = (pubkey: string) =>
   pubkey.length <= 16 ? pubkey : `${pubkey.slice(0, 8)}...${pubkey.slice(-6)}`
 
-const nodeColorBySource: Record<CanonicalGraphState['nodesByPubkey'][string]['source'], string> =
-  {
-    root: '#7dd3a7',
-    follow: '#9ec5ff',
-    inbound: '#f6c15c',
-    zap: '#f2994a',
-    keyword: '#f472b6',
-  }
+const nodeColorBySource: Record<
+  CanonicalGraphState['nodesByPubkey'][string]['source'],
+  string
+> = {
+  root: '#7dd3a7',
+  follow: '#9ec5ff',
+  inbound: '#f6c15c',
+  zap: '#f2994a',
+  keyword: '#f472b6',
+}
 
 const edgeColorByRelation: Record<CanonicalEdge['relation'], string> = {
   follow: '#8fb6ff',
@@ -133,14 +137,14 @@ const resolveNodeSize = (
   }
 }
 
-const mapSceneEdge = (
+const mapRenderEdge = (
   edge: CanonicalEdge,
   hidden: boolean,
   focusState: {
     hasSelection: boolean
     touchesFocus: boolean
   },
-): GraphSceneEdge => {
+): GraphRenderEdge => {
   const baseColor = edgeColorByRelation[edge.relation]
   const base = baseEdgeSize(edge.relation)
   const isDimmed = focusState.hasSelection && !focusState.touchesFocus
@@ -164,6 +168,51 @@ const mapSceneEdge = (
     touchesFocus: focusState.touchesFocus,
   }
 }
+
+interface PhysicsEligibilityPolicy {
+  select(scene: {
+    forceEdges: readonly GraphRenderEdge[]
+    renderNodes: readonly GraphRenderNode[]
+  }): {
+    nodes: GraphPhysicsNode[]
+    edges: GraphPhysicsEdge[]
+  }
+}
+
+class ForceEdgeEligibilityPolicy implements PhysicsEligibilityPolicy {
+  public select({
+    forceEdges,
+    renderNodes,
+  }: {
+    forceEdges: readonly GraphRenderEdge[]
+    renderNodes: readonly GraphRenderNode[]
+  }) {
+    const edges: GraphPhysicsEdge[] = forceEdges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      weight: edge.weight,
+    }))
+    const eligiblePubkeys = new Set<string>()
+
+    for (const edge of edges) {
+      eligiblePubkeys.add(edge.source)
+      eligiblePubkeys.add(edge.target)
+    }
+
+    const nodes = renderNodes
+      .filter((node) => eligiblePubkeys.has(node.pubkey))
+      .map((node) => ({
+        pubkey: node.pubkey,
+        size: node.size,
+        fixed: node.isPinned,
+      }))
+
+    return { nodes, edges }
+  }
+}
+
+const DEFAULT_PHYSICS_ELIGIBILITY_POLICY = new ForceEdgeEligibilityPolicy()
 
 const snapshotCache = new WeakMap<CanonicalGraphState, GraphSceneSnapshot>()
 const snapshotSignatureCache = new Map<string, GraphSceneSnapshot>()
@@ -196,13 +245,13 @@ export const buildGraphSceneSnapshot = (
     process.env.NEXT_PUBLIC_GRAPH_V2_PERF === '1'
 
   if (isPerfEnabled) {
-    _snapCalls++
+    _snapCalls += 1
   }
 
   const cached = snapshotCache.get(state)
   if (cached) {
     if (isPerfEnabled) {
-      _snapHits++
+      _snapHits += 1
     }
     return cached
   }
@@ -210,7 +259,7 @@ export const buildGraphSceneSnapshot = (
   const signatureCached = snapshotSignatureCache.get(state.sceneSignature)
   if (signatureCached) {
     if (isPerfEnabled) {
-      _snapHits++
+      _snapHits += 1
     }
     snapshotCache.set(state, signatureCached)
     return signatureCached
@@ -232,7 +281,9 @@ const computeGraphSceneSnapshot = (
   state: CanonicalGraphState,
 ): GraphSceneSnapshot => {
   const layerProjection = buildLayerProjection(state)
-  const visibleEdgeIds = new Set(layerProjection.visibleEdges.map((edge) => edge.id))
+  const visibleEdgeIds = new Set(
+    layerProjection.visibleEdges.map((edge) => edge.id),
+  )
   const visibleNodePubkeys = new Set(layerProjection.visibleNodePubkeys)
   const visualFocusPubkey =
     state.selectedNodePubkey && state.nodesByPubkey[state.selectedNodePubkey]
@@ -280,12 +331,14 @@ const computeGraphSceneSnapshot = (
         return 1
       }
 
-      return (left.discoveredAt ?? Number.MAX_SAFE_INTEGER) -
-        (right.discoveredAt ?? Number.MAX_SAFE_INTEGER) ||
+      return (
+        (left.discoveredAt ?? Number.MAX_SAFE_INTEGER) -
+          (right.discoveredAt ?? Number.MAX_SAFE_INTEGER) ||
         left.pubkey.localeCompare(right.pubkey)
+      )
     })
 
-  const nodes: GraphSceneNode[] = sortedNodes.map((node) => {
+  const renderNodes: GraphRenderNode[] = sortedNodes.map((node) => {
     const isRoot = node.pubkey === state.rootPubkey
     const isSelected = node.pubkey === state.selectedNodePubkey
     const isPinned = state.pinnedNodePubkeys.has(node.pubkey)
@@ -323,15 +376,15 @@ const computeGraphSceneSnapshot = (
   }
 
   const visibleEdges = layerProjection.visibleEdges.map((edge) =>
-    mapSceneEdge(edge, false, {
+    mapRenderEdge(edge, false, {
       hasSelection: hasVisualFocus,
       touchesFocus: touchesFocus(edge),
     }),
   )
-  const sceneForceEdges = forceEdges.map((edge) => {
+  const renderForceEdges = forceEdges.map((edge) => {
     const edgeTouchesFocus = touchesFocus(edge)
 
-    return mapSceneEdge(
+    return mapRenderEdge(
       edge,
       !visibleEdgeIds.has(edge.id) && !(hasVisualFocus && edgeTouchesFocus),
       {
@@ -340,42 +393,63 @@ const computeGraphSceneSnapshot = (
       },
     )
   })
+  const physics = DEFAULT_PHYSICS_ELIGIBILITY_POLICY.select({
+    forceEdges: renderForceEdges,
+    renderNodes,
+  })
 
   return {
-    nodes,
-    visibleEdges,
-    forceEdges: sceneForceEdges,
-    labels: nodes.map((node) => ({
-      pubkey: node.pubkey,
-      text: node.label,
-    })),
-    selection: {
-      selectedNodePubkey: state.selectedNodePubkey,
-      hoveredNodePubkey: null,
+    render: {
+      nodes: renderNodes,
+      visibleEdges,
+      labels: renderNodes.map((node) => ({
+        pubkey: node.pubkey,
+        text: node.label,
+      })),
+      selection: {
+        selectedNodePubkey: state.selectedNodePubkey,
+        hoveredNodePubkey: null,
+      },
+      pins: {
+        pubkeys: Array.from(state.pinnedNodePubkeys),
+      },
+      cameraHint: {
+        focusPubkey: state.selectedNodePubkey ?? state.rootPubkey,
+        rootPubkey: state.rootPubkey,
+      },
+      diagnostics: {
+        activeLayer: state.activeLayer,
+        nodeCount: renderNodes.length,
+        visibleEdgeCount: visibleEdges.length,
+        relayCount: state.relayState.urls.length,
+        isGraphStale: state.relayState.isGraphStale,
+        topologySignature: [
+          state.rootPubkey ?? 'no-root',
+          state.activeLayer,
+          state.discoveryState.graphRevision,
+          state.discoveryState.inboundGraphRevision,
+          state.discoveryState.connectionsLinksRevision,
+          renderNodes.length,
+          renderForceEdges.length,
+        ].join('::'),
+      },
     },
-    pins: {
-      pubkeys: Array.from(state.pinnedNodePubkeys),
-    },
-    cameraHint: {
-      focusPubkey: state.selectedNodePubkey ?? state.rootPubkey,
-      rootPubkey: state.rootPubkey,
-    },
-    diagnostics: {
-      activeLayer: state.activeLayer,
-      nodeCount: nodes.length,
-      visibleEdgeCount: visibleEdges.length,
-      forceEdgeCount: sceneForceEdges.length,
-      relayCount: state.relayState.urls.length,
-      isGraphStale: state.relayState.isGraphStale,
-      topologySignature: [
-        state.rootPubkey ?? 'no-root',
-        state.activeLayer,
-        state.discoveryState.graphRevision,
-        state.discoveryState.inboundGraphRevision,
-        state.discoveryState.connectionsLinksRevision,
-        nodes.length,
-        sceneForceEdges.length,
-      ].join('::'),
+    physics: {
+      nodes: physics.nodes,
+      edges: physics.edges,
+      diagnostics: {
+        nodeCount: physics.nodes.length,
+        edgeCount: physics.edges.length,
+        topologySignature: [
+          state.rootPubkey ?? 'no-root',
+          state.activeLayer,
+          state.discoveryState.graphRevision,
+          state.discoveryState.inboundGraphRevision,
+          state.discoveryState.connectionsLinksRevision,
+          physics.nodes.length,
+          physics.edges.length,
+        ].join('::'),
+      },
     },
   }
 }

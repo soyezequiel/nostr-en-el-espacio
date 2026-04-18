@@ -1,10 +1,10 @@
 import type Graph from 'graphology-types'
 
 import type {
-  SigmaEdgeAttributes,
-  SigmaNodeAttributes,
+  PhysicsEdgeAttributes,
+  PhysicsNodeAttributes,
+  PhysicsGraphStore,
 } from '@/features/graph-v2/renderer/graphologyProjectionStore'
-import { GraphologyProjectionStore } from '@/features/graph-v2/renderer/graphologyProjectionStore'
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
@@ -128,7 +128,7 @@ const toFrameScale = (
   )
 
 export const createDragNeighborhoodInfluenceState = (
-  projectionStore: GraphologyProjectionStore,
+  projectionStore: PhysicsGraphStore,
   draggedNodePubkey: string,
   hopDistances: ReadonlyMap<string, number>,
   config: DragNeighborhoodInfluenceConfig = DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG,
@@ -194,7 +194,7 @@ export const createDragNeighborhoodInfluenceState = (
   const includedPubkeys = new Set([draggedNodePubkey, ...nodes.keys()])
   const seenEdgeKeys = new Set<string>()
 
-  const typedGraph = graph as Graph<SigmaNodeAttributes, SigmaEdgeAttributes>
+  const typedGraph = graph as Graph<PhysicsNodeAttributes, PhysicsEdgeAttributes>
   for (const pubkey of includedPubkeys) {
     typedGraph.forEachNeighbor(pubkey, (neighborPubkey) => {
       if (!includedPubkeys.has(neighborPubkey)) {
@@ -271,7 +271,7 @@ const resolveFallbackDirection = (pubkey: string) => {
 }
 
 const applyDraggedNodeRepulsion = (
-  projectionStore: GraphologyProjectionStore,
+  projectionStore: PhysicsGraphStore,
   draggedNodePubkey: string,
   forces: Map<string, ForceAccumulator>,
   config: DragNeighborhoodInfluenceConfig,
@@ -349,7 +349,7 @@ const applyDraggedNodeRepulsion = (
 }
 
 const stepInfluencedNode = (
-  projectionStore: GraphologyProjectionStore,
+  projectionStore: PhysicsGraphStore,
   pubkey: string,
   nodeState: DragNeighborhoodInfluenceNodeState,
   forces: Map<string, ForceAccumulator>,
@@ -419,7 +419,7 @@ const stepInfluencedNode = (
 }
 
 export const stepDragNeighborhoodInfluence = (
-  projectionStore: GraphologyProjectionStore,
+  projectionStore: PhysicsGraphStore,
   draggedNodePubkey: string,
   influenceState: DragNeighborhoodInfluenceState,
   deltaMs: number,
@@ -506,7 +506,7 @@ export const stepDragNeighborhoodInfluence = (
 }
 
 export const releaseDraggedNode = (
-  projectionStore: GraphologyProjectionStore,
+  projectionStore: PhysicsGraphStore,
   draggedNodePubkey: string,
   pinnedPubkeys: readonly string[],
 ) => {

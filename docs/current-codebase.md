@@ -122,8 +122,9 @@ Responsabilidades:
 - shell visual del laboratorio Sigma
 - selector de identidad
 - paneles y controles del grafo
-- renderer Sigma/Graphology
-- ForceAtlas2 y estabilizacion de layout
+- renderer Sigma sobre un grafo de render dedicado
+- ForceAtlas2 sobre un grafo de fisica separado
+- bridge explicito de posiciones entre fisica y render
 - avatar runtime propio de graph-v2
 
 Los estilos de Sigma viven en `src/features/graph-v2/ui/graph-v2.css` y deben quedar scopeados bajo `[data-graph-v2]`.
@@ -137,8 +138,9 @@ Los estilos de Sigma viven en `src/features/graph-v2/ui/graph-v2.css` y deben qu
 Responsabilidades:
 
 - adaptar el store/runtime compartido a un dominio canonico para Sigma
-- construir snapshots de escena
+- construir snapshots de escena separados en `render` y `physics`
 - mantener separados edges visibles y edges usados por fuerza/layout
+- dejar la politica de elegibilidad de fisica encapsulada para futuras fases
 
 ### Runtime compartido
 
@@ -185,7 +187,9 @@ A nivel general:
 4. Los workers parsean eventos y calculan analisis del grafo.
 5. Los slices del store reciben nodos, links, estado de relays, analisis, zaps y export.
 6. Las proyecciones de `graph-v2` traducen ese estado a snapshots para Sigma.
-7. La UI expone detalle de nodo, relays, render, capas, export y diagnosticos.
+7. `SigmaCanvasHost` monta Sigma con el grafo de render y el adapter corre FA2 sobre el grafo de fisica.
+8. Un ledger compartido preserva posiciones entre rebuilds y espeja los nodos fisicos hacia el render mientras la simulacion corre.
+9. La UI expone detalle de nodo, relays, render, capas, export y diagnosticos.
 
 Esto implica:
 

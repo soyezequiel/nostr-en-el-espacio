@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { DirectedGraph } from 'graphology'
 
-import type { GraphSceneSnapshot } from '@/features/graph-v2/renderer/contracts'
+import type { GraphPhysicsSnapshot } from '@/features/graph-v2/renderer/contracts'
 import {
   DEFAULT_FORCE_ATLAS_PHYSICS_TUNING,
   ForceAtlasRuntime,
@@ -13,87 +13,46 @@ import {
   type ForceAtlasLayoutController,
 } from '@/features/graph-v2/renderer/forceAtlasRuntime'
 import type {
-  SigmaEdgeAttributes,
-  SigmaNodeAttributes,
+  PhysicsEdgeAttributes,
+  PhysicsNodeAttributes,
 } from '@/features/graph-v2/renderer/graphologyProjectionStore'
 
 const createScene = (
   nodeCount: number,
   forceEdgeCount: number,
-): GraphSceneSnapshot => ({
+): GraphPhysicsSnapshot => ({
   nodes: Array.from({ length: nodeCount }, (_, index) => ({
     pubkey: `node-${index}`,
-    label: `node-${index}`,
-    pictureUrl: null,
-    color: '#fff',
     size: 10,
-    isRoot: index === 0,
-    isSelected: false,
-    isPinned: false,
-    isNeighbor: false,
-    isDimmed: false,
-    focusState: index === 0 ? ('root' as const) : ('idle' as const),
+    fixed: false,
   })),
-  visibleEdges: [],
-  forceEdges: Array.from({ length: forceEdgeCount }, (_, index) => ({
+  edges: Array.from({ length: forceEdgeCount }, (_, index) => ({
     id: `edge-${index}`,
     source: `node-${index}`,
     target: `node-${index + 1}`,
-    color: '#fff',
-    size: 1,
-    hidden: false,
-    relation: 'follow',
     weight: 1,
-    isDimmed: false,
-    touchesFocus: false,
   })),
-  labels: [],
-  selection: {
-    selectedNodePubkey: null,
-    hoveredNodePubkey: null,
-  },
-  pins: {
-    pubkeys: [],
-  },
-  cameraHint: {
-    focusPubkey: null,
-    rootPubkey: 'node-0',
-  },
   diagnostics: {
-    activeLayer: 'graph',
     nodeCount,
-    visibleEdgeCount: 0,
-    forceEdgeCount,
-    relayCount: 0,
-    isGraphStale: false,
+    edgeCount: forceEdgeCount,
     topologySignature: `${nodeCount}:${forceEdgeCount}`,
   },
 })
 
 const createGraph = (nodeCount: number, edgeCount: number) => {
-  const graph = new DirectedGraph<SigmaNodeAttributes, SigmaEdgeAttributes>()
+  const graph = new DirectedGraph<PhysicsNodeAttributes, PhysicsEdgeAttributes>()
 
   for (let index = 0; index < nodeCount; index += 1) {
     graph.addNode(`node-${index}`, {
       x: index,
       y: index,
       size: 1,
-      color: '#fff',
-      label: `node-${index}`,
-      hidden: false,
-      highlighted: false,
-      forceLabel: false,
       fixed: false,
-      pictureUrl: null,
     })
   }
 
   for (let index = 0; index < edgeCount; index += 1) {
     graph.addDirectedEdgeWithKey(`edge-${index}`, `node-${index}`, `node-${index + 1}`, {
-      size: 1,
-      color: '#fff',
-      hidden: false,
-      label: null,
       weight: 1,
     })
   }
@@ -283,13 +242,7 @@ test('sync recreates the layout when the settings key changes', () => {
       x: index,
       y: index,
       size: 1,
-      color: '#fff',
-      label: `node-${index}`,
-      hidden: false,
-      highlighted: false,
-      forceLabel: false,
       fixed: false,
-      pictureUrl: null,
     })
   }
 

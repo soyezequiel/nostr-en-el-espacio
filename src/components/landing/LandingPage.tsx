@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import IdentityPulse from '@/components/landing/IdentityPulse'
 import LandingMotionProvider from '@/components/landing/LandingMotionProvider'
+import OrangeSurprise from '@/components/landing/OrangeSurprise'
 import Reveal from '@/components/landing/Reveal'
 
 const valueSignals = [
@@ -85,7 +86,8 @@ export default function LandingPage() {
             <div className="max-w-5xl">
               <Reveal>
                 <p className="mb-5 text-sm font-semibold uppercase text-[#ff4b5d]">
-                  Cypherpunk identity lab
+                  Un desarrollo de Naranja Labs
+                  <OrangeSurprise />
                 </p>
                 <h1 className="max-w-4xl text-5xl font-black leading-[0.95] text-[#f7f5ef] sm:text-7xl lg:text-8xl">
                   Seguí la identidad, no el perfil.
@@ -99,7 +101,7 @@ export default function LandingPage() {
                     className="inline-flex min-h-12 items-center justify-center rounded-md bg-[#ff4b5d] px-6 text-base font-bold text-[#080808] shadow-[0_0_44px_rgba(255,75,93,0.24)] hover:bg-[#ff6a78] focus:outline-none focus:ring-2 focus:ring-[#ff9aa4] focus:ring-offset-2 focus:ring-offset-[#070707]"
                     href="/labs/sigma"
                   >
-                    Abrir grafo
+                    Probar Nostr explorer
                   </Link>
                 </div>
               </Reveal>

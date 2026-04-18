@@ -9,7 +9,7 @@ export type GraphSceneFocusState =
   | 'pinned'
   | 'dim'
 
-export interface GraphSceneNode {
+export interface GraphRenderNode {
   pubkey: string
   label: string
   pictureUrl: string | null
@@ -23,7 +23,7 @@ export interface GraphSceneNode {
   focusState: GraphSceneFocusState
 }
 
-export interface GraphSceneEdge {
+export interface GraphRenderEdge {
   id: string
   source: string
   target: string
@@ -34,6 +34,19 @@ export interface GraphSceneEdge {
   weight: number
   isDimmed: boolean
   touchesFocus: boolean
+}
+
+export interface GraphPhysicsNode {
+  pubkey: string
+  size: number
+  fixed: boolean
+}
+
+export interface GraphPhysicsEdge {
+  id: string
+  source: string
+  target: string
+  weight: number
 }
 
 export interface GraphSceneLabel {
@@ -62,25 +75,40 @@ export interface GraphSceneCameraHint {
   rootPubkey: string | null
 }
 
-export interface GraphSceneDiagnostics {
+export interface GraphRenderDiagnostics {
   activeLayer: GraphV2Layer
   nodeCount: number
   visibleEdgeCount: number
-  forceEdgeCount: number
   relayCount: number
   isGraphStale: boolean
   topologySignature: string
 }
 
-export interface GraphSceneSnapshot {
-  nodes: GraphSceneNode[]
-  visibleEdges: GraphSceneEdge[]
-  forceEdges: GraphSceneEdge[]
+export interface GraphPhysicsDiagnostics {
+  nodeCount: number
+  edgeCount: number
+  topologySignature: string
+}
+
+export interface GraphRenderSnapshot {
+  nodes: GraphRenderNode[]
+  visibleEdges: GraphRenderEdge[]
   labels: GraphSceneLabel[]
   selection: GraphSceneSelection
   pins: GraphScenePins
   cameraHint: GraphSceneCameraHint
-  diagnostics: GraphSceneDiagnostics
+  diagnostics: GraphRenderDiagnostics
+}
+
+export interface GraphPhysicsSnapshot {
+  nodes: GraphPhysicsNode[]
+  edges: GraphPhysicsEdge[]
+  diagnostics: GraphPhysicsDiagnostics
+}
+
+export interface GraphSceneSnapshot {
+  render: GraphRenderSnapshot
+  physics: GraphPhysicsSnapshot
 }
 
 export interface NodeDetailProjection {

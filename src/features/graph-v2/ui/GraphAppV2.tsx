@@ -135,7 +135,7 @@ const hasVisibleEdgeBetween = (
   source: string,
   target: string,
 ) => {
-  for (const edge of scene.visibleEdges) {
+  for (const edge of scene.render.visibleEdges) {
     if (edge.hidden) continue
     if (
       (edge.source === source && edge.target === target) ||
@@ -728,7 +728,7 @@ export default function GraphAppV2() {
     (isRootLoadScreenOpen ||
       (domainState.rootPubkey !== null &&
         rootLoadStatus === 'loading' &&
-        scene.nodes.length < 3))
+        scene.render.nodes.length < 3))
   const isDragFixtureLab = fixtureName === 'drag-local'
   const hasSavedRoots = savedRoots.length > 0
   const shouldShowSavedRootsSection = !savedRootsHydrated || hasSavedRoots
@@ -850,7 +850,10 @@ export default function GraphAppV2() {
     key: K, value: DragNeighborhoodInfluenceTuning[K],
   ) { setDragInfluenceTuning((current) => ({ ...current, [key]: value })) }, [])
 
-  const visiblePubkeys = useMemo(() => deferredScene.nodes.map((node) => node.pubkey), [deferredScene.nodes])
+  const visiblePubkeys = useMemo(
+    () => deferredScene.render.nodes.map((node) => node.pubkey),
+    [deferredScene.render.nodes],
+  )
   const visibleNodeSet = useMemo(() => new Set(visiblePubkeys), [visiblePubkeys])
 
   const handleZap = useCallback((zap: Pick<ParsedZap, 'fromPubkey' | 'toPubkey' | 'sats'>) => {
@@ -879,14 +882,14 @@ export default function GraphAppV2() {
 
   const isDev = process.env.NODE_ENV === 'development'
   const findSimulationPair = useCallback((): { from: string; to: string } | null => {
-    for (const edge of deferredScene.visibleEdges) {
+    for (const edge of deferredScene.render.visibleEdges) {
       if (edge.hidden) continue
       if (!visibleNodeSet.has(edge.source)) continue
       if (!visibleNodeSet.has(edge.target)) continue
       return { from: edge.source, to: edge.target }
     }
     return null
-  }, [deferredScene.visibleEdges, visibleNodeSet])
+  }, [deferredScene.render.visibleEdges, visibleNodeSet])
   const simulationPair = useMemo(
     () => (isDev ? findSimulationPair() : null),
     [findSimulationPair, isDev],
@@ -1034,12 +1037,12 @@ export default function GraphAppV2() {
   }, [domainState.activeLayer])
 
   const filterPills: FilterPill[] = useMemo(() => [
-    { id: 'all',       label: 'Todos',            count: deferredScene.diagnostics.nodeCount, swatch: 'oklch(55% 0.02 230)' },
+    { id: 'all',       label: 'Todos',            count: deferredScene.render.diagnostics.nodeCount, swatch: 'oklch(55% 0.02 230)' },
     { id: 'following', label: 'Sigo',             count: null, swatch: 'oklch(65% 0.10 220)' },
     { id: 'followers', label: 'Me siguen',        count: null, swatch: 'oklch(65% 0.08 300)' },
     { id: 'mutuals',   label: 'Mutuos',           count: null, swatch: 'oklch(72% 0.06 220)' },
     { id: 'oneway',    label: 'Sin reciprocidad', count: null, swatch: 'oklch(60% 0.06 80)' },
-  ], [deferredScene.diagnostics.nodeCount])
+  ], [deferredScene.render.diagnostics.nodeCount])
 
   const handleFilterSelect = useCallback((id: FilterPill['id']) => {
     if (id === 'all')       { toggleLayer('graph'); return }
@@ -1055,9 +1058,9 @@ export default function GraphAppV2() {
 
   // HUD stats
   const hudStats: HudStat[] = useMemo(() => [
-    { k: 'Nodos',   v: String(deferredScene.diagnostics.nodeCount) },
-    { k: 'Aristas', v: String(deferredScene.diagnostics.forceEdgeCount) },
-    { k: 'Visibles', v: String(deferredScene.diagnostics.visibleEdgeCount) },
+    { k: 'Nodos',   v: String(deferredScene.render.diagnostics.nodeCount) },
+    { k: 'Aristas', v: String(deferredScene.physics.diagnostics.edgeCount) },
+    { k: 'Visibles', v: String(deferredScene.render.diagnostics.visibleEdgeCount) },
     {
       k: 'Física',
       v: physicsEnabled ? 'activa' : 'pausa',
@@ -1065,7 +1068,7 @@ export default function GraphAppV2() {
     },
     {
       k: 'Relays',
-      v: `${domainState.relayState.isGraphStale ? Math.max(0, deferredScene.diagnostics.relayCount - 1) : deferredScene.diagnostics.relayCount}/${deferredScene.diagnostics.relayCount}`,
+      v: `${domainState.relayState.isGraphStale ? Math.max(0, deferredScene.render.diagnostics.relayCount - 1) : deferredScene.render.diagnostics.relayCount}/${deferredScene.render.diagnostics.relayCount}`,
       tone: domainState.relayState.isGraphStale ? 'warn' : 'good',
     },
     {
@@ -1075,10 +1078,10 @@ export default function GraphAppV2() {
     },
   ], [
     avatarPerfSnapshot,
-    deferredScene.diagnostics.forceEdgeCount,
-    deferredScene.diagnostics.nodeCount,
-    deferredScene.diagnostics.relayCount,
-    deferredScene.diagnostics.visibleEdgeCount,
+    deferredScene.physics.diagnostics.edgeCount,
+    deferredScene.render.diagnostics.nodeCount,
+    deferredScene.render.diagnostics.relayCount,
+    deferredScene.render.diagnostics.visibleEdgeCount,
     domainState.relayState.isGraphStale,
     physicsEnabled,
   ])
@@ -1330,8 +1333,9 @@ export default function GraphAppV2() {
             <div className="sg-settings-section">
               <h4>Diagnóstico runtime</h4>
               {[
-                ['Topología',    deferredScene.diagnostics.topologySignature],
-                ['Relays',       String(deferredScene.diagnostics.relayCount)],
+                ['Topología render', String(deferredScene.render.diagnostics.topologySignature)],
+                ['Topología física', String(deferredScene.physics.diagnostics.topologySignature)],
+                ['Relays',       String(deferredScene.render.diagnostics.relayCount)],
                 ['Pinned',       String(domainState.pinnedNodePubkeys.size)],
                 ['Viewport',     isFixtureMode
                   ? (lastViewportRatio ? `${lastViewportRatio.toFixed(2)}×` : 'idle')
@@ -1510,7 +1514,7 @@ export default function GraphAppV2() {
       {isGraphLoading && (
         <SigmaLoadingOverlay
           message={visibleLoadFeedback}
-          nodeCount={scene.nodes.length}
+          nodeCount={scene.render.nodes.length}
         />
       )}
 

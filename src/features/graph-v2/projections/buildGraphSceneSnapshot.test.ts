@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildGraphSceneSnapshot } from '@/features/graph-v2/projections/buildGraphSceneSnapshot'
 import type { CanonicalGraphState } from '@/features/graph-v2/domain/types'
+import { buildGraphSceneSnapshot } from '@/features/graph-v2/projections/buildGraphSceneSnapshot'
+
+let sceneCounter = 0
 
 const createState = (
   overrides: Partial<CanonicalGraphState> = {},
@@ -86,7 +88,7 @@ const createState = (
       weight: 1,
     },
   },
-  sceneSignature: 'test-scene',
+  sceneSignature: `test-scene-${sceneCounter += 1}`,
   rootPubkey: 'root',
   activeLayer: 'following',
   connectionsSourceLayer: 'following',
@@ -120,15 +122,15 @@ const createState = (
   ...overrides,
 })
 
-test('keeps relationship force edges limited to visible edges without selection', () => {
+test('keeps relationship physics edges limited to the same topology as before when there is no selection', () => {
   const scene = buildGraphSceneSnapshot(createState())
 
   assert.deepEqual(
-    scene.visibleEdges.map((edge) => edge.id),
+    scene.render.visibleEdges.map((edge) => edge.id),
     ['root->alice:follow', 'root->bob:follow'],
   )
   assert.deepEqual(
-    scene.forceEdges.map((edge) => edge.id),
+    scene.physics.edges.map((edge) => edge.id),
     ['root->alice:follow', 'root->bob:follow'],
   )
 })
@@ -141,22 +143,29 @@ test('builds connections layer without reintroducing the root node', () => {
   )
 
   assert.deepEqual(
-    scene.visibleEdges.map((edge) => edge.id),
+    scene.render.visibleEdges.map((edge) => edge.id),
     ['alice->bob:follow'],
   )
   assert.deepEqual(
-    scene.nodes.map((node) => node.pubkey),
+    scene.render.nodes.map((node) => node.pubkey),
     ['alice', 'bob'],
   )
 })
 
-test('builds a compact deterministic topology signature', () => {
+test('builds compact deterministic topology signatures for render and physics', () => {
   const scene = buildGraphSceneSnapshot(createState())
 
-  assert.equal(scene.diagnostics.topologySignature, 'root::following::1::0::1::3::2')
+  assert.equal(
+    scene.render.diagnostics.topologySignature,
+    'root::following::1::0::1::3::2',
+  )
+  assert.equal(
+    scene.physics.diagnostics.topologySignature,
+    'root::following::1::0::1::3::2',
+  )
 })
 
-test('keeps graph force layout independent from loaded connection edges', () => {
+test('keeps graph physics independent from loaded connection edges', () => {
   const scene = buildGraphSceneSnapshot(
     createState({
       activeLayer: 'graph',
@@ -164,29 +173,32 @@ test('keeps graph force layout independent from loaded connection edges', () => 
   )
 
   assert.deepEqual(
-    scene.visibleEdges.map((edge) => edge.id),
+    scene.render.visibleEdges.map((edge) => edge.id),
     ['root->alice:follow', 'root->bob:follow'],
   )
   assert.deepEqual(
-    scene.forceEdges.map((edge) => edge.id),
+    scene.physics.edges.map((edge) => edge.id),
     ['root->alice:follow', 'root->bob:follow'],
   )
 })
 
-test('leaves every node with idle/root focus state when there is no selection', () => {
+test('leaves every visible node with idle/root focus state when there is no selection', () => {
   const scene = buildGraphSceneSnapshot(createState())
 
-  const focusStates = scene.nodes.map((node) => [node.pubkey, node.focusState])
+  const focusStates = scene.render.nodes.map((node) => [
+    node.pubkey,
+    node.focusState,
+  ])
   assert.deepEqual(focusStates, [
     ['root', 'root'],
     ['alice', 'idle'],
     ['bob', 'idle'],
   ])
-  assert.ok(scene.nodes.every((node) => !node.isDimmed))
-  assert.ok(scene.visibleEdges.every((edge) => !edge.isDimmed))
+  assert.ok(scene.render.nodes.every((node) => !node.isDimmed))
+  assert.ok(scene.render.visibleEdges.every((edge) => !edge.isDimmed))
 })
 
-test('uses selection as visual focus for the selected node and its links', () => {
+test('uses selection as visual focus while keeping the expanded physics neighborhood', () => {
   const scene = buildGraphSceneSnapshot(
     createState({
       selectedNodePubkey: 'alice',
@@ -194,12 +206,12 @@ test('uses selection as visual focus for the selected node and its links', () =>
   )
 
   const focusByPubkey = Object.fromEntries(
-    scene.nodes.map((node) => [node.pubkey, node.focusState]),
+    scene.render.nodes.map((node) => [node.pubkey, node.focusState]),
   )
   const nodesByPubkey = Object.fromEntries(
-    scene.nodes.map((node) => [node.pubkey, node]),
+    scene.render.nodes.map((node) => [node.pubkey, node]),
   )
-  assert.equal(scene.selection.selectedNodePubkey, 'alice')
+  assert.equal(scene.render.selection.selectedNodePubkey, 'alice')
   assert.equal(nodesByPubkey.alice?.isSelected, true)
   assert.equal(focusByPubkey.alice, 'selected')
   assert.equal(focusByPubkey.root, 'root')
@@ -209,21 +221,18 @@ test('uses selection as visual focus for the selected node and its links', () =>
   assert.equal(nodesByPubkey.bob?.color, '#f8f2a2')
   assert.equal(nodesByPubkey.bob?.size, 13)
 
-  const edgeFocusById = Object.fromEntries(
-    scene.forceEdges.map((edge) => [edge.id, edge.touchesFocus]),
+  assert.deepEqual(
+    scene.physics.edges.map((edge) => edge.id),
+    ['alice->bob:follow', 'root->alice:follow', 'root->bob:follow'],
   )
-  const edgesById = Object.fromEntries(
-    scene.forceEdges.map((edge) => [edge.id, edge]),
+
+  const visibleEdgesById = Object.fromEntries(
+    scene.render.visibleEdges.map((edge) => [edge.id, edge]),
   )
-  assert.equal(edgeFocusById['root->alice:follow'], true)
-  assert.equal(edgeFocusById['alice->bob:follow'], true)
-  assert.equal(edgeFocusById['root->bob:follow'], false)
-  assert.equal(edgesById['alice->bob:follow']?.hidden, false)
-  assert.equal(edgesById['alice->bob:follow']?.color, '#f4fbff')
-  assert.equal(edgesById['alice->bob:follow']?.size, 2.7)
-  assert.equal(edgesById['root->bob:follow']?.isDimmed, true)
-  assert.equal(edgesById['root->bob:follow']?.color, '#10171f')
-  assert.equal(edgesById['root->bob:follow']?.size, 0.25)
+  assert.equal(visibleEdgesById['root->alice:follow']?.touchesFocus, true)
+  assert.equal(visibleEdgesById['root->bob:follow']?.isDimmed, true)
+  assert.equal(visibleEdgesById['root->bob:follow']?.color, '#10171f')
+  assert.equal(visibleEdgesById['root->bob:follow']?.size, 0.25)
 })
 
 test('keeps root as the root focus state even when it is a depth-1 neighbor of the selection', () => {
@@ -232,7 +241,7 @@ test('keeps root as the root focus state even when it is a depth-1 neighbor of t
       selectedNodePubkey: 'alice',
     }),
   )
-  const root = scene.nodes.find((node) => node.pubkey === 'root')
+  const root = scene.render.nodes.find((node) => node.pubkey === 'root')
   assert.ok(root)
   assert.equal(root.focusState, 'root')
 })
@@ -266,13 +275,13 @@ test('marks pinned nodes outside the neighborhood with pinned focus state (not d
   state.pinnedNodePubkeys = new Set<string>(['carol'])
 
   const scene = buildGraphSceneSnapshot(state)
-  const carol = scene.nodes.find((node) => node.pubkey === 'carol')
+  const carol = scene.render.nodes.find((node) => node.pubkey === 'carol')
   assert.ok(carol)
   assert.equal(carol.isPinned, true)
   assert.equal(carol.focusState, 'pinned')
 })
 
-test('dims edges outside the selected node neighborhood', () => {
+test('dims visible edges outside the selected node neighborhood', () => {
   const state = createState({
     activeLayer: 'graph',
     selectedNodePubkey: 'root',
@@ -325,7 +334,9 @@ test('dims edges outside the selected node neighborhood', () => {
   }
 
   const scene = buildGraphSceneSnapshot(state)
-  const dimmed = scene.forceEdges.find((edge) => edge.id === 'carol->dave:follow')
+  const dimmed = scene.render.visibleEdges.find(
+    (edge) => edge.id === 'carol->dave:follow',
+  )
   assert.ok(dimmed)
   assert.equal(dimmed.isDimmed, true)
   assert.equal(dimmed.touchesFocus, false)

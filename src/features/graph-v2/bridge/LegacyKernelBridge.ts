@@ -1,15 +1,15 @@
-import type {
+﻿import type {
   AppStoreApi,
   ConnectionsSourceLayer,
   UiLayer,
-} from '@/features/graph/app/store/types'
+} from '@/features/graph-runtime/app/store/types'
 import {
   browserAppKernel,
   browserAppStore,
   type LoadRootOptions,
   type ReconfigureRelaysResult,
   type RootLoader,
-} from '@/features/graph/kernel/runtime'
+} from '@/features/graph-runtime/kernel/runtime'
 import { GraphDomainStore } from '@/features/graph-v2/application/GraphDomainStore'
 import { LegacyStoreSnapshotAdapter } from '@/features/graph-v2/bridge/LegacyStoreSnapshotAdapter'
 import type { GraphV2Layer } from '@/features/graph-v2/domain/invariants'

@@ -53,7 +53,8 @@ Ese enfoque conversa bien con lo que suele valorar un jurado tecnico: innovacion
 
 | Ruta | Para que sirve |
 | --- | --- |
-| `/` | Explorador principal del grafo de identidad |
+| `/` | Home minima no-grafo con accesos a las superficies principales |
+| `/labs/sigma` | Explorador principal del grafo de identidad con Sigma |
 | `/profile` | Vista clasica del perfil autenticado |
 | `/badges` | Vista de badges NIP-58 de la cuenta autenticada |
 
@@ -77,8 +78,9 @@ Ese enfoque conversa bien con lo que suele valorar un jurado tecnico: innovacion
 - NDK v3
 - nostr-tools
 - Zustand
-- deck.gl
-- d3-force
+- Sigma.js
+- Graphology
+- ForceAtlas2
 - Dexie
 - Web Workers
 - qrcode.react
@@ -101,16 +103,8 @@ Los workers del grafo se recompilan automaticamente en `predev`, `prebuild` y `p
 src/
 |-- app/                  # Rutas Next.js
 |-- components/           # Navbar, login, profile, badges
-|-- features/graph/       # Aplicacion principal del explorador
-|   |-- analysis/         # Modelos y analisis del grafo
-|   |-- app/store/        # Estado global del grafo
-|   |-- components/       # Canvas, paneles y controles
-|   |-- db/               # Persistencia local con Dexie
-|   |-- export/           # Snapshot y ZIP auditable
-|   |-- kernel/           # Runtime y orquestacion
-|   |-- nostr/            # Transporte y relays especificos del grafo
-|   |-- render/           # deck.gl, viewport e imagen
-|   `-- workers/          # Procesamiento pesado en background
+|-- features/graph-v2/    # Sigma UI, dominio, proyecciones y renderer
+|-- features/graph-runtime/ # Store, kernel, relays, DB, export y workers del grafo
 |-- lib/                  # Helpers compartidos de Nostr y media
 |-- store/                # Estado compartido de autenticacion
 `-- types/                # Tipados
@@ -126,6 +120,6 @@ src/
 
 ## Nota importante
 
-La superficie principal del producto es el grafo en `/`. `profile` y `badges` siguen siendo utiles, pero la historia mas fuerte del proyecto esta en la exploracion de identidad, la incertidumbre de relays y la exportacion de evidencia.
+La superficie principal del producto es el grafo Sigma en `/labs/sigma`. `/` es una home minima de entrada; `profile` y `badges` siguen siendo utiles, pero la historia mas fuerte del proyecto esta en la exploracion de identidad, la incertidumbre de relays y la exportacion de evidencia.
 
 

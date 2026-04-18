@@ -2,9 +2,10 @@
 
 ## Project overview
 
-Nostr Explorer is a graph-first identity app for La Crypta IDENTITY Hackathon 2026.
+Nostr Explorer is a Sigma-first identity app for La Crypta IDENTITY Hackathon 2026.
 
-- `/` is the main product: identity graph exploration, relay-aware discovery, comparison, trust signals, and auditable export.
+- `/` is a minimal non-graph home.
+- `/labs/sigma` is the main graph product: identity graph exploration, relay-aware discovery, trust signals, and auditable export.
 - `/profile` is the classic connected-account profile view.
 - `/badges` is the NIP-58 badge view.
 - Preserve partial relay coverage, stale graph state, timeouts, and deterministic export behavior.
@@ -15,15 +16,8 @@ Nostr Explorer is a graph-first identity app for La Crypta IDENTITY Hackathon 20
 - `src/components/` - shared navbar, login, profile, badges, image fallback UI.
 - `src/lib/nostr.ts` - shared NDK/auth/profile/badge helpers.
 - `src/store/auth.ts` - shared auth Zustand state.
-- `src/features/graph/GraphApp.tsx` - graph app shell.
-- `src/features/graph/app/store/` - graph Zustand store/slices.
-- `src/features/graph/components/` - graph UI, canvas, controls, panels.
-- `src/features/graph/kernel/` - graph runtime, root loading, relay/export orchestration.
-- `src/features/graph/nostr/` - graph-specific relay/protocol code.
-- `src/features/graph/workers/` - expensive event, graph, render, verification work.
-- `src/features/graph/render/` - deck.gl render model, viewport, avatar/image pipeline.
-- `src/features/graph/db/` - Dexie persistence.
-- `src/features/graph/export/` - deterministic evidence snapshot/ZIP pipeline.
+- `src/features/graph-v2/` - Sigma UI, bridge, domain, projections and renderer.
+- `src/features/graph-runtime/` - shared graph runtime used by Sigma: store, kernel, relay/protocol code, DB, analysis, export and workers.
 - `docs/current-codebase.md` - architecture reference.
 - `docs/avatar-pipeline-*.md` - avatar pipeline validation/troubleshooting.
 
@@ -52,7 +46,7 @@ npm run avatar:compare -- tmp/avatar-before.json tmp/avatar-after.json
 
 - Read current code before editing; do not rely on original starter assumptions.
 - Use TodoWrite for multi-step work; skip it for small one-file fixes.
-- Prefer graph-route improvements unless the request is clearly profile- or badge-centric.
+- Prefer Sigma graph improvements unless the request is clearly profile- or badge-centric.
 - Keep work scoped to requested files/features.
 - Check git status before large edits and do not overwrite unrelated user changes.
 - Explain skipped validation in the final response.
@@ -60,25 +54,25 @@ npm run avatar:compare -- tmp/avatar-before.json tmp/avatar-after.json
 ## Editing rules
 
 - For shared auth/profile/badge fetches, use `src/lib/nostr.ts`.
-- For graph relay/session behavior, use `src/features/graph/nostr/` or `src/features/graph/kernel/`.
-- Put graph UI state in `src/features/graph/app/store/` when it affects panels, layers, selection, export, relays, or runtime behavior.
-- Put heavy work in `workers/`, `analysis/`, `render/`, or `kernel/`, not React render paths.
+- For graph relay/session behavior, use `src/features/graph-runtime/nostr/` or `src/features/graph-runtime/kernel/`.
+- Put durable graph state in `src/features/graph-runtime/app/store/` when it affects layers, selection, export, relays, or runtime behavior.
+- Put Sigma-only UI state in `src/features/graph-v2/ui/`.
+- Put heavy work in `workers/`, `analysis/`, renderer, or `kernel/`, not React render paths.
 - Add top-level routes through `src/app/<route>/page.tsx` and `src/components/Navbar.tsx`.
-- Add graph panels/controls through `GraphApp.tsx`, `src/features/graph/components/`, and the relevant store slice.
-- Keep export changes deterministic and inside `src/features/graph/export/`.
-- Match the existing La Crypta visual language in `globals.css` and `graph.css`.
+- Add Sigma panels/controls through `src/features/graph-v2/ui/GraphAppV2.tsx` and the relevant UI/runtime boundary.
+- Keep export changes deterministic and inside `src/features/graph-runtime/export/`.
+- Match the shared La Crypta visual language in `globals.css`; keep Sigma styling scoped in `graph-v2.css`.
 
 ## Validation expectations
 
-Default before finishing:
+Default before finishing, unless the user explicitly restricts validation:
 
 ```bash
 npm run lint
-npm run build
 ```
 
 Use targeted checks when relevant:
-- Worker/runtime changes: `npm run workers:build` plus `npm run build`.
+- Worker/runtime changes: `npm run workers:build`; run `npm run build` only when explicitly requested.
 - Avatar/image pipeline changes: follow `docs/avatar-pipeline-validation.md`.
 - Export changes: verify manifest/files/ZIP output are deterministic and auditable.
 - Relay/Nostr changes: verify timeout, stale-state, and partial-coverage behavior.
@@ -86,7 +80,7 @@ Use targeted checks when relevant:
 
 ## Project-specific conventions
 
-- Stack: Next.js 16, React 19, TypeScript strict, Tailwind CSS v4, NDK v3, nostr-tools, Zustand, deck.gl, d3-force, Dexie, Web Workers, fflate.
+- Stack: Next.js 16, React 19, TypeScript strict, Tailwind CSS v4, NDK v3, nostr-tools, Zustand, Sigma.js, Graphology, ForceAtlas2, Dexie, Web Workers, fflate.
 - Use `@/*` for `src/*` imports when helpful.
 - Treat relay failure and partial data as normal UI states.
 - Treat export as evidence packaging, not a convenience download.

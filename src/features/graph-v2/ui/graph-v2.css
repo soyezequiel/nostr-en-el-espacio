@@ -1212,12 +1212,9 @@
   }
 }
 
-/* ── SavedRootsPanel (re-used inside the root loader) ───────────────────────
-   The SavedRootsPanel component originally lived under `/` with graph.css
-   providing the sizing. Here we scope the minimum under [data-graph-v2] so
-   <Image fill> has a non-zero height container and the card lays out
-   correctly inside .sg-loader — without leaking any of these rules outside
-   the observatory route. */
+/* ── Saved root cards inside the root loader ────────────────────────────────
+   Scoped here so avatar containers and card rows keep stable dimensions
+   without leaking these rules outside the observatory route. */
 
 [data-graph-v2] .saved-root-card {
   display: grid;
@@ -1359,43 +1356,6 @@
 }
 [data-graph-v2] .saved-root-card__line--short { width: 74%; }
 [data-graph-v2] .saved-root-card__line--tiny  { width: 48%; }
-
-/* NpubInput (re-used inside the root loader) */
-[data-graph-v2] .npub-input {
-  display: grid;
-  gap: 8px;
-}
-[data-graph-v2] .npub-input__label {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--sg-fg-muted);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-[data-graph-v2] .npub-input__field {
-  width: 100%;
-  padding: 12px 14px;
-  border-radius: var(--sg-radius);
-  border: 1px solid var(--sg-stroke);
-  background: var(--sg-bg-deep);
-  color: var(--sg-fg);
-  font-family: var(--sg-font-mono);
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-[data-graph-v2] .npub-input__field::placeholder {
-  color: var(--sg-fg-faint);
-}
-[data-graph-v2] .npub-input__field:focus {
-  border-color: var(--sg-accent);
-  box-shadow: 0 0 0 3px var(--sg-accent-2);
-}
-[data-graph-v2] .npub-input__status {
-  margin: 0;
-  font-size: 11px;
-  color: var(--sg-fg-muted);
-}
 
 /* ── Loading overlay ─────────────────────────────────────────── */
 [data-graph-v2] .sg-loading-overlay {

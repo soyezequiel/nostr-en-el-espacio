@@ -1,4 +1,4 @@
-import type { AppStore } from '@/features/graph/app/store/types'
+﻿import type { AppStore } from '@/features/graph-runtime/app/store/types'
 import {
   createCanonicalEdgeId,
   DEFAULT_GRAPH_V2_LAYER,

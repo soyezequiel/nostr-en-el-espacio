@@ -1,8 +1,8 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createAppStore } from '@/features/graph/app/store/createAppStore'
-import type { AppStoreApi } from '@/features/graph/app/store/types'
+import { createAppStore } from '@/features/graph-runtime/app/store/createAppStore'
+import type { AppStoreApi } from '@/features/graph-runtime/app/store/types'
 import { GraphDomainStore } from '@/features/graph-v2/application/GraphDomainStore'
 import { LegacyKernelBridge } from '@/features/graph-v2/bridge/LegacyKernelBridge'
 

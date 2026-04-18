@@ -1,6 +1,6 @@
-// Lightweight NIP-57 zap receipt parser for the /labs/sigma real-time feed.
+﻿// Lightweight NIP-57 zap receipt parser for the /labs/sigma real-time feed.
 // Mirrors the decoding rules from the worker-based pipeline in
-// src/features/graph/workers/events/handlers.ts (parseAmountTagToSats,
+// src/features/graph-runtime/workers/events/handlers.ts (parseAmountTagToSats,
 // parseBolt11ToSats, parseZapDescription) without the persistence/diagnostics
 // machinery, since here we only need a best-effort visual trigger.
 

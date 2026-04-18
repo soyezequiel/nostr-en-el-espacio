@@ -1,10 +1,10 @@
-import type Sigma from 'sigma'
+﻿import type Sigma from 'sigma'
 
 import {
   applyImageBucketHysteresis,
   isSafeAvatarUrl,
   type ImageLodBucket,
-} from '@/features/graph/render/avatar'
+} from '@/features/graph-v2/renderer/avatar/avatarImageUtils'
 
 import type { AvatarBitmapCache, MonogramInput } from '@/features/graph-v2/renderer/avatar/avatarBitmapCache'
 import type { AvatarCandidate, AvatarScheduler } from '@/features/graph-v2/renderer/avatar/avatarScheduler'

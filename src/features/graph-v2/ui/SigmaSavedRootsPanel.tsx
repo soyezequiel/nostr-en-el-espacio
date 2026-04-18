@@ -1,9 +1,9 @@
-'use client'
+﻿'use client'
 /* eslint-disable @next/next/no-img-element */
 
 import { memo, useState } from 'react'
 
-import type { SavedRootEntry } from '@/features/graph/app/store/types'
+import type { SavedRootEntry } from '@/features/graph-runtime/app/store/types'
 
 interface Props {
   entries: SavedRootEntry[]

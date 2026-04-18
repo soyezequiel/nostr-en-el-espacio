@@ -1,7 +1,7 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createAppStore } from '@/features/graph/app/store/createAppStore'
+import { createAppStore } from '@/features/graph-runtime/app/store/createAppStore'
 import { LegacyStoreSnapshotAdapter } from '@/features/graph-v2/bridge/LegacyStoreSnapshotAdapter'
 
 test('keeps the scene signature stable for progress and relay health updates', () => {

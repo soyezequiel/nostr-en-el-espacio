@@ -12,15 +12,12 @@ import SkeletonImage from './SkeletonImage';
 const navItems = [
   {
     href: '/',
-    label: 'Graph',
+    label: 'Home',
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="5" cy="12" r="2" />
-        <circle cx="19" cy="5" r="2" />
-        <circle cx="19" cy="19" r="2" />
-        <path d="M7 12h10" />
-        <path d="M17.5 6.5L7 11" />
-        <path d="M17.5 17.5L7 13" />
+        <path d="M3 10.5L12 3l9 7.5" />
+        <path d="M5 10v10h14V10" />
+        <path d="M9 20v-6h6v6" />
       </svg>
     ),
   },

@@ -1,8 +1,8 @@
-'use client'
+﻿'use client'
 
 import { memo, useId, useState } from 'react'
 
-import { decodeRootPointer } from '@/features/graph/kernel/nip19'
+import { decodeRootPointer } from '@/features/graph-runtime/kernel/nip19'
 
 interface Props {
   feedback?: string | null

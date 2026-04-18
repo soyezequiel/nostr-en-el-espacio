@@ -1,7 +1,7 @@
-import {
+﻿import {
   isSafeAvatarUrl,
   type ImageLodBucket,
-} from '@/features/graph/render/avatar'
+} from '@/features/graph-v2/renderer/avatar/avatarImageUtils'
 
 import type { AvatarBitmap, AvatarUrlKey } from '@/features/graph-v2/renderer/avatar/types'
 

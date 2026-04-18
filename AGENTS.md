@@ -2,10 +2,11 @@
 
 ## Purpose
 
-Help ship the Nostr Explorer identity product for La Crypta IDENTITY Hackathon 2026. The app is now graph-first; do not follow old starter-kit assumptions.
+Help ship the Nostr Explorer identity product for La Crypta IDENTITY Hackathon 2026. Sigma is the only live graph explorer; do not follow old starter-kit or legacy graph assumptions.
 
 Main product priorities:
-- `/` is the identity graph explorer and primary demo surface.
+- `/` is a minimal non-graph home that points to the product surfaces.
+- `/labs/sigma` is the identity graph explorer and primary demo surface.
 - `/profile` is the classic connected-account profile view.
 - `/badges` is the NIP-58 badge view.
 - Preserve relay-aware discovery, partial-state UX, and auditable export behavior.
@@ -13,38 +14,30 @@ Main product priorities:
 ## Repo map
 
 - `src/app/` - Next.js routes and `globals.css`.
-- `src/app/page.tsx` - home route; loads the graph client.
+- `src/app/page.tsx` - minimal non-graph home route.
+- `src/app/labs/sigma/page.tsx` - Sigma graph route.
 - `src/app/profile/page.tsx`, `src/app/badges/page.tsx` - classic routes.
 - `src/components/` - shared navbar, login, profile, badges, image fallback UI.
 - `src/lib/nostr.ts` - shared NDK/auth/profile/badge helpers.
 - `src/lib/media.ts` - shared media normalization.
 - `src/store/auth.ts` - shared auth state.
-- `src/features/graph/` - graph application slice.
-- `src/features/graph/GraphApp.tsx` - graph shell and panel orchestration.
-- `src/features/graph/app/store/` - graph Zustand store and slices.
-- `src/features/graph/components/` - graph UI, canvas, panels, controls.
-- `src/features/graph/kernel/` - runtime, root loading, relay/export orchestration.
-- `src/features/graph/nostr/` - graph-specific relay/protocol transport.
-- `src/features/graph/analysis/` - graph analysis types/helpers.
-- `src/features/graph/workers/` - expensive event, graph, render, verification work.
-- `src/features/graph/render/` - deck.gl model, viewport, avatar/image pipeline.
-- `src/features/graph/db/` - Dexie persistence and repositories.
-- `src/features/graph/export/` - deterministic snapshot/ZIP evidence packaging.
+- `src/features/graph-v2/` - Sigma graph UI, domain, projections, renderer and bridge.
+- `src/features/graph-runtime/` - shared graph runtime: store, kernel, relays, DB, analysis, export and workers used by Sigma.
 - `docs/current-codebase.md` - current architecture notes.
 - `docs/avatar-pipeline-*.md` - avatar pipeline validation/troubleshooting.
 
 ## How to work in this repo
 
-- Prefer extending the graph explorer over adding profile-page features unless the request is clearly profile-centric.
+- Prefer extending `/labs/sigma` over adding profile-page features unless the request is clearly profile-centric.
 - For account/profile/badge fetches, use `src/lib/nostr.ts`.
-- For graph-specific relay/session behavior, use `src/features/graph/nostr/` or `src/features/graph/kernel/`.
+- For graph-specific relay/session behavior, use `src/features/graph-runtime/nostr/` or `src/features/graph-runtime/kernel/`.
 - Keep async Nostr fetches bounded by existing timeout patterns.
 - Preserve stale, partial, timeout, and relay-failure states as user-visible UX.
 - Put graph UI state in the graph store, not local component state, when it affects panels, layers, selection, export, relays, or runtime behavior.
 - Keep expensive processing out of React render paths; use `workers/`, `analysis/`, `render/`, or `kernel/` as appropriate.
 - If adding a top-level route, update both `src/app/<route>/page.tsx` and `src/components/Navbar.tsx`.
-- If adding graph controls/panels, wire through `GraphApp.tsx` and the relevant store slice.
-- If touching export, keep output deterministic, auditable, and routed through `src/features/graph/export/`.
+- If adding Sigma graph controls/panels, wire through `src/features/graph-v2/ui/GraphAppV2.tsx` and the relevant runtime bridge/store path.
+- If touching export, keep output deterministic, auditable, and routed through `src/features/graph-runtime/export/`.
 
 ## Commands to run
 
@@ -71,10 +64,10 @@ Notes:
 
 ## Coding conventions
 
-- Stack: Next.js 16, React 19, TypeScript strict mode, Tailwind CSS v4, NDK v3, nostr-tools, Zustand, deck.gl, d3-force, Dexie, Web Workers, fflate.
+- Stack: Next.js 16, React 19, TypeScript strict mode, Tailwind CSS v4, NDK v3, nostr-tools, Zustand, Sigma.js, Graphology, ForceAtlas2, Dexie, Web Workers, fflate.
 - Use the `@/*` import alias for `src/*` when it improves clarity.
 - Match existing component, store slice, kernel module, and worker patterns.
-- Keep La Crypta visual language in `src/app/globals.css` and `src/features/graph/graph.css`.
+- Keep shared La Crypta visual language in `src/app/globals.css`; keep Sigma-specific styling scoped in `src/features/graph-v2/ui/graph-v2.css`.
 - Keep protocol helpers typed and close to their owning layer.
 - Prefer deterministic transforms for export and evidence code.
 - Use existing media/avatar pipeline helpers instead of adding parallel image caches.
@@ -88,15 +81,14 @@ Notes:
 
 Run the smallest checks that cover your change; explain any skipped check.
 
-Default checks before finishing:
+Default checks before finishing, unless the user explicitly restricts them:
 
 ```bash
 npm run lint
-npm run build
 ```
 
 Add targeted validation when relevant:
-- Worker/runtime changes: `npm run workers:build` plus `npm run build`.
+- Worker/runtime changes: `npm run workers:build`; run `npm run build` only when explicitly requested.
 - Avatar/image pipeline changes: follow `docs/avatar-pipeline-validation.md`.
 - Export changes: verify deterministic manifest/file output and ZIP contents.
 - Relay/Nostr changes: verify timeout, stale-state, and partial-coverage behavior.

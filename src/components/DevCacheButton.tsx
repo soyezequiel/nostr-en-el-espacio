@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import { clearSiteCache } from '@/features/graph/dev/clearSiteCache'
+import { clearSiteCache } from '@/lib/dev/clearSiteCache'
 
 const IS_DEVELOPMENT_BUILD = process.env.NODE_ENV === 'development'
 

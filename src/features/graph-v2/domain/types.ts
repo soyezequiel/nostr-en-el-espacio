@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   ConnectionsSourceLayer,
   GraphLinkRelation,
   GraphNodeSource,
@@ -7,7 +7,7 @@ import type {
   RelayHealthStatus,
   RelayOverrideStatus,
   RootLoadState,
-} from '@/features/graph/app/store/types'
+} from '@/features/graph-runtime/app/store/types'
 import type { GraphV2Layer } from '@/features/graph-v2/domain/invariants'
 
 export interface CanonicalNode {

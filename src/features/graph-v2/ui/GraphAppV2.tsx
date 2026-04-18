@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 /* eslint-disable @next/next/no-img-element */
 
 import {
@@ -16,13 +16,13 @@ import { nip19 } from 'nostr-tools'
 import { useShallow } from 'zustand/react/shallow'
 
 import AvatarFallback from '@/components/AvatarFallback'
-import { useAppStore } from '@/features/graph/app/store'
+import { useAppStore } from '@/features/graph-runtime/app/store'
 import type {
   AppStore,
   ConnectionsSourceLayer,
   SavedRootEntry,
   SavedRootProfileSnapshot,
-} from '@/features/graph/app/store/types'
+} from '@/features/graph-runtime/app/store/types'
 import { GraphInteractionController } from '@/features/graph-v2/application/InteractionController'
 import { LegacyKernelBridge } from '@/features/graph-v2/bridge/LegacyKernelBridge'
 import { GRAPH_V2_LAYERS } from '@/features/graph-v2/domain/invariants'

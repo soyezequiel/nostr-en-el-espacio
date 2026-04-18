@@ -1,4 +1,4 @@
-import type { ImageLodBucket } from '@/features/graph/render/avatar'
+﻿import type { ImageLodBucket } from '@/features/graph-v2/renderer/avatar/avatarImageUtils'
 
 import { AvatarBitmapCache, type MonogramInput } from '@/features/graph-v2/renderer/avatar/avatarBitmapCache'
 import { AvatarLoader } from '@/features/graph-v2/renderer/avatar/avatarLoader'

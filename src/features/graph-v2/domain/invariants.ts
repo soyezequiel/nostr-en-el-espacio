@@ -1,4 +1,4 @@
-import type { UiLayer } from '@/features/graph/app/store/types'
+﻿import type { UiLayer } from '@/features/graph-runtime/app/store/types'
 
 export const GRAPH_V2_LAYERS = [
   'graph',

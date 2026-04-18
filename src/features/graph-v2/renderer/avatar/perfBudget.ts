@@ -1,9 +1,9 @@
-import {
+﻿import {
   DEFAULT_BUDGETS,
   type AvatarBudget,
   type DeviceTier,
 } from '@/features/graph-v2/renderer/avatar/types'
-import type { ImageLodBucket } from '@/features/graph/render/avatar'
+import type { ImageLodBucket } from '@/features/graph-v2/renderer/avatar/avatarImageUtils'
 
 const EMA_ALPHA = 0.1
 const DOWNGRADE_MS = 40

@@ -1460,12 +1460,13 @@
 /* Sigma loader / root selector design */
 [data-graph-v2] .sg-loader {
   position: fixed;
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding: 50px 54px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
   background: oklch(4% 0.008 230 / 0.985);
   backdrop-filter: blur(8px) saturate(0.8);
   -webkit-backdrop-filter: blur(8px) saturate(0.8);
+  overflow: auto;
 }
 
 [data-graph-v2] .sg-loader__card {
@@ -1629,7 +1630,7 @@
 
 @media (max-width: 480px) {
   [data-graph-v2] .sg-loader {
-    padding: 34px 22px;
+    padding: 22px;
   }
 
   [data-graph-v2] .sg-loader__card {

@@ -598,6 +598,9 @@ export default function GraphAppV2() {
   const [activeSettingsTab, setActiveSettingsTab] = useState<SigmaSettingsTab>('renderer')
   const [isRootSheetOpen, setIsRootSheetOpen] = useState(!isFixtureMode)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  // Rail toggles — direct controls, decoupled from the settings panel
+  const [physicsEnabled, setPhysicsEnabled] = useState(true)
+  const [showZaps, setShowZaps] = useState(true)
   const sigmaHostRef = useRef<SigmaCanvasHostHandle | null>(null)
   const [zapFeedback, setZapFeedback] = useState<string | null>(null)
   const {
@@ -833,11 +836,17 @@ export default function GraphAppV2() {
   const visibleNodeSet = useMemo(() => new Set(visiblePubkeys), [visiblePubkeys])
 
   const handleZap = (zap: Pick<ParsedZap, 'fromPubkey' | 'toPubkey' | 'sats'>) => {
+    if (!showZaps) return false
     if (!visibleNodeSet.has(zap.fromPubkey)) return false
     if (!visibleNodeSet.has(zap.toPubkey)) return false
     if (!hasVisibleEdgeBetween(deferredScene, zap.fromPubkey, zap.toPubkey)) return false
     return sigmaHostRef.current?.playZap(zap) ?? false
   }
+
+  // Propagate physics pause/resume to the Sigma runtime when toggled.
+  useEffect(() => {
+    sigmaHostRef.current?.setPhysicsSuspended(!physicsEnabled)
+  }, [physicsEnabled])
 
   const shouldEnableLiveZapFeed = !isFixtureMode && domainState.activeLayer !== 'connections'
   useLiveZapFeed({
@@ -959,8 +968,16 @@ export default function GraphAppV2() {
 
   const hasRoot = domainState.rootPubkey !== null
 
-  const rootDisplayName = currentRootNode?.label ?? null
-  const rootPictureUrl = currentRootNode?.picture ?? null
+  // Saved-roots profile snapshot as fallback while the kernel is still
+  // hydrating `currentRootNode` — prevents empty avatar / display name on
+  // first paint after selecting a saved root.
+  const savedRootProfile = useMemo(() => {
+    if (!domainState.rootPubkey) return null
+    return savedRoots.find((r) => r.pubkey === domainState.rootPubkey)?.profile ?? null
+  }, [savedRoots, domainState.rootPubkey])
+  const rootDisplayName =
+    currentRootNode?.label ?? savedRootProfile?.displayName ?? savedRootProfile?.name ?? null
+  const rootPictureUrl = currentRootNode?.picture ?? savedRootProfile?.picture ?? null
   const rootNpubEncoded = useMemo(() => {
     const pk = domainState.rootPubkey
     if (!pk || !/^[0-9a-f]{64}$/i.test(pk)) return null
@@ -1004,8 +1021,8 @@ export default function GraphAppV2() {
     { k: 'Visibles', v: String(deferredScene.diagnostics.visibleEdgeCount) },
     {
       k: 'Física',
-      v: 'activa',
-      tone: 'good',
+      v: physicsEnabled ? 'activa' : 'pausa',
+      tone: physicsEnabled ? 'good' : 'warn',
     },
     {
       k: 'Relays',
@@ -1019,44 +1036,59 @@ export default function GraphAppV2() {
     },
   ]
 
-  // Rail buttons
+  // Rail buttons — every entry is a DIRECT action or toggle.
+  // Settings panel keeps the detailed controls; rail gives quick toggles
+  // without duplicating what the panel does.
   const railButtons: RailButton[] = [
     {
       id: 'settings',
-      tip: 'Ajustes',
+      tip: isSettingsOpen ? 'Cerrar ajustes' : 'Ajustes',
       icon: <GearIcon />,
       active: isSettingsOpen,
-      onClick: () => openSettingsTab('renderer'),
+      onClick: () => {
+        if (isSettingsOpen) setIsSettingsOpen(false)
+        else openSettingsTab(activeSettingsTab)
+      },
     },
     {
       id: 'physics',
-      tip: 'Física',
+      tip: physicsEnabled ? 'Pausar física' : 'Reanudar física',
       icon: <AtomIcon />,
-      active: isSettingsOpen && activeSettingsTab === 'physics',
-      onClick: () => openSettingsTab('physics'),
+      active: physicsEnabled,
+      onClick: () => {
+        setPhysicsEnabled((v) => !v)
+        setActionFeedback(physicsEnabled ? 'Física en pausa.' : 'Física reanudada.')
+      },
     },
     {
       id: 'zaps',
-      tip: 'Zaps',
+      tip: showZaps ? 'Ocultar zaps' : 'Mostrar zaps',
       icon: <ZapIcon />,
-      active: isSettingsOpen && activeSettingsTab === 'layers',
-      onClick: () => openSettingsTab('layers'),
+      active: showZaps,
+      onClick: () => {
+        setShowZaps((v) => !v)
+        setActionFeedback(showZaps ? 'Zaps ocultos.' : 'Zaps visibles.')
+      },
       dividerAfter: true,
     },
     {
       id: 'recenter',
-      tip: 'Recentrar',
+      tip: 'Recentrar vista',
       icon: <TargetIcon />,
       onClick: () => {
-        setActionFeedback('Recentrar: usa zoom y pan manual.')
+        sigmaHostRef.current?.recenterCamera()
       },
     },
     {
       id: 'stale',
-      tip: 'Estado de relays',
+      tip: domainState.relayState.isGraphStale ? 'Revertir relays' : 'Relays al día',
       icon: <ClockIcon />,
       active: domainState.relayState.isGraphStale,
       onClick: () => {
+        if (!domainState.relayState.isGraphStale) {
+          setActionFeedback('Relays al día — no hay override para revertir.')
+          return
+        }
         void handleRevertRelays()
       },
       dividerAfter: true,
@@ -1379,9 +1411,11 @@ export default function GraphAppV2() {
           <SigmaSideRail buttons={railButtons} />
           <SigmaHud stats={hudStats} />
           <SigmaMinimap
-            onFit={() => setActionFeedback('Usa zoom y pan para ajustar la vista.')}
-            onZoomIn={() => setActionFeedback('Zoom: usa la rueda del mouse.')}
-            onZoomOut={() => setActionFeedback('Zoom: usa la rueda del mouse.')}
+            getSnapshot={() => sigmaHostRef.current?.getMinimapSnapshot() ?? null}
+            isPhysicsActive={physicsEnabled}
+            onFit={() => sigmaHostRef.current?.recenterCamera()}
+            onZoomIn={() => sigmaHostRef.current?.zoomIn()}
+            onZoomOut={() => sigmaHostRef.current?.zoomOut()}
             zoomRatio={viewportRatio}
           />
         </>

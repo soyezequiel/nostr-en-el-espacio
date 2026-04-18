@@ -320,6 +320,61 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.forceRuntime?.setPhysicsTuning(tuning)
   }
 
+  public setPhysicsSuspended(suspended: boolean) {
+    if (!this.forceRuntime) return
+    if (suspended) this.forceRuntime.suspend()
+    else this.forceRuntime.resume()
+  }
+
+  public recenterCamera() {
+    this.sigma?.getCamera().animatedReset({ duration: 250 }).catch(() => {})
+  }
+
+  public zoomIn() {
+    this.sigma?.getCamera().animatedZoom({ duration: 180 }).catch(() => {})
+  }
+
+  public zoomOut() {
+    this.sigma?.getCamera().animatedUnzoom({ duration: 180 }).catch(() => {})
+  }
+
+  /**
+   * Snapshot of current node positions + selection used to render the
+   * minimap. Returns graph-space coordinates and a bounding box so the
+   * caller can map to its own canvas. Null when the renderer isn't mounted.
+   */
+  public getMinimapSnapshot(): {
+    nodes: Array<{ x: number; y: number; color: string; isRoot: boolean; isSelected: boolean }>
+    bounds: { minX: number; minY: number; maxX: number; maxY: number }
+  } | null {
+    if (!this.projectionStore) return null
+    const graph = this.projectionStore.getGraph()
+    if (graph.order === 0) return null
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    const nodes: Array<{ x: number; y: number; color: string; isRoot: boolean; isSelected: boolean }> = []
+    graph.forEachNode((_, attrs) => {
+      const x = attrs.x
+      const y = attrs.y
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+      nodes.push({
+        x,
+        y,
+        color: attrs.color ?? '#7dd3a7',
+        isRoot: !!attrs.isRoot,
+        isSelected: !!attrs.isSelected,
+      })
+    })
+    if (!Number.isFinite(minX)) return null
+    return { nodes, bounds: { minX, minY, maxX, maxY } }
+  }
+
   public setHideAvatarsOnMove(enabled: boolean) {
     if (this.hideAvatarsOnMove === enabled) {
       return
@@ -551,6 +606,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
       hideLabelsOnMove: false,
       labelDensity: 0.18,
       labelRenderedSizeThreshold: 10,
+      labelFont:
+        "'Inter Tight', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif",
+      labelSize: 12,
+      labelWeight: '500',
+      labelColor: { color: '#d8e3f0' },
       enableEdgeEvents: false,
       defaultEdgeColor: '#7a92bd',
       defaultNodeColor: '#7dd3a7',

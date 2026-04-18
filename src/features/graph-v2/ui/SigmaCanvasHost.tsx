@@ -26,8 +26,18 @@ interface SigmaCanvasHostProps {
   onAvatarPerfSnapshot?: (snapshot: PerfBudgetSnapshot | null) => void
 }
 
+export interface MinimapSnapshot {
+  nodes: Array<{ x: number; y: number; color: string; isRoot: boolean; isSelected: boolean }>
+  bounds: { minX: number; minY: number; maxX: number; maxY: number }
+}
+
 export interface SigmaCanvasHostHandle {
   playZap: (zap: Pick<ParsedZap, 'fromPubkey' | 'toPubkey' | 'sats'>) => boolean
+  recenterCamera: () => void
+  zoomIn: () => void
+  zoomOut: () => void
+  setPhysicsSuspended: (suspended: boolean) => void
+  getMinimapSnapshot: () => MinimapSnapshot | null
 }
 
 export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHostProps>(
@@ -89,6 +99,11 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
     ref,
     () => ({
       playZap: (zap) => overlayRef.current?.play(zap) ?? false,
+      recenterCamera: () => adapterRef.current?.recenterCamera(),
+      zoomIn: () => adapterRef.current?.zoomIn(),
+      zoomOut: () => adapterRef.current?.zoomOut(),
+      setPhysicsSuspended: (suspended) => adapterRef.current?.setPhysicsSuspended(suspended),
+      getMinimapSnapshot: () => adapterRef.current?.getMinimapSnapshot() ?? null,
     }),
     [],
   )

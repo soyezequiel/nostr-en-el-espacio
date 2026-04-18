@@ -52,13 +52,18 @@ export const drawCachedDiscNodeLabel: NodeLabelDrawingFunction<
     ? data[settings.labelColor.attribute] || settings.labelColor.color || '#000'
     : settings.labelColor.color
 
-  context.fillStyle = color
   context.font = `${weight} ${labelSize}px ${font}`
-  context.fillText(
-    data.label,
-    data.x + data.size + Math.max(3, labelSize * 0.22),
-    data.y + labelSize / 3,
-  )
+  const labelX = data.x + data.size + Math.max(3, labelSize * 0.22)
+  const labelY = data.y + labelSize / 3
+  // Cheap dark outline (strokeText) instead of shadowBlur — readability on
+  // dark background without the per-pixel blur cost that tanks FPS at
+  // hundreds of nodes.
+  context.lineWidth = 3
+  context.lineJoin = 'round'
+  context.strokeStyle = 'rgba(5, 10, 18, 0.85)'
+  context.strokeText(data.label, labelX, labelY)
+  context.fillStyle = color
+  context.fillText(data.label, labelX, labelY)
 }
 
 export const drawCachedDiscNodeHover: NodeHoverDrawingFunction<

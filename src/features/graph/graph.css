@@ -7084,3 +7084,250 @@ main {
     grid-template-columns: 1fr;
   }
 }
+
+/* Sigma lab uses the same immersive workspace language as the primary graph,
+   with a few scoped overrides because Sigma owns its canvas directly. */
+.sigma-lab-shell {
+  color: #f8fafc;
+  background: #0a0a0a;
+}
+
+.sigma-lab-workspace {
+  --graph-gutter: clamp(0.75rem, 1.8vw, 1.25rem);
+  --graph-top-offset: max(var(--graph-gutter), env(safe-area-inset-top));
+  --graph-bottom-offset: max(var(--graph-gutter), env(safe-area-inset-bottom));
+  min-height: 100dvh;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(180, 249, 83, 0.08), transparent 30%),
+    radial-gradient(circle at 20% 80%, rgba(96, 165, 250, 0.08), transparent 34%),
+    linear-gradient(180deg, #111111 0%, #070707 100%);
+}
+
+.sigma-lab-canvas-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  touch-action: none;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.28), transparent 58%),
+    #050505;
+}
+
+.sigma-lab-canvas-frame > div {
+  width: 100%;
+  height: 100%;
+  min-height: 100dvh;
+}
+
+.sigma-lab-topbar {
+  z-index: 46;
+}
+
+.sigma-lab-scrim {
+  z-index: 31;
+}
+
+.sigma-lab-root-sheet {
+  z-index: 44;
+}
+
+.sigma-lab-root-body {
+  display: grid;
+  gap: 1rem;
+}
+
+.sigma-lab-root-copy {
+  display: grid;
+  gap: 0.9rem;
+  color: rgba(226, 232, 240, 0.74);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.sigma-lab-root-copy p {
+  margin: 0;
+}
+
+.sigma-lab-root-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.sigma-lab-root-stats div {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.7rem 0.75rem;
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sigma-lab-root-stats dt {
+  color: rgba(148, 163, 184, 0.72);
+  font:
+    700 0.62rem/1 ui-monospace,
+    'SFMono-Regular',
+    monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sigma-lab-root-stats dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sigma-lab-settings {
+  z-index: 43;
+}
+
+.sigma-lab-settings .settings-panel > section,
+.sigma-lab-settings .settings-panel > label,
+.sigma-lab-settings .settings-panel > div,
+.sigma-lab-settings .settings-panel .rounded-2xl {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  box-shadow: none !important;
+}
+
+.sigma-lab-settings textarea,
+.sigma-lab-settings input[type='range'] {
+  color-scheme: dark;
+}
+
+.sigma-lab-settings-title {
+  margin: 0.35rem 0 0;
+  color: #f8fafc;
+  font-size: 1rem;
+}
+
+.sigma-lab-full-button {
+  width: 100%;
+  margin-top: 0.85rem;
+}
+
+.sigma-lab-layer-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.sigma-lab-node-panel {
+  z-index: 34;
+}
+
+.sigma-lab-node-panel .node-detail-panel__pubkey {
+  max-width: 100%;
+}
+
+.sigma-lab-control-bar {
+  position: absolute;
+  left: 50%;
+  right: auto;
+  bottom: var(--graph-bottom-offset);
+  z-index: 35;
+  width: min(calc(100% - (var(--graph-gutter) + var(--graph-gutter))), 72rem);
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.8rem 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.35rem;
+  background: rgba(17, 17, 17, 0.78);
+  box-shadow: 0 18px 44px rgba(2, 6, 23, 0.22);
+  backdrop-filter: blur(20px);
+  transform: translateX(-50%);
+}
+
+.sigma-lab-control-summary {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+  padding-right: 1rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sigma-lab-control-summary strong {
+  overflow: hidden;
+  color: #f8fafc;
+  font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.98rem;
+  letter-spacing: -0.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sigma-lab-control-summary span:last-child {
+  overflow: hidden;
+  color: rgba(226, 232, 240, 0.66);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sigma-lab-control-actions {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.sigma-lab-control-actions .graph-panel__control-btn {
+  min-height: 2.55rem;
+}
+
+@media (max-width: 1024px) {
+  .sigma-lab-control-bar {
+    width: min(calc(100% - (var(--graph-gutter) + var(--graph-gutter))), 44rem);
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .sigma-lab-control-summary {
+    padding-right: 0;
+    padding-bottom: 0.65rem;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .sigma-lab-control-actions {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .sigma-lab-control-actions::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .sigma-lab-control-bar {
+    left: var(--graph-gutter);
+    right: var(--graph-gutter);
+    width: auto;
+    padding: 0.7rem;
+    transform: none;
+  }
+
+  .sigma-lab-root-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .sigma-lab-control-actions .graph-panel__control-btn {
+    flex: 0 0 auto;
+    min-height: 2.75rem;
+    padding-inline: 0.85rem;
+  }
+}

@@ -74,6 +74,34 @@ const createScene = (
   },
 })
 
+const createDenseScene = (extraEdgeCount: number): GraphSceneSnapshot => {
+  const scene = createScene('follow:A:B')
+  const extraNodes = Array.from({ length: extraEdgeCount + 1 }, (_, index) => ({
+    ...scene.nodes[1]!,
+    pubkey: `N${index}`,
+    label: `N${index}`,
+    isRoot: false,
+  }))
+  const edgeTemplate = scene.visibleEdges[0]!
+  const extraEdges = Array.from({ length: extraEdgeCount }, (_, index) => ({
+    ...edgeTemplate,
+    id: `extra:${index}`,
+    source: `N${index}`,
+    target: `N${index + 1}`,
+  }))
+
+  return {
+    ...scene,
+    nodes: [...scene.nodes, ...extraNodes],
+    visibleEdges: [...scene.visibleEdges, ...extraEdges],
+    diagnostics: {
+      ...scene.diagnostics,
+      nodeCount: scene.nodes.length + extraNodes.length,
+      visibleEdgeCount: scene.visibleEdges.length + extraEdges.length,
+    },
+  }
+}
+
 test('replaces an existing directed pair when the incoming edge key changes', () => {
   const store = new GraphologyProjectionStore()
 
@@ -82,6 +110,28 @@ test('replaces an existing directed pair when the incoming edge key changes', ()
 
   const graph = store.getGraph()
 
+  assert.equal(graph.order, 2)
+  assert.equal(graph.size, 1)
+  assert.equal(graph.directedEdge('A', 'B'), 'follow:A:B')
+  assert.equal(graph.hasEdge('inbound:A:B'), false)
+  assert.equal(graph.hasEdge('follow:A:B'), true)
+})
+
+test('collapses force and visible edges for the same directed pair before applying', () => {
+  const store = new GraphologyProjectionStore()
+  const scene = createScene('follow:A:B')
+  scene.forceEdges = [
+    {
+      ...scene.visibleEdges[0]!,
+      id: 'inbound:A:B',
+      hidden: true,
+      relation: 'inbound',
+    },
+  ]
+
+  assert.doesNotThrow(() => store.applyScene(scene))
+
+  const graph = store.getGraph()
   assert.equal(graph.order, 2)
   assert.equal(graph.size, 1)
   assert.equal(graph.directedEdge('A', 'B'), 'follow:A:B')
@@ -127,6 +177,19 @@ test('reuses node positions across layers for continuous transitions', () => {
   store.applyScene(createScene('follow:A:B', 'graph'))
 
   assert.deepEqual(store.getNodePosition('B'), { x: 100, y: 100 })
+})
+
+test('preserves retained node positions when rebuilding after a large topology drop', () => {
+  const store = new GraphologyProjectionStore()
+
+  store.applyScene(createDenseScene(1_600))
+  store.setNodePosition('B', 40, 50)
+  store.applyScene(createScene('follow:A:B'))
+
+  const graph = store.getGraph()
+  assert.equal(graph.order, 2)
+  assert.equal(graph.size, 1)
+  assert.deepEqual(store.getNodePosition('B'), { x: 40, y: 50 })
 })
 
 test('projects selected neighborhoods into prominent sigma attributes', () => {

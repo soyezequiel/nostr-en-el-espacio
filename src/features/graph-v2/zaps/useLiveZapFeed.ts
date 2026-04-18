@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type NDK from '@nostr-dev-kit/ndk'
 import type { NDKEvent, NDKSubscription } from '@nostr-dev-kit/ndk'
 
@@ -13,6 +13,7 @@ import { parseZapReceiptEvent, type ParsedZap } from '@/features/graph-v2/zaps/z
 // so a receipt fanned out from several relays only triggers one animation.
 
 const SEEN_CACHE_LIMIT = 500
+const MAX_ZAP_FILTER_PUBKEYS = 256
 // Relay zap receipts often backfill aggressively; ignore anything older than
 // this window so we only animate "live" zaps, not history.
 const MAX_RECEIPT_AGE_MS = 120_000
@@ -32,10 +33,19 @@ export function useLiveZapFeed({
   }, [onZap])
 
   // Stable signature of visible pubkeys so effect only re-fires on real change.
-  const signature = [...visiblePubkeys]
-    .map((pubkey) => pubkey.toLowerCase())
-    .sort()
-    .join(',')
+  // Dense graph layers can expose thousands of pubkeys; subscribing all of them
+  // creates huge relay filters and makes layer switching pay network cleanup
+  // costs. Skip live-zap animation once the scene is too broad.
+  const signature = useMemo(() => {
+    if (!enabled || visiblePubkeys.length > MAX_ZAP_FILTER_PUBKEYS) {
+      return ''
+    }
+
+    return [...visiblePubkeys]
+      .map((pubkey) => pubkey.toLowerCase())
+      .sort()
+      .join(',')
+  }, [enabled, visiblePubkeys])
 
   useEffect(() => {
     if (!enabled) return

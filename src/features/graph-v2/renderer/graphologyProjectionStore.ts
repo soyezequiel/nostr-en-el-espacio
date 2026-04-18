@@ -77,17 +77,22 @@ const createSeedPosition = (index: number, total: number) => {
 }
 
 const mergeEdgeMaps = (scene: GraphSceneSnapshot) => {
-  const edges = new Map<string, GraphSceneEdge>()
+  const edgesByPair = new Map<string, GraphSceneEdge>()
 
   for (const edge of scene.forceEdges) {
-    edges.set(edge.id, edge)
+    edgesByPair.set(createDirectedPairKey(edge.source, edge.target), edge)
   }
 
   for (const edge of scene.visibleEdges) {
-    edges.set(edge.id, {
+    edgesByPair.set(createDirectedPairKey(edge.source, edge.target), {
       ...edge,
       hidden: false,
     })
+  }
+
+  const edges = new Map<string, GraphSceneEdge>()
+  for (const edge of edgesByPair.values()) {
+    edges.set(edge.id, edge)
   }
 
   return edges
@@ -95,6 +100,25 @@ const mergeEdgeMaps = (scene: GraphSceneSnapshot) => {
 
 const createDirectedPairKey = (source: string, target: string) =>
   `${source}->${target}`
+
+const FULL_REBUILD_EDGE_DROP_THRESHOLD = 1_500
+const FULL_REBUILD_NODE_DROP_THRESHOLD = 700
+const FULL_REBUILD_EDGE_DROP_RATIO = 0.35
+
+const shouldRebuildForTopologyChange = ({
+  currentEdgeCount,
+  droppedEdgeCount,
+  droppedNodeCount,
+}: {
+  currentEdgeCount: number
+  droppedEdgeCount: number
+  droppedNodeCount: number
+}) =>
+  droppedEdgeCount >= FULL_REBUILD_EDGE_DROP_THRESHOLD ||
+  droppedNodeCount >= FULL_REBUILD_NODE_DROP_THRESHOLD ||
+  (currentEdgeCount >= FULL_REBUILD_EDGE_DROP_THRESHOLD &&
+    droppedEdgeCount / Math.max(currentEdgeCount, 1) >=
+      FULL_REBUILD_EDGE_DROP_RATIO)
 
 export class GraphologyProjectionStore {
   private readonly graph = new DirectedGraph<SigmaNodeAttributes, SigmaEdgeAttributes>()
@@ -111,6 +135,8 @@ export class GraphologyProjectionStore {
     const nextEdgeIdsByPair = new Map<string, string>()
     const currentNodeIds = this.graph.nodes()
     const currentEdgeIds = this.graph.edges()
+    const droppedNodeIds: string[] = []
+    const droppedEdgeIds: string[] = []
 
     for (const edge of nextEdges.values()) {
       nextEdgeIdsByPair.set(createDirectedPairKey(edge.source, edge.target), edge.id)
@@ -120,6 +146,7 @@ export class GraphologyProjectionStore {
       if (!nextNodeIds.has(nodeId)) {
         const attrs = this.graph.getNodeAttributes(nodeId)
         this.positionCache.set(nodeId, { x: attrs.x, y: attrs.y })
+        droppedNodeIds.push(nodeId)
       }
     }
 
@@ -131,16 +158,49 @@ export class GraphologyProjectionStore {
       )
 
       if (!nextEdges.has(edgeId) || nextEdgeIdForPair !== edgeId) {
-        this.graph.dropEdge(edgeId)
+        droppedEdgeIds.push(edgeId)
       }
     }
 
+    if (
+      shouldRebuildForTopologyChange({
+        currentEdgeCount: currentEdgeIds.length,
+        droppedEdgeCount: droppedEdgeIds.length,
+        droppedNodeCount: droppedNodeIds.length,
+      })
+    ) {
+      this.rebuildGraph(scene, nextEdges, currentNodeIds)
+      return
+    }
+
+    for (const edgeId of droppedEdgeIds) {
+      this.graph.dropEdge(edgeId)
+    }
+
+    for (const nodeId of droppedNodeIds) {
+      this.graph.dropNode(nodeId)
+    }
+
+    this.applySceneNodes(scene)
+    this.applySceneEdges(nextEdges)
+  }
+
+  private rebuildGraph(
+    scene: GraphSceneSnapshot,
+    nextEdges: Map<string, GraphSceneEdge>,
+    currentNodeIds: string[],
+  ) {
     for (const nodeId of currentNodeIds) {
-      if (!nextNodeIds.has(nodeId)) {
-        this.graph.dropNode(nodeId)
-      }
+      const attrs = this.graph.getNodeAttributes(nodeId)
+      this.positionCache.set(nodeId, { x: attrs.x, y: attrs.y })
     }
 
+    this.graph.clear()
+    this.applySceneNodes(scene)
+    this.applySceneEdges(nextEdges)
+  }
+
+  private applySceneNodes(scene: GraphSceneSnapshot) {
     scene.nodes.forEach((node, index) => {
       const existingPosition = this.graph.hasNode(node.pubkey)
         ? this.graph.getNodeAttributes(node.pubkey)
@@ -191,7 +251,9 @@ export class GraphologyProjectionStore {
         this.graph.addNode(node.pubkey, attributes)
       }
     })
+  }
 
+  private applySceneEdges(nextEdges: Map<string, GraphSceneEdge>) {
     for (const edge of nextEdges.values()) {
       const attributes: SigmaEdgeAttributes = {
         size: edge.size,

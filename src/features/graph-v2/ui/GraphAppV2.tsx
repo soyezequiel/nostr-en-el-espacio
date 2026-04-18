@@ -1345,10 +1345,12 @@ export default function GraphAppV2() {
     }
     return sigmaHostRef.current?.playZap(zap) ?? false
   }
+  const shouldEnableLiveZapFeed =
+    !isFixtureMode && domainState.activeLayer !== 'connections'
 
   useLiveZapFeed({
     visiblePubkeys,
-    enabled: !isFixtureMode,
+    enabled: shouldEnableLiveZapFeed,
     onZap: (zap) => {
       handleZap(zap)
     },

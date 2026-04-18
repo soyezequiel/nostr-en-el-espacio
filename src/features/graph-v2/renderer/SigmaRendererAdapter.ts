@@ -31,6 +31,13 @@ import {
   type DragNeighborhoodInfluenceTuning,
 } from '@/features/graph-v2/renderer/dragInfluence'
 import { GraphologyProjectionStore } from '@/features/graph-v2/renderer/graphologyProjectionStore'
+import { AvatarBitmapCache } from '@/features/graph-v2/renderer/avatar/avatarBitmapCache'
+import { AvatarLoader } from '@/features/graph-v2/renderer/avatar/avatarLoader'
+import { AvatarOverlayRenderer } from '@/features/graph-v2/renderer/avatar/avatarOverlayRenderer'
+import { AvatarScheduler } from '@/features/graph-v2/renderer/avatar/avatarScheduler'
+import { detectDeviceTier } from '@/features/graph-v2/renderer/avatar/deviceTier'
+import { PerfBudget } from '@/features/graph-v2/renderer/avatar/perfBudget'
+import { DEFAULT_BUDGETS } from '@/features/graph-v2/renderer/avatar/types'
 import {
   createSuppressedNodeClick,
   createPendingNodeDragGesture,
@@ -125,6 +132,22 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private isCameraLocked = false
 
   private isGraphBoundsLocked = false
+
+  private avatarCache: AvatarBitmapCache | null = null
+
+  private avatarLoader: AvatarLoader | null = null
+
+  private avatarScheduler: AvatarScheduler | null = null
+
+  private avatarOverlay: AvatarOverlayRenderer | null = null
+
+  private avatarBudget: PerfBudget | null = null
+
+  private motionActive = false
+
+  private motionClearTimer: ReturnType<typeof setTimeout> | null = null
+
+  private readonly MOTION_RESUME_MS = 140
 
   private readonly handleKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'Escape') {
@@ -312,6 +335,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       return
     }
 
+    this.markMotion()
     this.flushCount += 1
     const draggedNodePubkey = this.draggedNodePubkey
     const graphPosition = this.pendingGraphPosition
@@ -370,6 +394,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
 
     this.draggedNodePubkey = pubkey
+    this.markMotion()
     this.dragHopDistances = buildDragHopDistances(
       this.projectionStore.getGraph(),
       pubkey,
@@ -484,6 +509,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       sigma,
       this.projectionStore.getGraph(),
     )
+    this.initAvatarPipeline(sigma)
     this.bindEvents()
     this.forceRuntime.sync(initialScene)
     if (initialScene.nodes.length > 0) {
@@ -565,11 +591,82 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.forceRuntime = null
     this.nodeHitTester?.dispose()
     this.nodeHitTester = null
+    this.disposeAvatarPipeline()
     this.sigma?.kill()
     this.sigma = null
     this.projectionStore = null
     this.callbacks = null
     this.scene = null
+  }
+
+  private initAvatarPipeline(
+    sigma: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes>,
+  ) {
+    if (typeof window === 'undefined') {
+      return
+    }
+    if (typeof document === 'undefined') {
+      return
+    }
+    const tier = detectDeviceTier()
+    const baseBudget = DEFAULT_BUDGETS[tier]
+    if (!baseBudget.drawAvatars) {
+      return
+    }
+    try {
+      this.avatarCache = new AvatarBitmapCache(baseBudget.lruCap)
+      this.avatarLoader = new AvatarLoader()
+      this.avatarScheduler = new AvatarScheduler({
+        cache: this.avatarCache,
+        loader: this.avatarLoader,
+      })
+      this.avatarBudget = new PerfBudget(tier)
+      this.avatarOverlay = new AvatarOverlayRenderer({
+        sigma,
+        cache: this.avatarCache,
+        scheduler: this.avatarScheduler,
+        budget: this.avatarBudget,
+        isMoving: () => this.motionActive,
+      })
+
+      sigma.getCamera().on('updated', () => {
+        this.markMotion()
+      })
+    } catch (err) {
+      console.warn('[graph-v2] avatar pipeline init failed', err)
+      this.disposeAvatarPipeline()
+    }
+  }
+
+  private disposeAvatarPipeline() {
+    if (this.motionClearTimer !== null) {
+      clearTimeout(this.motionClearTimer)
+      this.motionClearTimer = null
+    }
+    this.motionActive = false
+    this.avatarOverlay?.dispose()
+    this.avatarOverlay = null
+    this.avatarScheduler?.dispose()
+    this.avatarScheduler = null
+    this.avatarCache?.clear()
+    this.avatarCache = null
+    this.avatarLoader = null
+    this.avatarBudget = null
+  }
+
+  private markMotion() {
+    if (!this.avatarOverlay) {
+      return
+    }
+    this.motionActive = true
+    if (this.motionClearTimer !== null) {
+      clearTimeout(this.motionClearTimer)
+    }
+    this.motionClearTimer = setTimeout(() => {
+      this.motionActive = false
+      this.motionClearTimer = null
+      this.sigma?.refresh()
+    }, this.MOTION_RESUME_MS)
   }
 
   private bindEvents() {

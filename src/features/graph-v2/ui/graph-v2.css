@@ -1460,12 +1460,14 @@
 /* Sigma loader / root selector design */
 [data-graph-v2] .sg-loader {
   position: fixed;
+  inset: 0;
+  z-index: 40;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: oklch(4% 0.008 230 / 0.985);
-  backdrop-filter: blur(8px) saturate(0.8);
-  -webkit-backdrop-filter: blur(8px) saturate(0.8);
+  background: oklch(3.5% 0.008 230);
+  backdrop-filter: blur(12px) saturate(0.65);
+  -webkit-backdrop-filter: blur(12px) saturate(0.65);
   overflow: auto;
 }
 

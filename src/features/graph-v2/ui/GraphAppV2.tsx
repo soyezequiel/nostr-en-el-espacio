@@ -129,11 +129,11 @@ const resolveConnectionFilterLabel = (
 }
 
 const SIGMA_SETTINGS_TABS: Array<{ id: SigmaSettingsTab; label: string }> = [
-  { id: 'renderer', label: 'Renderer' },
-  { id: 'physics', label: 'Physics' },
-  { id: 'layers', label: 'Layers' },
+  { id: 'renderer', label: 'Render' },
+  { id: 'physics', label: 'Fisica' },
+  { id: 'layers', label: 'Capas' },
   { id: 'relays', label: 'Relays' },
-  { id: 'internal', label: 'Internal' },
+  { id: 'internal', label: 'Diagnostico' },
 ]
 
 const SAVED_ROOT_PROFILE_STALE_MS = 6 * 60 * 60 * 1000
@@ -1018,15 +1018,15 @@ export default function GraphAppV2() {
   const rootEntryTitle = domainState.rootPubkey === null
     ? shouldShowSavedRootsSection
       ? 'Identidades guardadas'
-      : 'Ingresa una npub o nprofile'
+      : 'Cargar identidad'
     : shouldShowSavedRootsSection
       ? 'Cambiar identidad'
       : 'Cambiar root'
   const rootEntryEyebrow = domainState.rootPubkey === null
     ? shouldShowSavedRootsSection
       ? 'Guardadas'
-      : 'Root'
-    : 'Root'
+      : 'Identidad'
+    : 'Identidad'
 
   const updateFixtureState = (
     updater: (current: CanonicalGraphState) => CanonicalGraphState,
@@ -1500,7 +1500,7 @@ export default function GraphAppV2() {
 
   const settingsStatusItems = [
     { label: 'Root', value: domainState.rootPubkey ? 'loaded' : 'empty' },
-    { label: 'Layer', value: domainState.activeLayer },
+    { label: 'Vista', value: domainState.activeLayer },
     {
       label: 'Filtro',
       value:
@@ -1522,7 +1522,7 @@ export default function GraphAppV2() {
         return (
           <section className="settings-panel">
             <div className="settings-panel__header">
-              <p className="settings-panel__eyebrow">Renderer</p>
+              <p className="settings-panel__eyebrow">Render</p>
               <h2>Avatares Sigma</h2>
               <p className="settings-panel__copy">
                 Ajusta fotos, fallback y degradacion sin reiniciar la fisica.
@@ -1541,7 +1541,7 @@ export default function GraphAppV2() {
         return (
           <section className="settings-panel">
             <div className="settings-panel__header">
-              <p className="settings-panel__eyebrow">Physics</p>
+              <p className="settings-panel__eyebrow">Fisica</p>
               <h2>ForceAtlas2</h2>
               <p className="settings-panel__copy">
                 Tunea el feel del grafo vivo sin tocar el dominio.
@@ -1571,7 +1571,7 @@ export default function GraphAppV2() {
         return (
           <section className="settings-panel">
             <div className="settings-panel__header">
-              <p className="settings-panel__eyebrow">Layers</p>
+              <p className="settings-panel__eyebrow">Capas</p>
               <h2>Proyeccion activa</h2>
               <p className="settings-panel__copy">
                 Cambia la lectura del vecindario visible en Sigma.
@@ -1622,14 +1622,14 @@ export default function GraphAppV2() {
         return (
           <section className="settings-panel">
             <div className="settings-panel__header">
-              <p className="settings-panel__eyebrow">Internal</p>
+              <p className="settings-panel__eyebrow">Diagnostico</p>
               <h2>Runtime Sigma</h2>
               <p className="settings-panel__copy">
-                Lectura tecnica compacta del renderer, topologia y viewport.
+                Lectura tecnica compacta del render, topologia y viewport.
               </p>
             </div>
             <section className="dev-panel dev-panel--sidebar">
-              <p className="dev-panel__title">Diagnostics</p>
+              <p className="dev-panel__title">Diagnostico</p>
               <dl>
                 <div>
                   <dt>Topologia</dt>
@@ -1684,7 +1684,11 @@ export default function GraphAppV2() {
 
   return (
     <main className="app-shell app-shell--immersive sigma-lab-shell">
-      <section className="workspace-shell sigma-lab-workspace">
+      <section
+        className="workspace-shell sigma-lab-workspace"
+        data-root-open={isRootSheetOpen ? 'true' : 'false'}
+        data-settings-open={isSettingsOpen ? 'true' : 'false'}
+      >
         <header className="workspace-topbar sigma-lab-topbar">
           <div className="workspace-topbar__actions">
             <button
@@ -1700,6 +1704,7 @@ export default function GraphAppV2() {
               type="button"
             >
               <IdentityIcon />
+              <span className="sigma-lab-topbar-label">Root</span>
             </button>
             <button
               aria-expanded={isSettingsOpen}
@@ -1708,12 +1713,17 @@ export default function GraphAppV2() {
                 isSettingsOpen ? ' workspace-icon-btn--active' : ''
               }`}
               onClick={() => {
-                setIsRootSheetOpen(false)
-                setIsSettingsOpen((value) => !value)
+                if (isSettingsOpen) {
+                  setIsSettingsOpen(false)
+                  return
+                }
+
+                openSettingsTab('renderer')
               }}
               type="button"
             >
               <SettingsIcon />
+              <span className="sigma-lab-topbar-label">Ajustes</span>
             </button>
           </div>
         </header>
@@ -1775,8 +1785,8 @@ export default function GraphAppV2() {
 
               <div className="sigma-lab-root-copy">
                 <p>
-                  Dominio canonico, proyecciones explicitas y renderer Sigma en
-                  ruta paralela.
+                  Elegi una identidad guardada o pega una npub/nprofile para
+                  abrir el grafo Sigma.
                 </p>
                 <dl className="sigma-lab-root-stats">
                   <div>
@@ -1784,7 +1794,7 @@ export default function GraphAppV2() {
                     <dd>{domainState.rootPubkey ?? 'sin root'}</dd>
                   </div>
                   <div>
-                    <dt>Load</dt>
+                    <dt>Estado</dt>
                     <dd>{domainState.discoveryState.rootLoad.status}</dd>
                   </div>
                   <div>
@@ -1792,7 +1802,7 @@ export default function GraphAppV2() {
                     <dd>{scene.diagnostics.nodeCount}</dd>
                   </div>
                   <div>
-                    <dt>Force edges</dt>
+                    <dt>Conexiones</dt>
                     <dd>{scene.diagnostics.forceEdgeCount}</dd>
                   </div>
                 </dl>
@@ -1832,7 +1842,7 @@ export default function GraphAppV2() {
                 <p className="settings-drawer__eyebrow">Workspace controls</p>
                 <h2 className="settings-drawer__title">Sigma Lab</h2>
                 <p className="settings-drawer__intro">
-                  Ajusta renderer, fisica, relays y diagnostico sin salir del
+                  Ajusta render, fisica, relays y diagnostico sin salir del
                   grafo.
                 </p>
               </div>
@@ -1908,6 +1918,20 @@ export default function GraphAppV2() {
             ref={sigmaHostRef}
             scene={deferredScene}
           />
+          {domainState.rootPubkey === null ? (
+            <div className="sigma-lab-empty-scene" aria-hidden="true">
+              <div className="sigma-lab-empty-scene__map">
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="sigma-lab-empty-scene__copy">
+                <p className="sigma-lab-empty-scene__eyebrow">Sigma listo</p>
+                <p>Carga una identidad para proyectar su vecindario.</p>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         {detail.node ? (
@@ -2053,12 +2077,7 @@ export default function GraphAppV2() {
           </div>
           <div className="sigma-lab-control-actions">
             <div
-              className="graph-panel__control-group graph-panel__control-group--primary"
-              data-relationship-mode={
-                domainState.activeLayer === 'connections'
-                  ? relationshipControlLayer
-                  : undefined
-              }
+              className="graph-panel__control-group sigma-lab-control-group--mode"
               role="group"
               aria-label="Vista principal del grafo Sigma"
             >
@@ -2093,6 +2112,17 @@ export default function GraphAppV2() {
               >
                 {domainState.activeLayer === 'connections' ? 'Salir' : 'Conexiones'}
               </button>
+            </div>
+            <div
+              className="graph-panel__control-group sigma-lab-control-group--filters"
+              data-relationship-mode={
+                domainState.activeLayer === 'connections'
+                  ? relationshipControlLayer
+                  : undefined
+              }
+              role="group"
+              aria-label="Filtros de relacion Sigma"
+            >
               <button
                 aria-pressed={relationshipToggleState.following}
                 className={`graph-panel__control-btn${
@@ -2144,33 +2174,6 @@ export default function GraphAppV2() {
                 type="button"
               >
                 Sin reciprocidad
-              </button>
-            </div>
-            <div
-              className="graph-panel__control-group sigma-lab-control-group--settings"
-              role="group"
-              aria-label="Ajustes de Sigma"
-            >
-              <button
-                className="graph-panel__control-btn"
-                onClick={() => openSettingsTab('renderer')}
-                type="button"
-              >
-                Renderer
-              </button>
-              <button
-                className="graph-panel__control-btn"
-                onClick={() => openSettingsTab('physics')}
-                type="button"
-              >
-                Ajustes fisica
-              </button>
-              <button
-                className="graph-panel__control-btn"
-                onClick={() => openSettingsTab('internal')}
-                type="button"
-              >
-                Diagnostics
               </button>
             </div>
           </div>

@@ -21,10 +21,7 @@ export default function DevCacheButton() {
           window.location.hostname === '127.0.0.1' ||
           window.location.hostname === '0.0.0.0',
       )
-      setIsSigmaLabRoute(
-        window.location.pathname.startsWith('/labs/sigma') &&
-          window.matchMedia('(max-width: 640px)').matches,
-      )
+      setIsSigmaLabRoute(window.location.pathname.startsWith('/labs/sigma'))
     }, 0)
 
     return () => {
@@ -68,7 +65,7 @@ export default function DevCacheButton() {
     }
   }, [shouldShow, status])
 
-  if (!shouldShow) {
+  if (!shouldShow || isSigmaLabRoute) {
     return null
   }
 
@@ -81,9 +78,9 @@ export default function DevCacheButton() {
       }}
       style={{
         position: 'fixed',
-        top: isSigmaLabRoute ? '76px' : '18px',
+        top: '18px',
         left: '18px',
-        zIndex: isSigmaLabRoute ? 42 : 2147483647,
+        zIndex: 2147483647,
         display: 'inline-flex',
         alignItems: 'center',
         gap: '10px',

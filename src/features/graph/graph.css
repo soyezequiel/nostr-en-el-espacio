@@ -7104,6 +7104,11 @@ main {
     linear-gradient(180deg, #111111 0%, #070707 100%);
 }
 
+.sigma-lab-workspace::after {
+  content: '';
+  display: none;
+}
+
 .sigma-lab-canvas-frame {
   position: absolute;
   inset: 0;
@@ -7125,12 +7130,28 @@ main {
   z-index: 46;
 }
 
+.sigma-lab-topbar .workspace-icon-btn {
+  gap: 0.45rem;
+}
+
+.sigma-lab-topbar-label {
+  display: none;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
 .sigma-lab-scrim {
   z-index: 31;
 }
 
 .sigma-lab-root-sheet {
   z-index: 44;
+  overflow: auto;
+}
+
+.sigma-lab-root-sheet.root-entry-sheet--inline {
+  width: min(32rem, calc(100vw - (var(--graph-gutter) + var(--graph-gutter))));
+  max-height: min(34rem, calc(100dvh - 9rem));
 }
 
 .sigma-lab-root-body {
@@ -7189,6 +7210,100 @@ main {
 
 .sigma-lab-settings {
   z-index: 56;
+  background: #090c12;
+}
+
+.sigma-lab-workspace[data-root-open='true'] .sigma-lab-control-bar,
+.sigma-lab-workspace[data-settings-open='true'] .sigma-lab-control-bar {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sigma-lab-empty-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: rgba(248, 250, 252, 0.72);
+}
+
+.sigma-lab-empty-scene__map {
+  position: relative;
+  width: min(28rem, 68vw);
+  aspect-ratio: 1.45;
+  opacity: 0.55;
+}
+
+.sigma-lab-empty-scene__map::before,
+.sigma-lab-empty-scene__map::after {
+  content: '';
+  position: absolute;
+  inset: 22% 13%;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  transform: skewY(-10deg);
+}
+
+.sigma-lab-empty-scene__map::after {
+  inset: 33% 20%;
+  border-color: rgba(125, 211, 167, 0.14);
+  transform: skewY(12deg);
+}
+
+.sigma-lab-empty-scene__map span {
+  position: absolute;
+  width: 0.72rem;
+  height: 0.72rem;
+  border: 1px solid rgba(209, 250, 229, 0.62);
+  border-radius: 999px;
+  background: rgba(8, 16, 12, 0.9);
+  box-shadow: 0 0 22px rgba(125, 211, 167, 0.18);
+}
+
+.sigma-lab-empty-scene__map span:nth-child(1) {
+  left: 18%;
+  top: 45%;
+}
+
+.sigma-lab-empty-scene__map span:nth-child(2) {
+  left: 46%;
+  top: 27%;
+}
+
+.sigma-lab-empty-scene__map span:nth-child(3) {
+  left: 64%;
+  top: 56%;
+}
+
+.sigma-lab-empty-scene__map span:nth-child(4) {
+  left: 80%;
+  top: 36%;
+}
+
+.sigma-lab-empty-scene__copy {
+  position: absolute;
+  left: var(--graph-gutter);
+  top: calc(var(--graph-top-offset) + 4.3rem);
+  max-width: min(22rem, calc(100% - (var(--graph-gutter) + var(--graph-gutter))));
+}
+
+.sigma-lab-empty-scene__copy p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.sigma-lab-empty-scene__eyebrow {
+  color: rgba(248, 250, 252, 0.92) !important;
+  font:
+    800 0.68rem/1 ui-monospace,
+    'SFMono-Regular',
+    monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .sigma-lab-action-feedback {
@@ -7267,6 +7382,21 @@ main {
   transform: translateX(-50%);
 }
 
+.sigma-lab-control-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: inherit;
+  pointer-events: none;
+}
+
+.sigma-lab-control-bar > * {
+  position: relative;
+  z-index: 1;
+}
+
 .sigma-lab-control-summary {
   min-width: 0;
   display: grid;
@@ -7296,8 +7426,7 @@ main {
 .sigma-lab-control-actions {
   min-width: 0;
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: max-content;
+  grid-template-columns: max-content max-content max-content;
   align-items: center;
   justify-content: end;
   gap: 0.55rem;
@@ -7305,8 +7434,10 @@ main {
 
 .sigma-lab-control-actions .graph-panel__control-group {
   min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  align-items: center;
   gap: 0.45rem;
 }
 
@@ -7351,28 +7482,25 @@ main {
   }
 
   .sigma-lab-control-actions {
-    grid-auto-flow: row;
-    grid-auto-columns: auto;
+    grid-template-columns: 1fr;
     justify-content: stretch;
-    overflow-x: auto;
-    scrollbar-width: none;
   }
 
   .sigma-lab-control-actions .graph-panel__control-group {
-    flex-wrap: nowrap;
-    overflow-x: auto;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    overflow: visible;
     padding-bottom: 0.12rem;
-    scrollbar-width: none;
-  }
-
-  .sigma-lab-control-actions::-webkit-scrollbar,
-  .sigma-lab-control-actions .graph-panel__control-group::-webkit-scrollbar {
-    display: none;
   }
 
   .sigma-lab-control-actions .graph-panel__control-btn {
-    width: auto;
-    min-width: max-content;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .sigma-lab-control-actions .graph-panel__control-filter-state {
+    width: 100%;
+    justify-content: center;
   }
 
   .sigma-lab-control-group--settings {
@@ -7387,17 +7515,97 @@ main {
     right: var(--graph-gutter);
     width: auto;
     padding: 0.7rem;
+    background: #111111;
     transform: none;
+  }
+
+  .sigma-lab-control-bar::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    z-index: 1;
+    width: 3.35rem;
+    height: 7.25rem;
+    border-radius: 0 1rem 0 1.35rem;
+    background: #111111;
+    pointer-events: none;
+  }
+
+  .sigma-lab-control-bar > * {
+    z-index: 2;
+  }
+
+  .sigma-lab-topbar-label {
+    display: inline;
+  }
+
+  .sigma-lab-workspace[data-root-open='false'][data-settings-open='false']::after {
+    position: absolute;
+    left: var(--graph-gutter);
+    bottom: var(--graph-bottom-offset);
+    z-index: 1000;
+    display: block;
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 999px;
+    background: #050505;
+    pointer-events: none;
+  }
+
+  .sigma-lab-root-sheet.root-entry-sheet--inline {
+    top: calc(var(--graph-top-offset) + 4.35rem);
+    max-height: calc(100dvh - (var(--graph-top-offset) + 5.3rem));
+  }
+
+  .sigma-lab-settings {
+    top: var(--graph-top-offset);
+    bottom: var(--graph-bottom-offset);
+    height: auto;
+    max-height: none;
   }
 
   .sigma-lab-root-stats {
     grid-template-columns: 1fr;
   }
 
+  .sigma-lab-empty-scene__copy {
+    top: calc(var(--graph-top-offset) + 4.6rem);
+  }
+
+  .sigma-lab-empty-scene__map {
+    width: min(20rem, 78vw);
+  }
+
+  .sigma-lab-control-actions {
+    gap: 0.5rem;
+    padding-left: 2.35rem;
+  }
+
+  .sigma-lab-control-actions .graph-panel__control-group {
+    gap: 0.45rem;
+  }
+
+  .sigma-lab-control-group--mode,
+  .sigma-lab-control-group--filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .sigma-lab-control-actions .graph-panel__control-btn {
-    flex: 0 0 auto;
     min-height: 2.75rem;
-    padding-inline: 0.85rem;
+    padding-inline: 0.65rem;
+    background: #202020;
+    font-size: 0.76rem;
+  }
+
+  .sigma-lab-control-actions .graph-panel__control-btn--primary {
+    background: #2a2a2a;
+  }
+
+  .sigma-lab-control-actions .graph-panel__control-filter-state {
+    grid-column: 1 / -1;
+    min-height: 2.35rem;
+    font-size: 0.72rem;
   }
 
   .sigma-lab-action-feedback {

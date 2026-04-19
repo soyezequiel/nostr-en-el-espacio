@@ -5,6 +5,7 @@ import { AvatarLoader } from '@/features/graph-v2/renderer/avatar/avatarLoader'
 import type { AvatarBudget, AvatarUrlKey } from '@/features/graph-v2/renderer/avatar/types'
 
 const BLOCKLIST_TTL_MS = 10 * 60 * 1000
+const URGENT_RETRY_TTL_MS = 15 * 1000
 
 export interface AvatarCandidate {
   pubkey: string
@@ -35,6 +36,7 @@ export class AvatarScheduler {
   private readonly loader: AvatarLoader
   private readonly onSettled: () => void
   private readonly inflight = new Map<AvatarUrlKey, InflightEntry>()
+  private readonly nextUrgentRetryAt = new Map<AvatarUrlKey, number>()
   private disposed = false
 
   constructor({ cache, loader, onSettled }: AvatarSchedulerDeps) {
@@ -86,10 +88,14 @@ export class AvatarScheduler {
         continue
       }
       if (existing && existing.state === 'failed') {
-        continue
+        if (!this.prepareUrgentRetry(candidate)) {
+          continue
+        }
       }
       if (this.loader.isBlocked(candidate.urlKey)) {
-        continue
+        if (!this.prepareUrgentRetry(candidate)) {
+          continue
+        }
       }
       if (
         this.inflight.size >= budget.concurrency &&
@@ -110,11 +116,32 @@ export class AvatarScheduler {
     return this.inflight.size
   }
 
+  public hasInflight(urlKey: AvatarUrlKey) {
+    return this.inflight.has(urlKey)
+  }
+
   private abortAll() {
     for (const entry of this.inflight.values()) {
       entry.controller.abort('disposed')
     }
     this.inflight.clear()
+  }
+
+  private prepareUrgentRetry(candidate: AvatarCandidate) {
+    if (!candidate.urgent) {
+      return false
+    }
+
+    const now = Date.now()
+    const nextRetryAt = this.nextUrgentRetryAt.get(candidate.urlKey) ?? 0
+    if (nextRetryAt > now) {
+      return false
+    }
+
+    this.nextUrgentRetryAt.set(candidate.urlKey, now + URGENT_RETRY_TTL_MS)
+    this.cache.delete(candidate.urlKey)
+    this.loader.unblock(candidate.urlKey)
+    return true
   }
 
   private kickoff(candidate: AvatarCandidate, budget: AvatarBudget) {

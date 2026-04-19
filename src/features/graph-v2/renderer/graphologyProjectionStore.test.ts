@@ -265,7 +265,7 @@ test('projects selected neighborhoods into prominent render attributes', () => {
         }
       : {
           ...node,
-          color: '#f8f2a2',
+          color: '#8ebfc7',
           size: 13,
           isNeighbor: true,
           focusState: 'neighbor',
@@ -287,9 +287,11 @@ test('projects selected neighborhoods into prominent render attributes', () => {
 
   assert.equal(selected.highlighted, true)
   assert.equal(selected.forceLabel, true)
+  assert.equal(selected.focusState, 'selected')
   assert.equal(selected.zIndex, 8)
   assert.equal(neighbor.highlighted, true)
   assert.equal(neighbor.forceLabel, false)
+  assert.equal(neighbor.focusState, 'neighbor')
   assert.equal(neighbor.zIndex, 5)
   assert.equal(edge.touchesFocus, true)
   assert.equal(edge.zIndex, 6)

@@ -90,6 +90,49 @@ const createCallbacks = (
   onViewportChange: () => {},
 })
 
+type DragHarness = {
+  sigma: { refresh: () => void }
+  renderStore: RenderGraphStore
+  physicsStore: PhysicsGraphStore
+  callbacks: GraphInteractionCallbacks
+  draggedNodePubkey: string | null
+  lastDragGraphPosition: { x: number; y: number } | null
+  pendingGraphPosition: { x: number; y: number } | null
+  dragInfluenceState: ReturnType<typeof createDragNeighborhoodInfluenceState> | null
+  flushPendingDragFrame: () => void
+}
+
+type HoverHarness = {
+  sigma: { getCamera: () => { getState: () => { ratio: number } } }
+  resolveNodeHoverAttributes: (
+    node: string,
+    data: {
+      x: number
+      y: number
+      size: number
+      color: string
+      focusState: 'idle'
+      label: string
+      hidden: boolean
+      highlighted: boolean
+      forceLabel: boolean
+      fixed: boolean
+      pictureUrl: string | null
+      isDimmed: boolean
+      isSelected: boolean
+      isNeighbor: boolean
+      isRoot: boolean
+      isPinned: boolean
+      zIndex: number
+    },
+    focus: { pubkey: string | null; neighbors: Set<string> },
+  ) => {
+    color: string
+    highlighted: boolean
+    zIndex: number
+  }
+}
+
 test('continues local drag influence even when pointer movement pauses', async () => {
   const originalRequestAnimationFrame = globalThis.requestAnimationFrame
   const originalCancelAnimationFrame = globalThis.cancelAnimationFrame
@@ -122,17 +165,7 @@ test('continues local drag influence even when pointer movement pauses', async (
     physicsStore.setNodePosition('D', 42, 0)
 
     const dragMoves: Array<{ x: number; y: number }> = []
-    const adapter = new SigmaRendererAdapter() as SigmaRendererAdapter & {
-      sigma: { refresh: () => void }
-      renderStore: RenderGraphStore
-      physicsStore: PhysicsGraphStore
-      callbacks: GraphInteractionCallbacks
-      draggedNodePubkey: string | null
-      lastDragGraphPosition: { x: number; y: number } | null
-      pendingGraphPosition: { x: number; y: number } | null
-      dragInfluenceState: ReturnType<typeof createDragNeighborhoodInfluenceState> | null
-      flushPendingDragFrame: () => void
-    }
+    const adapter = new SigmaRendererAdapter() as unknown as DragHarness
 
     adapter.sigma = { refresh: () => {} }
     adapter.renderStore = renderStore
@@ -173,4 +206,49 @@ test('continues local drag influence even when pointer movement pauses', async (
     globalThis.WebGL2RenderingContext = originalWebGL2RenderingContext
     globalThis.WebGLRenderingContext = originalWebGLRenderingContext
   }
+})
+
+test('keeps hovered neighbors on their base color while marking them highlighted', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const adapter = new SigmaRendererAdapter() as unknown as HoverHarness
+
+  adapter.sigma = {
+    getCamera: () => ({
+      getState: () => ({ ratio: 1 }),
+    }),
+  }
+
+  const hoveredNeighbor = adapter.resolveNodeHoverAttributes(
+    'B',
+    {
+      x: 0,
+      y: 0,
+      size: 12,
+      color: '#8ebfc7',
+      focusState: 'idle',
+      label: 'B',
+      hidden: false,
+      highlighted: false,
+      forceLabel: false,
+      fixed: false,
+      pictureUrl: null,
+      isDimmed: false,
+      isSelected: false,
+      isNeighbor: false,
+      isRoot: false,
+      isPinned: false,
+      zIndex: 0,
+    },
+    {
+      pubkey: 'A',
+      neighbors: new Set(['B']),
+    },
+  )
+
+  assert.equal(hoveredNeighbor.color, '#8ebfc7')
+  assert.equal(hoveredNeighbor.highlighted, true)
+  assert.equal(hoveredNeighbor.zIndex, 8)
 })

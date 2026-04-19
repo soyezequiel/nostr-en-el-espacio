@@ -1640,6 +1640,7 @@ export default function GraphAppV2() {
 
     const detailNpub = encodePubkeyAsNpub(detail.pubkey)
     const primalProfileUrl = detailNpub ? `https://primal.net/p/${detailNpub}` : null
+    const jumbleProfileUrl = detailNpub ? `https://jumble.social/users/${detailNpub}` : null
 
     return (
       <div>
@@ -1729,6 +1730,18 @@ export default function GraphAppV2() {
               >
                 <ExternalLinkIcon />
                 <span>Primal</span>
+              </a>
+            ) : null}
+            {jumbleProfileUrl ? (
+              <a
+                className="sg-mini-action"
+                href={jumbleProfileUrl}
+                rel="noopener noreferrer"
+                target="_blank"
+                title="Abrir cuenta en Jumble"
+              >
+                <ExternalLinkIcon />
+                <span>Jumble</span>
               </a>
             ) : null}
           </div>

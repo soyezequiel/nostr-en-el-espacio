@@ -20,8 +20,11 @@ export class GraphInteractionController {
       onNodeHover: () => {
         // Hover stays local to the renderer in v1.
       },
-      onNodeDragStart: () => {
-        // Drag is handled inside the renderer/runtime projection.
+      onNodeDragStart: (pubkey) => {
+        const selectedPubkey = this.bridge.getState().selectedNodePubkey
+        if (selectedPubkey && selectedPubkey !== pubkey) {
+          this.bridge.selectNode(null)
+        }
       },
       onNodeDragMove: () => {
         // Drag is handled inside the renderer/runtime projection.

@@ -15,6 +15,7 @@ import {
   runWithConcurrencyLimit,
   safeParseProfile,
 } from '@/features/graph-runtime/kernel/modules/helpers'
+import { normalizeMediaUrl } from '@/lib/media'
 
 export function createProfileHydrationModule(ctx: KernelContext) {
   const markBatchProfilesMissing = (batch: readonly string[]) => {
@@ -124,8 +125,10 @@ export function createProfileHydrationModule(ctx: KernelContext) {
               return false
             }
             const pictureFallback =
-              parsed.picture && options.mediaFallbacks
-                ? options.mediaFallbacks[parsed.picture]
+              parsed.pictureSource && options.mediaFallbacks
+                ? normalizeMediaUrl(
+                    options.mediaFallbacks[parsed.pictureSource],
+                  ) ?? undefined
                 : undefined
             const profileOverrides =
               pictureFallback && pictureFallback !== parsed.picture

@@ -385,6 +385,19 @@
   background: #ff5da2;
 }
 
+[data-graph-v2] .sg-filter-key__swatch--identity {
+  background:
+    linear-gradient(
+      135deg,
+      #91abc8 0%,
+      #b29ecf 18%,
+      #7fbad4 36%,
+      #73c3bb 56%,
+      #b2bf73 76%,
+      #d08e9d 100%
+    );
+}
+
 /* ── Side rail ───────────────────────────────────────────────────────────── */
 
 [data-graph-v2] .sg-rail {

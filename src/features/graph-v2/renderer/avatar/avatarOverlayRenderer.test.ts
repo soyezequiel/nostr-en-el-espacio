@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   resolveAvatarDrawRadiusPx,
+  retainInflightAvatarPubkeys,
   selectAvatarDrawContext,
   selectAvatarDrawItemsForFrame,
   selectClosestAvatarRevealPubkeys,
@@ -59,6 +60,20 @@ test('uses pubkey order as a deterministic tie breaker for proximity reveal', ()
     'alice',
     'bob',
   ])
+})
+
+test('retains visible inflight avatars even when the current frame cap drops them', () => {
+  const retained = retainInflightAvatarPubkeys(
+    [
+      { pubkey: 'root', url: 'https://example.com/root.png' },
+      { pubkey: 'alice', url: 'https://example.com/alice.png' },
+      { pubkey: 'bob', url: null },
+    ],
+    new Set(['root']),
+    (urlKey) => urlKey === 'alice::https://example.com/alice.png',
+  )
+
+  assert.deepEqual([...retained], ['root', 'alice'])
 })
 
 test('does not enlarge proximity-revealed avatars beyond the node radius', () => {

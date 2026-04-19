@@ -29,12 +29,27 @@ const AVATAR_NODE_INSET_PX = 1
 const FORCED_AVATAR_MIN_RADIUS_PX = 18
 const ZOOMED_OUT_MONOGRAM_MIN_RADIUS_PX = 11
 const MAX_VELOCITY_DELTA_MS = 250
+const FULL_CIRCLE_RADIANS = Math.PI * 2
+const FOCUS_AURA_RING_GAP_PX = 3
+const FOCUS_AURA_OUTER_LINE_WIDTH_FACTOR = 0.42
+const FOCUS_AURA_INNER_LINE_WIDTH_FACTOR = 0.14
+const FOCUS_AURA_OUTER_ALPHA = 0.22
+const FOCUS_AURA_INNER_ALPHA = 0.52
+const EMPTY_SET = new Set<string>()
 
 interface AvatarDrawSelectionItem {
   pubkey: string
   r: number
   priority: number
   isPersistentAvatar?: boolean
+}
+
+interface FocusAuraItem {
+  pubkey: string
+  x: number
+  y: number
+  r: number
+  color: string
 }
 
 interface AvatarRevealSelectionItem {
@@ -74,11 +89,61 @@ export interface AvatarOverlayRendererDeps {
   budget: PerfBudget
   isMoving: () => boolean
   getForcedAvatarPubkey?: () => string | null
+  getHoveredNeighborPubkeys?: () => ReadonlySet<string>
   getAvatarRevealPointer?: () => AvatarRevealPointer | null
   getRuntimeOptions?: () => AvatarRuntimeOptions
 }
 
 const buildUrlKey = (pubkey: string, url: string): string => `${pubkey}::${url}`
+
+interface AvatarImageSelectionItem {
+  pubkey: string
+  url: string | null
+}
+
+export const retainInflightAvatarPubkeys = <
+  T extends AvatarImageSelectionItem,
+>(
+  items: readonly T[],
+  selectedPubkeys: ReadonlySet<string>,
+  hasInflight: (urlKey: string) => boolean,
+) => {
+  const retainedPubkeys = new Set(selectedPubkeys)
+
+  for (const item of items) {
+    if (!item.url || retainedPubkeys.has(item.pubkey)) {
+      continue
+    }
+
+    if (hasInflight(buildUrlKey(item.pubkey, item.url))) {
+      retainedPubkeys.add(item.pubkey)
+    }
+  }
+
+  return retainedPubkeys
+}
+
+const withAlpha = (color: string, alpha: number) => {
+  const normalized = color.trim()
+  const match = normalized.match(/^#([\da-f]{3}|[\da-f]{6})$/i)
+  if (!match) {
+    return `rgba(244, 251, 255, ${alpha})`
+  }
+
+  const hex = match[1]!.toLowerCase()
+  const expanded =
+    hex.length === 3
+      ? hex
+          .split('')
+          .map((char) => `${char}${char}`)
+          .join('')
+      : hex
+  const red = Number.parseInt(expanded.slice(0, 2), 16)
+  const green = Number.parseInt(expanded.slice(2, 4), 16)
+  const blue = Number.parseInt(expanded.slice(4, 6), 16)
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+}
 
 const resolveRevealDistanceSquared = (
   node: AvatarRevealPointer,
@@ -199,6 +264,7 @@ export class AvatarOverlayRenderer {
   private readonly budget: PerfBudget
   private readonly isMoving: () => boolean
   private readonly getForcedAvatarPubkey: () => string | null
+  private readonly getHoveredNeighborPubkeys: () => ReadonlySet<string>
   private readonly getAvatarRevealPointer: () => AvatarRevealPointer | null
   private readonly getRuntimeOptions: () => AvatarRuntimeOptions | null
   private readonly lastBucketByUrl = new Map<string, ImageLodBucket>()
@@ -215,6 +281,7 @@ export class AvatarOverlayRenderer {
     this.budget = deps.budget
     this.isMoving = deps.isMoving
     this.getForcedAvatarPubkey = deps.getForcedAvatarPubkey ?? (() => null)
+    this.getHoveredNeighborPubkeys = deps.getHoveredNeighborPubkeys ?? (() => EMPTY_SET)
     this.getAvatarRevealPointer = deps.getAvatarRevealPointer ?? (() => null)
     this.getRuntimeOptions = deps.getRuntimeOptions ?? (() => null)
     this.boundAfterRender = () => this.onAfterRender()
@@ -242,14 +309,12 @@ export class AvatarOverlayRenderer {
     if (forcedCtx) {
       this.clearForcedOverlayContext(forcedCtx)
     }
-    if (!budget.drawAvatars) {
-      return
-    }
-    this.cache.setCap(budget.lruCap)
-
     const ctx = this.getOverlayContext()
     if (!ctx) {
       return
+    }
+    if (budget.drawAvatars) {
+      this.cache.setCap(budget.lruCap)
     }
 
     const directForcedAvatarPubkey = this.getForcedAvatarPubkey()
@@ -261,6 +326,7 @@ export class AvatarOverlayRenderer {
     const revealRadiusPx = Math.max(0, budget.hoverRevealRadiusPx)
     const revealRadiusSquared = revealRadiusPx * revealRadiusPx
     const moving = this.isMoving()
+    const hoveredNeighborPubkeys = this.getHoveredNeighborPubkeys()
 
     const cameraState = this.sigma.getCamera().getState()
     const cameraRatio = cameraState.ratio
@@ -276,6 +342,7 @@ export class AvatarOverlayRenderer {
     this.lastCameraSignature = cameraSignature
     const graph = this.sigma.getGraph()
     const drawItems: AvatarDrawItem[] = []
+    const focusAuraItems: FocusAuraItem[] = []
     const revealCandidates: AvatarRevealSelectionItem[] = []
     const seenNodes = new Set<string>()
 
@@ -318,14 +385,6 @@ export class AvatarOverlayRenderer {
         nodeAttrs.isPinned ||
         nodeAttrs.isSelected
       const zoomedOutMonogram = avatarRadiusPx < budget.sizeThreshold
-      if (
-        !budget.showZoomedOutMonograms &&
-        !isPersistentAvatar &&
-        !isRevealCandidate &&
-        zoomedOutMonogram
-      ) {
-        return
-      }
       const drawRadiusPx = resolveAvatarDrawRadiusPx({
         avatarRadiusPx,
         hasPriorityAvatarSizing,
@@ -334,10 +393,33 @@ export class AvatarOverlayRenderer {
       if (!this.isInViewport(viewport.x, viewport.y, drawRadiusPx)) {
         return
       }
+      seenNodes.add(pubkey)
+      if (
+        nodeAttrs.focusState === 'neighbor' ||
+        hoveredNeighborPubkeys.has(pubkey)
+      ) {
+        focusAuraItems.push({
+          pubkey,
+          x: viewport.x,
+          y: viewport.y,
+          r: Math.max(nodeRadiusPx, drawRadiusPx),
+          color: nodeAttrs.color,
+        })
+      }
+      if (!budget.drawAvatars) {
+        return
+      }
+      if (
+        !budget.showZoomedOutMonograms &&
+        !isPersistentAvatar &&
+        !isRevealCandidate &&
+        zoomedOutMonogram
+      ) {
+        return
+      }
       if (revealDistanceSquared !== null) {
         revealCandidates.push({ pubkey, distanceSquared: revealDistanceSquared })
       }
-      seenNodes.add(pubkey)
       const fastMoving =
         !isPersistentAvatar &&
         this.isFastMovingNode(
@@ -373,6 +455,12 @@ export class AvatarOverlayRenderer {
       })
     })
 
+    this.drawFocusAuras(ctx, focusAuraItems)
+    if (!budget.drawAvatars) {
+      this.pruneMotionSamples(seenNodes)
+      return
+    }
+
     for (const pubkey of selectClosestAvatarRevealPubkeys(
       revealCandidates,
       budget.hoverRevealMaxNodes,
@@ -406,6 +494,11 @@ export class AvatarOverlayRenderer {
     const selectedPubkeys = new Set(
       selectedDrawItems.map((item) => item.pubkey),
     )
+    const selectedOrInflightPubkeys = retainInflightAvatarPubkeys(
+      resolvedDrawItems,
+      selectedPubkeys,
+      (urlKey) => this.scheduler.hasInflight(urlKey),
+    )
     const selectedOrder = new Map(
       selectedDrawItems.map((item, index) => [item.pubkey, index]),
     )
@@ -430,7 +523,7 @@ export class AvatarOverlayRenderer {
 
     for (const item of orderedDrawItems) {
       const isPersistentAvatar = item.isPersistentAvatar
-      const selectedForImage = selectedPubkeys.has(item.pubkey)
+      const selectedForImage = selectedOrInflightPubkeys.has(item.pubkey)
       const hasVisibleMonogramPart =
         item.monogramInput.showBackground !== false ||
         item.monogramInput.showText !== false
@@ -553,6 +646,47 @@ export class AvatarOverlayRenderer {
     }
   }
 
+  private drawFocusAuras(
+    ctx: CanvasRenderingContext2D,
+    items: readonly FocusAuraItem[],
+  ) {
+    const itemsByPubkey = new Map<string, FocusAuraItem>()
+    for (const item of items) {
+      itemsByPubkey.set(item.pubkey, item)
+    }
+    for (const item of itemsByPubkey.values()) {
+      this.drawFocusAura(ctx, item)
+    }
+  }
+
+  private drawFocusAura(
+    ctx: CanvasRenderingContext2D,
+    item: FocusAuraItem,
+  ) {
+    const innerLineWidth = Math.max(1.5, item.r * FOCUS_AURA_INNER_LINE_WIDTH_FACTOR)
+    const outerLineWidth = Math.max(3, item.r * FOCUS_AURA_OUTER_LINE_WIDTH_FACTOR)
+    const innerRadius = item.r + FOCUS_AURA_RING_GAP_PX
+    const outerRadius =
+      item.r +
+      FOCUS_AURA_RING_GAP_PX +
+      Math.max(innerLineWidth * 0.5, outerLineWidth * 0.45)
+
+    ctx.save()
+    ctx.globalCompositeOperation = 'destination-over'
+    ctx.beginPath()
+    ctx.lineWidth = outerLineWidth
+    ctx.strokeStyle = withAlpha(item.color, FOCUS_AURA_OUTER_ALPHA)
+    ctx.arc(item.x, item.y, outerRadius, 0, FULL_CIRCLE_RADIANS)
+    ctx.stroke()
+
+    ctx.beginPath()
+    ctx.lineWidth = innerLineWidth
+    ctx.strokeStyle = withAlpha(item.color, FOCUS_AURA_INNER_ALPHA)
+    ctx.arc(item.x, item.y, innerRadius, 0, FULL_CIRCLE_RADIANS)
+    ctx.stroke()
+    ctx.restore()
+  }
+
   private resolveRuntimeBudget(): EffectiveAvatarBudget {
     const snapshot = this.budget.snapshot()
     const budget = snapshot.budget
@@ -563,7 +697,7 @@ export class AvatarOverlayRenderer {
         showZoomedOutMonograms: true,
         hoverRevealRadiusPx: DEFAULT_AVATAR_RUNTIME_OPTIONS.hoverRevealRadiusPx,
         hoverRevealMaxNodes: DEFAULT_AVATAR_RUNTIME_OPTIONS.hoverRevealMaxNodes,
-        showMonogramBackgrounds: true,
+        showMonogramBackgrounds: DEFAULT_AVATAR_RUNTIME_OPTIONS.showMonogramBackgrounds,
         showMonogramText: true,
         hideImagesOnFastNodes: false,
         fastNodeVelocityThreshold: Number.POSITIVE_INFINITY,

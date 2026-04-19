@@ -121,6 +121,13 @@ export const SigmaFilterBar = memo(function SigmaFilterBar({
             Magenta: zap
           </span>
         </span>
+        <span className="sg-filter-group" aria-label="Nodos comunes">
+          <span className="sg-filter-group__label">Nodos</span>
+          <span className="sg-filter-key">
+            <span className="sg-filter-key__swatch sg-filter-key__swatch--identity" />
+            Tono estable por pubkey
+          </span>
+        </span>
       </div>
     </div>
   )

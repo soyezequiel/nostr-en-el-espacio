@@ -30,6 +30,7 @@ import type {
   ZapReceiptInput,
 } from '@/features/graph-runtime/workers/events/contracts'
 import type { WorkerClient } from '@/features/graph-runtime/workers/shared/runtime'
+import { normalizeMediaUrl } from '@/lib/media'
 
 const RECIPROCAL_AUTHOR_CHUNK_SIZE = 100
 const RECIPROCAL_QUERY_CONCURRENCY = 2
@@ -573,15 +574,18 @@ export function safeParseProfile(content: string): {
   name: string | null
   about: string | null
   picture: string | null
+  pictureSource: string | null
   nip05: string | null
   lud16: string | null
 } | null {
   try {
     const parsed = JSON.parse(content) as Record<string, unknown>
+    const pictureSource = firstString(parsed.picture, parsed.image)
     return {
       name: firstString(parsed.display_name, parsed.name),
       about: firstString(parsed.about),
-      picture: firstString(parsed.picture),
+      picture: normalizeOptionalMediaUrl(pictureSource),
+      pictureSource,
       nip05: firstString(parsed.nip05),
       lud16: firstString(parsed.lud16),
     }
@@ -599,7 +603,7 @@ export function mapProfileRecordToNodeProfile(
     profileSource: profile.profileSource ?? null,
     name: profile.name,
     about: profile.about,
-    picture: profile.picture,
+    picture: normalizeOptionalMediaUrl(profile.picture),
     nip05: profile.nip05,
     lud16: profile.lud16,
   }
@@ -612,7 +616,7 @@ export function buildNodeProfileFromNode(node: GraphNode): NodeDetailProfile {
     profileSource: node.profileSource ?? null,
     name: node.label ?? null,
     about: node.about ?? null,
-    picture: node.picture ?? null,
+    picture: normalizeOptionalMediaUrl(node.picture),
     nip05: node.nip05 ?? null,
     lud16: node.lud16 ?? null,
   }
@@ -637,6 +641,10 @@ function firstString(...values: unknown[]): string | null {
   }
 
   return null
+}
+
+function normalizeOptionalMediaUrl(value: unknown): string | null {
+  return normalizeMediaUrl(value) ?? null
 }
 
 export function chunkIntoBatches<T>(items: readonly T[], size: number): T[][] {

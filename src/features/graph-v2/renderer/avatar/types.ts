@@ -59,7 +59,7 @@ export const DEFAULT_AVATAR_RUNTIME_OPTIONS: AvatarRuntimeOptions = {
   hoverRevealRadiusPx: 72,
   hoverRevealMaxNodes: 24,
   showZoomedOutMonograms: false,
-  showMonogramBackgrounds: true,
+  showMonogramBackgrounds: false,
   showMonogramText: true,
   hideImagesOnFastNodes: false,
   fastNodeVelocityThreshold: 240,

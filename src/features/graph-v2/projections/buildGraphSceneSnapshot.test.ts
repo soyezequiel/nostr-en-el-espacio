@@ -219,7 +219,7 @@ test('colors reciprocal follows as mutual connections while keeping idle nodes n
 
   assert.equal(edgesById['root->alice:follow']?.color, '#5fd39d')
   assert.equal(edgesById['alice->root:follow']?.color, '#5fd39d')
-  assert.equal(alice?.color, '#c7d2de')
+  assert.equal(alice?.color, '#9da8c9')
 })
 
 test('renders expanded nodes with the same base size as the root', () => {
@@ -258,8 +258,8 @@ test('uses selection as visual focus while keeping the expanded physics neighbor
   assert.equal(focusByPubkey.bob, 'neighbor')
   assert.equal(nodesByPubkey.alice?.color, '#f4fbff')
   assert.equal(nodesByPubkey.alice?.size, 17)
-  assert.equal(nodesByPubkey.bob?.color, '#f8f2a2')
-  assert.equal(nodesByPubkey.bob?.size, 13)
+  assert.equal(nodesByPubkey.bob?.color, '#8ebfc7')
+  assert.equal(nodesByPubkey.bob?.size, 9)
 
   assert.deepEqual(
     scene.physics.edges.map((edge) => edge.id),

@@ -139,7 +139,7 @@ export class AvatarLoader {
     try {
       return await this.loadViaFetch(url, bucket, signal)
     } catch (err) {
-      if (signal.aborted || isAbortError(err) || isTimeoutError(err)) {
+      if (signal.aborted || isAbortError(err)) {
         throw err
       }
       if (!hasDocumentImageElement()) {
@@ -222,9 +222,6 @@ const mergeSignals = (a: AbortSignal, b: AbortSignal): AbortSignal => {
 
 const isAbortError = (err: unknown) =>
   (err as { name?: string } | null)?.name === 'AbortError'
-
-const isTimeoutError = (err: unknown) =>
-  (err as { message?: string } | null)?.message === 'timeout'
 
 const loadHtmlImage = (
   url: string,

@@ -67,7 +67,6 @@ import type {
 } from '@/features/graph-v2/testing/browserDebug'
 
 const HOVER_SELECTED_NODE_COLOR = '#f4fbff'
-const HOVER_NEIGHBOR_NODE_COLOR = '#f8f2a2'
 const HOVER_DIM_NODE_COLOR = '#121a22'
 const HOVER_EDGE_BRIGHT_COLOR = '#f4fbff'
 const HOVER_DIM_EDGE_COLOR = '#10171f'
@@ -1281,6 +1280,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
         isMoving: () => this.hideAvatarsOnMove && this.motionActive,
         getForcedAvatarPubkey: () =>
           this.draggedNodePubkey ?? this.hoveredNodePubkey,
+        getHoveredNeighborPubkeys: () => this.currentHoverFocus.neighbors,
         getAvatarRevealPointer: () => this.avatarRevealPointer,
         getRuntimeOptions: () => this.avatarRuntimeOptions,
       })
@@ -1618,7 +1618,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       return applySelectedLabelVisibility({
         ...data,
         size: zoomScaledSize,
-        color: HOVER_NEIGHBOR_NODE_COLOR,
+        color: data.color,
         highlighted: true,
         zIndex: Math.max(data.zIndex, 8),
       })

@@ -18,6 +18,7 @@ export interface RenderNodeAttributes {
   y: number
   size: number
   color: string
+  focusState: GraphSceneFocusState
   label: string
   hidden: boolean
   highlighted: boolean
@@ -62,6 +63,7 @@ const hasRenderNodeAttributeChanges = (
   current.y !== next.y ||
   current.size !== next.size ||
   current.color !== next.color ||
+  current.focusState !== next.focusState ||
   current.label !== next.label ||
   current.hidden !== next.hidden ||
   current.highlighted !== next.highlighted ||
@@ -292,6 +294,7 @@ export class RenderGraphStore {
         y: seedPosition.y,
         size: node.size,
         color: node.color,
+        focusState: node.focusState,
         label: node.label,
         hidden: false,
         highlighted:

@@ -12,28 +12,35 @@ import type {
 const truncatePubkey = (pubkey: string) =>
   pubkey.length <= 16 ? pubkey : `${pubkey.slice(0, 8)}...${pubkey.slice(-6)}`
 
-const nodeColorBySource: Record<
-  CanonicalGraphState['nodesByPubkey'][string]['source'],
-  string
-> = {
-  root: '#7dd3a7',
-  follow: '#c7d2de',
-  inbound: '#c7d2de',
-  zap: '#c7d2de',
-  keyword: '#c7d2de',
-}
-
 const edgeColorByRelation: Record<CanonicalEdge['relation'], string> = {
   follow: '#64b5ff',
   inbound: '#ffb86b',
   zap: '#ff5da2',
 }
 const MUTUAL_EDGE_COLOR = '#5fd39d'
+const COMMON_NODE_PALETTE = [
+  '#91abc8',
+  '#8fb8b1',
+  '#b29ecf',
+  '#c79a8f',
+  '#8ebfc7',
+  '#c59ab7',
+  '#9fb58d',
+  '#9da8c9',
+  '#7fbad4',
+  '#7eb69f',
+  '#d08f78',
+  '#89a1d8',
+  '#d08e9d',
+  '#73c3bb',
+  '#b2bf73',
+  '#a78fd1',
+] as const
+const commonNodeColorCache = new Map<string, string>()
 
 const DIM_NODE_COLOR = '#121a22'
 const DIM_EDGE_COLOR = '#10171f'
 const SELECTED_COLOR = '#f4fbff'
-const NEIGHBOR_COLOR = '#f8f2a2'
 const PINNED_COLOR = '#f4fbff'
 const ROOT_COLOR = '#7dd3a7'
 const NEIGHBOR_EDGE_BRIGHT = '#f4fbff'
@@ -43,11 +50,36 @@ const SIZE_EXPANDED = 18
 const SIZE_PINNED = 12
 const SIZE_DEFAULT = 9
 const SIZE_SELECTED_BOOST = 8
-const SIZE_NEIGHBOR_BOOST = 4
 const SIZE_DIMMED = 5
 
 const baseEdgeSize = (relation: CanonicalEdge['relation']) =>
   relation === 'follow' ? 1.1 : 0.9
+
+const hashPubkey = (pubkey: string) => {
+  let hash = 2166136261
+
+  for (let index = 0; index < pubkey.length; index += 1) {
+    hash ^= pubkey.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+
+  return hash >>> 0
+}
+
+const getCommonNodeColor = (pubkey: string) => {
+  const cached = commonNodeColorCache.get(pubkey)
+  if (cached) {
+    return cached
+  }
+
+  const color = COMMON_NODE_PALETTE[hashPubkey(pubkey) % COMMON_NODE_PALETTE.length]!
+  commonNodeColorCache.set(pubkey, color)
+  return color
+}
+
+const resolveBaseNodeColor = (
+  node: CanonicalGraphState['nodesByPubkey'][string],
+) => (node.source === 'root' ? ROOT_COLOR : getCommonNodeColor(node.pubkey))
 
 const getReciprocalFollowEdgeIds = (edges: readonly CanonicalEdge[]) => {
   const followEdgeIds = new Set<string>()
@@ -134,7 +166,7 @@ const resolveNodeColor = (
     case 'dim':
       return DIM_NODE_COLOR
     case 'neighbor':
-      return NEIGHBOR_COLOR
+      return baseColor
     case 'idle':
     default:
       return baseColor
@@ -149,7 +181,7 @@ const resolveNodeSize = (
     case 'selected':
       return baseSize + SIZE_SELECTED_BOOST
     case 'neighbor':
-      return baseSize + SIZE_NEIGHBOR_BOOST
+      return baseSize
     case 'dim':
       return SIZE_DIMMED
     case 'root':
@@ -378,7 +410,7 @@ const computeGraphSceneSnapshot = (
       isNeighbor,
       hasSelection: hasVisualFocus,
     })
-    const baseColor = nodeColorBySource[node.source]
+    const baseColor = resolveBaseNodeColor(node)
     const baseSize = isRoot
       ? SIZE_ROOT
       : node.isExpanded

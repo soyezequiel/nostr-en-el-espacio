@@ -33,3 +33,37 @@ test('pins a node when drag release requests it', () => {
 
   assert.deepEqual(pinned, ['alice'])
 })
+
+test('clears selection when dragging a different node', () => {
+  const selections: Array<string | null> = []
+  const bridge = {
+    getState: () => ({
+      selectedNodePubkey: 'alice',
+    }),
+    selectNode: (pubkey: string | null) => {
+      selections.push(pubkey)
+    },
+  } as unknown as LegacyKernelBridge
+  const controller = new GraphInteractionController(bridge)
+
+  controller.callbacks.onNodeDragStart('bob')
+
+  assert.deepEqual(selections, [null])
+})
+
+test('keeps selection when dragging the selected node', () => {
+  const selections: Array<string | null> = []
+  const bridge = {
+    getState: () => ({
+      selectedNodePubkey: 'alice',
+    }),
+    selectNode: (pubkey: string | null) => {
+      selections.push(pubkey)
+    },
+  } as unknown as LegacyKernelBridge
+  const controller = new GraphInteractionController(bridge)
+
+  controller.callbacks.onNodeDragStart('alice')
+
+  assert.deepEqual(selections, [])
+})

@@ -2,7 +2,7 @@
 
 # Nostr Espacial
 
-### Explorador relay-aware de identidad Nostr con Sigma y evidencia exportable
+### Explorador relay-aware de identidad Nostr con Sigma
 
 [![Demo en vivo](https://img.shields.io/badge/Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://nostr-en-el-espacio.vercel.app/)
 [![Hackathon](https://img.shields.io/badge/La%20Crypta-IDENTITY%202026-f7931a?style=for-the-badge)](https://github.com/lacrypta/hackathons-2026)
@@ -13,15 +13,15 @@
 
 <br />
 
-<img src="./public/graph-explorer-preview.png" alt="Vista de Nostr Espacial en Sigma" width="760" />
+<img src="./public/graph-explorer-preview.png" alt="Captura panoramica del explorador Sigma de Nostr Espacial" width="1040" />
 
-<sub>Vista graph-first para explorar identidades, relaciones y senales de confianza con lectura relay-aware.</sub>
+<sub>Vista graph-first para explorar identidades, relaciones, capas sociales y senales de confianza con lectura relay-aware.</sub>
 
 </div>
 
 > Proyecto participante de **IDENTITY**, el desafio de **abril de 2026** dentro de **Lightning Hackathons 2026** de **La Crypta**.
 
-Este repositorio nacio a partir de `nostr-starter`, pero hoy responde a otro producto: **Nostr Espacial**, una experiencia **graph-first** para explorar identidad en Nostr, leer contexto social, entender incertidumbre de relays y exportar snapshots auditables.
+Este repositorio nacio a partir de `nostr-starter`, pero hoy responde a otro producto: **Nostr Espacial**, una experiencia **graph-first** para explorar identidad en Nostr, leer contexto social y entender incertidumbre de relays dentro de una vista Sigma.
 
 La documentacion esta escrita en espanol y pensada para una audiencia tecnica de Argentina: gente que quiera preparar una demo para jurado, investigar identidad en Nostr o extender el proyecto sin tener que reconstruir primero el estado real del repo.
 
@@ -36,7 +36,7 @@ La documentacion esta escrita en espanol y pensada para una audiencia tecnica de
 - Trabaja con relays reales, mostrando salud, cobertura parcial y estado stale
 - Permite comparar identidades dentro del canvas
 - Integra senales como perfiles, badges y zaps
-- Exporta evidencia como snapshots auditables en un ZIP deterministico
+- Mantiene una lectura visual clara del estado del grafo, sus capas y sus datos parciales
 
 ## Por que encaja bien en IDENTITY
 
@@ -45,7 +45,7 @@ La propuesta no se limita a "ver un perfil". El foco esta en **identidad como re
 - identidad relacional
 - descubrimiento relay-aware
 - senales de confianza y contexto
-- evidencia exportable para demo, investigacion o validacion
+- lectura tecnica para demo, investigacion o validacion de identidad relacional
 
 Ese enfoque conversa bien con lo que suele valorar un jurado tecnico: innovacion en identidad, demo funcionando, criterio de protocolo y una historia de producto clara.
 
@@ -64,10 +64,10 @@ Ese enfoque conversa bien con lo que suele valorar un jurado tecnico: innovacion
 - Flujo QR para Nostr Connect y bunker login
 - Carga relay-aware con timeouts y fallback visual
 - Expansion estructural de nodos sin perder la sesion del grafo
-- Paneles de configuracion para visualizacion, relays y export
+- Paneles de configuracion para visualizacion, relays y capas del grafo
 - Analisis del grafo en background con Web Workers
 - Persistencia local con Dexie para sostener la experiencia del explorador
-- Pipeline de export pensado como paquete de evidencia, no solo como descarga
+- Diagnosticos visibles para relays, rendimiento del canvas y estados parciales
 
 ## Stack
 
@@ -104,7 +104,7 @@ src/
 |-- app/                  # Rutas Next.js
 |-- components/           # Navbar, login, profile, badges
 |-- features/graph-v2/    # Sigma UI, dominio, proyecciones y renderer
-|-- features/graph-runtime/ # Store, kernel, relays, DB, export y workers del grafo
+|-- features/graph-runtime/ # Store, kernel, relays, DB, analysis y workers del grafo
 |-- lib/                  # Helpers compartidos de Nostr y media
 |-- store/                # Estado compartido de autenticacion
 `-- types/                # Tipados
@@ -120,6 +120,6 @@ src/
 
 ## Nota importante
 
-La superficie principal del producto es el grafo Sigma en `/labs/sigma`. `/` funciona como landing de entrada para orientar la demo y enviar a las rutas clave; `profile` y `badges` siguen siendo utiles, pero la historia mas fuerte del proyecto esta en la exploracion de identidad, la incertidumbre de relays y la exportacion de evidencia.
+La superficie principal del producto es el grafo Sigma en `/labs/sigma`. `/` funciona como landing de entrada para orientar la demo y enviar a las rutas clave; `profile` y `badges` siguen siendo utiles, pero la historia mas fuerte del proyecto esta en la exploracion de identidad, la incertidumbre de relays y la lectura visual del contexto social.
 
 

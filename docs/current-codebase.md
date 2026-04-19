@@ -15,7 +15,7 @@ Hoy:
 - `profile` y `badges` viven en rutas separadas
 - la incertidumbre de relays forma parte de la UX, no es un caso borde
 - el runtime compartido del grafo vive en `src/features/graph-runtime/`
-- la app soporta export orientado a evidencia, no solo exploracion en pantalla
+- la app prioriza exploracion visual, capas sociales, relays y estados parciales verificables en pantalla
 
 ## 2. Mapa de rutas
 
@@ -44,7 +44,7 @@ Objetivo:
 - consultar relays con estados parciales, stale y timeouts visibles
 - proyectar el vecindario social con Sigma.js
 - expandir nodos, alternar capas, ver detalle de identidades y zaps
-- conservar export deterministico y persistencia local
+- conservar persistencia local para sostener la experiencia del explorador
 
 Notas:
 
@@ -149,7 +149,7 @@ Responsabilidades:
 - `src/features/graph-runtime/nostr/`
 - `src/features/graph-runtime/db/`
 - `src/features/graph-runtime/analysis/`
-- `src/features/graph-runtime/export/`
+- `src/features/graph-runtime/export/` como infraestructura interna sin superficie de producto verificada
 - `src/features/graph-runtime/workers/`
 
 Esta capa resuelve:
@@ -163,9 +163,9 @@ Esta capa resuelve:
 - programacion del analisis del grafo descubierto
 - precarga de la capa de zaps
 - persistencia local con Dexie
-- export deterministico de snapshots
+- infraestructura interna de captura/archivo que no debe tratarse como funcionalidad disponible para usuario
 
-Si la logica se parece a workflow, ciclo de vida de sesion, protocolo, persistencia o evidencia, pertenece en `graph-runtime`.
+Si la logica se parece a workflow, ciclo de vida de sesion, protocolo, persistencia o analisis compartido, pertenece en `graph-runtime`.
 
 ### Workers
 
@@ -185,11 +185,11 @@ A nivel general:
 2. `SigmaRootInput.tsx` llama a `resolveRootIdentity()` para resolver el input a una pubkey, relay hints y evidencia de origen.
 3. El bridge llama al runtime compartido para cargar el vecindario raiz desde el set activo de relays.
 4. Los workers parsean eventos y calculan analisis del grafo.
-5. Los slices del store reciben nodos, links, estado de relays, analisis, zaps y export.
+5. Los slices del store reciben nodos, links, estado de relays, analisis, zaps y estado de UI.
 6. Las proyecciones de `graph-v2` traducen ese estado a snapshots para Sigma.
 7. `SigmaCanvasHost` monta Sigma con el grafo de render y el adapter corre FA2 sobre el grafo de fisica.
 8. Un ledger compartido preserva posiciones entre rebuilds y espeja los nodos fisicos hacia el render mientras la simulacion corre.
-9. La UI expone detalle de nodo, relays, render, capas, export y diagnosticos.
+9. La UI expone detalle de nodo, relays, render, capas, busqueda y diagnosticos.
 
 Esto implica:
 
@@ -250,5 +250,5 @@ Tocar:
 6. `src/features/graph-runtime/app/store/types.ts`
 7. `src/features/graph-runtime/kernel/runtime.ts`
 8. `src/features/graph-v2/renderer/SigmaRendererAdapter.ts`
-9. `src/features/graph-runtime/export/types.ts`
+9. `src/features/graph-runtime/analysis/types.ts`
 10. `src/lib/nostr.ts`

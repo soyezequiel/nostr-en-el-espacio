@@ -45,6 +45,11 @@ import {
   DEFAULT_BUDGETS,
 } from '@/features/graph-v2/renderer/avatar/types'
 import type { AvatarRuntimeOptions } from '@/features/graph-v2/renderer/avatar/types'
+import type { ImageLodBucket } from '@/features/graph-v2/renderer/avatar/avatarImageUtils'
+import {
+  captureSocialGraphImage,
+  type SocialGraphCaptureOptions,
+} from '@/features/graph-v2/renderer/socialGraphCapture'
 import {
   createSuppressedNodeClick,
   createPendingNodeDragGesture,
@@ -85,9 +90,20 @@ const AVATAR_MIN_HOVER_REVEAL_MAX_NODES = 0
 const AVATAR_MAX_HOVER_REVEAL_MAX_NODES = 96
 const AVATAR_MIN_FAST_NODE_VELOCITY = 40
 const AVATAR_MAX_FAST_NODE_VELOCITY = 2000
+const AVATAR_MAX_INTERACTIVE_BUCKETS = [32, 64, 128, 256] as const
+const AVATAR_MAX_SOCIAL_CAPTURE_BUCKETS = [32, 64, 128, 256, 512] as const
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
+
+const normalizeBucketOption = <T extends readonly ImageLodBucket[]>(
+  value: ImageLodBucket | undefined,
+  allowed: T,
+  fallback: ImageLodBucket,
+): ImageLodBucket =>
+  allowed.includes(value as T[number])
+    ? (value as ImageLodBucket)
+    : fallback
 
 const easeInOut = (value: number) => {
   const t = clampNumber(value, 0, 1)
@@ -819,6 +835,19 @@ export class SigmaRendererAdapter implements RendererAdapter {
         AVATAR_MIN_FAST_NODE_VELOCITY,
         AVATAR_MAX_FAST_NODE_VELOCITY,
       ),
+      allowZoomedOutImages:
+        options.allowZoomedOutImages ??
+        DEFAULT_AVATAR_RUNTIME_OPTIONS.allowZoomedOutImages,
+      maxInteractiveBucket: normalizeBucketOption(
+        options.maxInteractiveBucket,
+        AVATAR_MAX_INTERACTIVE_BUCKETS,
+        DEFAULT_AVATAR_RUNTIME_OPTIONS.maxInteractiveBucket,
+      ),
+      maxSocialCaptureBucket: normalizeBucketOption(
+        options.maxSocialCaptureBucket,
+        AVATAR_MAX_SOCIAL_CAPTURE_BUCKETS,
+        DEFAULT_AVATAR_RUNTIME_OPTIONS.maxSocialCaptureBucket,
+      ),
     }
 
     if (
@@ -837,7 +866,13 @@ export class SigmaRendererAdapter implements RendererAdapter {
       this.avatarRuntimeOptions.hideImagesOnFastNodes ===
         nextOptions.hideImagesOnFastNodes &&
       this.avatarRuntimeOptions.fastNodeVelocityThreshold ===
-        nextOptions.fastNodeVelocityThreshold
+        nextOptions.fastNodeVelocityThreshold &&
+      this.avatarRuntimeOptions.allowZoomedOutImages ===
+        nextOptions.allowZoomedOutImages &&
+      this.avatarRuntimeOptions.maxInteractiveBucket ===
+        nextOptions.maxInteractiveBucket &&
+      this.avatarRuntimeOptions.maxSocialCaptureBucket ===
+        nextOptions.maxSocialCaptureBucket
     ) {
       return
     }
@@ -848,6 +883,64 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   public getAvatarPerfSnapshot(): PerfBudgetSnapshot | null {
     return this.avatarBudget?.snapshot() ?? null
+  }
+
+  public async captureSocialGraph(
+    options: SocialGraphCaptureOptions = {},
+  ): Promise<Blob> {
+    const sigma = this.sigma
+    const renderStore = this.renderStore
+    if (!sigma || !renderStore) {
+      throw new Error('sigma_not_ready')
+    }
+
+    const graph = renderStore.getGraph()
+    const cache = this.avatarCache ?? new AvatarBitmapCache(DEFAULT_BUDGETS.high.lruCap)
+    const loader = this.avatarLoader ?? new AvatarLoader()
+    const shouldClearTransientCache = cache !== this.avatarCache
+    const previousCameraState = sigma.getCamera().getState()
+    const wasPhysicsRunning = this.forceRuntime?.isRunning() ?? false
+
+    const nodes = graph.nodes().map((pubkey) => ({
+      pubkey,
+      attrs: graph.getNodeAttributes(pubkey) as RenderNodeAttributes,
+      degree: graph.degree(pubkey),
+    }))
+    const edges = graph.edges().map((edgeId) => ({
+      source: graph.source(edgeId),
+      target: graph.target(edgeId),
+      attrs: graph.getEdgeAttributes(edgeId) as RenderEdgeAttributes,
+    }))
+
+    this.forceRuntime?.suspend()
+    this.cancelPhysicsPositionBridge()
+    this.motionActive = false
+
+    try {
+      return await captureSocialGraphImage({
+        nodes,
+        edges,
+        cache,
+        loader,
+        rootPubkey: this.scene?.render.cameraHint.rootPubkey ?? null,
+        options: {
+          ...options,
+          maxBucket:
+            options.maxBucket ??
+            this.avatarRuntimeOptions.maxSocialCaptureBucket,
+        },
+      })
+    } finally {
+      sigma.getCamera().setState(previousCameraState)
+      if (wasPhysicsRunning) {
+        this.forceRuntime?.resume()
+        this.ensurePhysicsPositionBridge()
+      }
+      if (shouldClearTransientCache) {
+        cache.clear()
+      }
+      this.safeRefresh()
+    }
   }
 
   public setDragInfluenceTuning(

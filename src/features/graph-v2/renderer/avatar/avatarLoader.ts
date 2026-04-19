@@ -131,21 +131,32 @@ export class AvatarLoader {
     url: string,
     bucket: ImageLodBucket,
     signal: AbortSignal,
+    options: { useImageElementFallback?: boolean } = {},
   ): Promise<LoadedAvatar> {
     if (!isSafeAvatarUrl(url)) {
       throw new Error('unsafe_url')
     }
 
+    const allowFallback = options.useImageElementFallback !== false
     try {
       return await this.loadViaFetch(url, bucket, signal)
     } catch (err) {
       if (signal.aborted || isAbortError(err)) {
         throw err
       }
-      if (!hasDocumentImageElement()) {
+      if (!allowFallback || !hasDocumentImageElement()) {
         throw err
       }
-      return this.loadViaImageElement(url, bucket, signal)
+      try {
+        return await this.loadViaImageElement(url, bucket, signal)
+      } catch (fallbackErr) {
+        if (signal.aborted || isAbortError(fallbackErr)) {
+          throw fallbackErr
+        }
+        // Preserve the original fetch error reason; the img fallback
+        // would not have found a different outcome for same-origin proxy URLs.
+        throw err
+      }
     }
   }
 
@@ -166,17 +177,33 @@ export class AvatarLoader {
         mode: 'cors',
       })
       if (!response.ok) {
-        throw new Error(`http_${response.status}`)
+        const proxyReason = response.headers.get('x-avatar-proxy-reason')
+        const reasonTag = proxyReason ? `_${proxyReason}` : ''
+        const err = new Error(`http_${response.status}${reasonTag}`)
+        ;(err as { reason?: string }).reason =
+          proxyReason ?? `http_${response.status}`
+        throw err
       }
       const blob = await response.blob()
       if (signal.aborted) {
         throw new DOMException('aborted', 'AbortError')
       }
-      const raw = await this.createImageBitmapImpl(blob, {
-        resizeWidth: bucket,
-        resizeHeight: bucket,
-        resizeQuality: 'medium',
-      })
+      let raw: ImageBitmap
+      try {
+        raw = await this.createImageBitmapImpl(blob, {
+          resizeWidth: bucket,
+          resizeHeight: bucket,
+          resizeQuality: 'medium',
+        })
+      } catch (decodeErr) {
+        if (signal.aborted || isAbortError(decodeErr)) {
+          throw decodeErr
+        }
+        const err = new Error('decode_failed')
+        ;(err as { reason?: string; cause?: unknown }).reason = 'decode_failed'
+        ;(err as { cause?: unknown }).cause = decodeErr
+        throw err
+      }
       if (signal.aborted) {
         try {
           raw.close()

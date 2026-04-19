@@ -34,6 +34,7 @@
 - Trabaja con relays reales, mostrando salud, cobertura parcial
 - Integra informacion como perfiles y zaps
 - Mantiene una lectura visual clara del estado del grafo, sus capas y sus datos parciales
+- Genera una imagen PNG social del grafo completo con avatares reales cuando estan disponibles
 
 ## Por que encaja bien en IDENTITY
 
@@ -48,7 +49,7 @@ La propuesta no se limita a "ver un perfil". El foco esta en **identidad como re
 | Ruta | Para que sirve |
 | --- | --- |
 | `/` | Landing de entrada con narrativa de producto |
-| `/labs/sigma` | Explorador principal del grafo de identidad con Sigma |
+| `/labs/sigma` | Explorador principal del grafo de identidad con Sigma y captura PNG social |
 
 
 ## Stack

@@ -8,6 +8,7 @@ import type {
 } from '@/features/graph-v2/renderer/contracts'
 import type { AvatarRuntimeOptions } from '@/features/graph-v2/renderer/avatar/types'
 import type { PerfBudgetSnapshot } from '@/features/graph-v2/renderer/avatar/perfBudget'
+import type { SocialGraphCaptureOptions } from '@/features/graph-v2/renderer/socialGraphCapture'
 import { SigmaRendererAdapter } from '@/features/graph-v2/renderer/SigmaRendererAdapter'
 import { hasRenderableSigmaContainer } from '@/features/graph-v2/renderer/containerDimensions'
 import type { DragNeighborhoodInfluenceTuning } from '@/features/graph-v2/renderer/dragInfluence'
@@ -48,6 +49,7 @@ export interface SigmaCanvasHostHandle {
   panCameraToGraph: (graphX: number, graphY: number, options?: { animate?: boolean }) => void
   subscribeToCameraTicks: (listener: () => void) => () => void
   subscribeToRenderTicks: (listener: () => void) => () => void
+  captureSocialGraph: (options?: SocialGraphCaptureOptions) => Promise<Blob>
 }
 
 const BACKDROP_GRID_WORLD_STEP = 80
@@ -207,6 +209,13 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
         adapterRef.current?.subscribeToCameraTicks(listener) ?? (() => {}),
       subscribeToRenderTicks: (listener) =>
         adapterRef.current?.subscribeToRenderTicks(listener) ?? (() => {}),
+      captureSocialGraph: (options) => {
+        const adapter = adapterRef.current
+        if (!adapter) {
+          return Promise.reject(new Error('sigma_not_ready'))
+        }
+        return adapter.captureSocialGraph(options)
+      },
     }),
     [],
   )

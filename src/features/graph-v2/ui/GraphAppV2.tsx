@@ -54,6 +54,10 @@ import {
   type AvatarRuntimeOptions,
 } from '@/features/graph-v2/renderer/avatar/types'
 import type { PerfBudgetSnapshot } from '@/features/graph-v2/renderer/avatar/perfBudget'
+import type {
+  SocialGraphCaptureFormat,
+  SocialGraphCapturePhase,
+} from '@/features/graph-v2/renderer/socialGraphCapture'
 import {
   DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING,
   type DragNeighborhoodInfluenceTuning,
@@ -89,9 +93,23 @@ import { SigmaSavedRootsPanel } from '@/features/graph-v2/ui/SigmaSavedRootsPane
 import { SigmaToasts, type SigmaToast } from '@/features/graph-v2/ui/SigmaToasts'
 import { useLiveZapFeed } from '@/features/graph-v2/zaps/useLiveZapFeed'
 import type { ParsedZap } from '@/features/graph-v2/zaps/zapParser'
+import { downloadBlob } from '@/features/graph-runtime/export/download'
 import { fetchProfileByPubkey, type NostrProfile } from '@/lib/nostr'
 
 type SigmaSettingsTab = 'renderer' | 'relays' | 'dev'
+
+const SOCIAL_CAPTURE_FORMAT_LABELS: Record<SocialGraphCaptureFormat, string> = {
+  wide: 'Wide 1600x900',
+  square: 'Square 1080',
+  story: 'Story 1080x1920',
+}
+
+const SOCIAL_CAPTURE_PHASE_LABELS: Record<SocialGraphCapturePhase, string> = {
+  preparing: 'preparando',
+  'loading-avatars': 'cargando avatares',
+  'generating-image': 'generando imagen',
+  completed: 'finalizando',
+}
 
 type ValidRootIdentity = Extract<RootIdentityResolution, { status: 'valid' }>
 
@@ -607,6 +625,56 @@ function RenderOptionsPanel({
           type="button"
         />
       </div>
+      <div className="sg-setting-row">
+        <div>
+          <div className="sg-setting-row__lbl">Fotos en zoom-out</div>
+          <div className="sg-setting-row__desc">Usa buckets chicos cuando el nodo se ve chico</div>
+        </div>
+        <button
+          className={`sg-toggle${avatarRuntimeOptions.allowZoomedOutImages ? ' sg-toggle--on' : ''}`}
+          onClick={() => onAvatarRuntimeOptionsChange({
+            ...avatarRuntimeOptions,
+            allowZoomedOutImages: !avatarRuntimeOptions.allowZoomedOutImages,
+          })}
+          type="button"
+        />
+      </div>
+      <div className="sg-setting-row">
+        <div>
+          <div className="sg-setting-row__lbl">Bucket interactivo max</div>
+          <div className="sg-setting-row__desc">Limita calidad durante navegacion</div>
+        </div>
+        <select
+          className="sg-select"
+          onChange={(event) => onAvatarRuntimeOptionsChange({
+            ...avatarRuntimeOptions,
+            maxInteractiveBucket: Number.parseInt(event.target.value, 10) as AvatarRuntimeOptions['maxInteractiveBucket'],
+          })}
+          value={avatarRuntimeOptions.maxInteractiveBucket}
+        >
+          {[32, 64, 128, 256].map((bucket) => (
+            <option key={bucket} value={bucket}>{bucket}px</option>
+          ))}
+        </select>
+      </div>
+      <div className="sg-setting-row">
+        <div>
+          <div className="sg-setting-row__lbl">Bucket captura max</div>
+          <div className="sg-setting-row__desc">Presupuesto visual para PNG social</div>
+        </div>
+        <select
+          className="sg-select"
+          onChange={(event) => onAvatarRuntimeOptionsChange({
+            ...avatarRuntimeOptions,
+            maxSocialCaptureBucket: Number.parseInt(event.target.value, 10) as AvatarRuntimeOptions['maxSocialCaptureBucket'],
+          })}
+          value={avatarRuntimeOptions.maxSocialCaptureBucket}
+        >
+          {[128, 256, 512].map((bucket) => (
+            <option key={bucket} value={bucket}>{bucket}px</option>
+          ))}
+        </select>
+      </div>
       <button
         className="sg-btn"
         onClick={() => { onAvatarRuntimeOptionsChange(DEFAULT_AVATAR_RUNTIME_OPTIONS) }}
@@ -784,10 +852,23 @@ export default function GraphAppV2() {
   const [physicsTuning, setPhysicsTuning] =
     useState<ForceAtlasPhysicsTuning>(DEFAULT_FORCE_ATLAS_PHYSICS_TUNING)
   const [devPhysicsAutoFreezeEnabled, setDevPhysicsAutoFreezeEnabled] = useState(false)
-  const [hideAvatarsOnMove, setHideAvatarsOnMove] = useState(false)
+  const [hideAvatarsOnMove, setHideAvatarsOnMove] = useState(true)
   const [avatarRuntimeOptions, setAvatarRuntimeOptions] =
     useState<AvatarRuntimeOptions>(DEFAULT_AVATAR_RUNTIME_OPTIONS)
   const [avatarPerfSnapshot, setAvatarPerfSnapshot] = useState<PerfBudgetSnapshot | null>(null)
+  const [socialCaptureFormat, setSocialCaptureFormat] =
+    useState<SocialGraphCaptureFormat>('wide')
+  const [socialCapturePhase, setSocialCapturePhase] =
+    useState<SocialGraphCapturePhase | null>(null)
+  const [socialCaptureProgress, setSocialCaptureProgress] = useState<{
+    loaded: number
+    total: number
+    failed?: number
+    missing?: number
+    drawn?: number
+    fallbackWithPhoto?: number
+  } | null>(null)
+  const [isSocialCaptureBusy, setIsSocialCaptureBusy] = useState(false)
   const [activeSettingsTab, setActiveSettingsTab] = useState<SigmaSettingsTab>('relays')
   const [isRootSheetOpen, setIsRootSheetOpen] = useState(!isFixtureMode)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -1438,6 +1519,126 @@ export default function GraphAppV2() {
       .catch(() => setActionFeedback('No se pudo copiar el npub.'))
   }, [])
 
+  const handleShareImage = useCallback(() => {
+    if (isSocialCaptureBusy) {
+      return
+    }
+    const host = sigmaHostRef.current
+    if (!host) {
+      setActionFeedback('El grafo todavia no esta listo para capturar.')
+      return
+    }
+
+    setIsSocialCaptureBusy(true)
+    setSocialCapturePhase('preparing')
+    setSocialCaptureProgress(null)
+    let latestCaptureProgress: {
+      loaded: number
+      total: number
+      failed?: number
+      missing?: number
+      drawn?: number
+      fallbackWithPhoto?: number
+      attempted?: number
+      retried?: number
+      timedOut?: boolean
+      topFailureReason?: string
+    } | null = null
+
+    void host
+      .captureSocialGraph({
+        format: socialCaptureFormat,
+        onProgress: (progress) => {
+          setSocialCapturePhase(progress.phase)
+          if (
+            (progress.phase === 'loading-avatars' ||
+              progress.phase === 'generating-image' ||
+              progress.phase === 'completed') &&
+            progress.totalAvatarCount !== undefined
+          ) {
+            const reasons = progress.failureReasons ?? {}
+            const topFailureReason = Object.entries(reasons).sort(
+              (a, b) => b[1] - a[1],
+            )[0]?.[0]
+            latestCaptureProgress = {
+              loaded: progress.loadedAvatarCount ?? 0,
+              total: progress.totalAvatarCount,
+              failed: progress.failedAvatarCount,
+              missing: progress.missingPhotoCount,
+              drawn: progress.drawnImageCount,
+              fallbackWithPhoto: progress.fallbackWithPhotoCount,
+              attempted: progress.attemptedAvatarCount,
+              retried: progress.retriedAvatarCount,
+              timedOut: progress.timedOut,
+              topFailureReason,
+            }
+            setSocialCaptureProgress(latestCaptureProgress)
+          }
+        },
+      })
+      .then((blob) => {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+        downloadBlob(blob, `sigma-graph-${socialCaptureFormat}-${stamp}.png`)
+        const failedCount =
+          latestCaptureProgress?.fallbackWithPhoto ??
+          latestCaptureProgress?.failed ??
+          0
+        const summary = latestCaptureProgress
+          ? ` ${latestCaptureProgress.drawn ?? latestCaptureProgress.loaded}/${latestCaptureProgress.total} fotos reales${
+              latestCaptureProgress.missing
+                ? `; ${latestCaptureProgress.missing} sin foto`
+                : ''
+            }${
+              failedCount
+                ? `; ${failedCount} con foto fallida${
+                    latestCaptureProgress?.topFailureReason
+                      ? ` (${latestCaptureProgress.topFailureReason})`
+                      : ''
+                  }`
+                : ''
+            }${
+              latestCaptureProgress?.retried
+                ? `; ${latestCaptureProgress.retried} reintentos`
+                : ''
+            }${latestCaptureProgress?.timedOut ? '; timeout parcial' : ''}.`
+          : ''
+        setActionFeedback(
+          `Imagen ${SOCIAL_CAPTURE_FORMAT_LABELS[socialCaptureFormat]} generada.${summary}`,
+        )
+      })
+      .catch((error: unknown) => {
+        setActionFeedback(
+          error instanceof Error
+            ? `No se pudo generar la imagen: ${error.message}`
+            : 'No se pudo generar la imagen.',
+        )
+      })
+      .finally(() => {
+        setIsSocialCaptureBusy(false)
+        setSocialCapturePhase(null)
+        setSocialCaptureProgress(null)
+      })
+  }, [isSocialCaptureBusy, socialCaptureFormat])
+
+  const socialCaptureStatus = useMemo(() => {
+    if (!socialCapturePhase) {
+      return null
+    }
+    const label = SOCIAL_CAPTURE_PHASE_LABELS[socialCapturePhase]
+    if (
+      (socialCapturePhase === 'loading-avatars' ||
+        socialCapturePhase === 'generating-image' ||
+        socialCapturePhase === 'completed') &&
+      socialCaptureProgress
+    ) {
+      return `${label} ${socialCaptureProgress.drawn ?? socialCaptureProgress.loaded}/${socialCaptureProgress.total}`
+    }
+    if (socialCapturePhase !== 'loading-avatars' || !socialCaptureProgress) {
+      return label
+    }
+    return `${label} ${socialCaptureProgress.loaded}/${socialCaptureProgress.total}`
+  }, [socialCapturePhase, socialCaptureProgress])
+
   const railButtons: RailButton[] = useMemo(() => [
     {
       id: 'settings',
@@ -1507,6 +1708,11 @@ export default function GraphAppV2() {
     if (zapFeedback)    entries.push({ id: 'zap', msg: zapFeedback, tone: 'zap' })
     return entries
   }, [actionFeedback, zapFeedback])
+
+  const handleToastDismiss = useCallback((id: SigmaToast['id']) => {
+    if (id === 'action') setActionFeedback(null)
+    if (id === 'zap') setZapFeedback(null)
+  }, [])
 
   // Minimap viewport info
   const viewportRatio = isFixtureMode
@@ -1916,10 +2122,16 @@ export default function GraphAppV2() {
 
       {/* Top bar: root chip (left) + brand (right) */}
       <SigmaTopBar
+        canShare={hasRoot}
         onSwitchRoot={handleOpenRootSheet}
+        onShareFormatChange={setSocialCaptureFormat}
+        onShareImage={handleShareImage}
         rootDisplayName={hasRoot ? (rootDisplayName ?? domainState.rootPubkey?.slice(0, 10) ?? null) : null}
         rootNpub={rootNpubEncoded}
         rootPictureUrl={rootPictureUrl}
+        shareBusy={isSocialCaptureBusy}
+        shareFormat={socialCaptureFormat}
+        shareStatus={socialCaptureStatus}
       />
 
       {/* Filter bar + rail + HUD + minimap — only when a root is loaded */}
@@ -2038,7 +2250,7 @@ export default function GraphAppV2() {
       )}
 
       {/* Toasts */}
-      <SigmaToasts toasts={toastEntries} />
+      <SigmaToasts onDismiss={handleToastDismiss} toasts={toastEntries} />
     </main>
   )
 }

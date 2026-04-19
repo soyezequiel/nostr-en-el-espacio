@@ -49,6 +49,9 @@ export interface AvatarRuntimeOptions {
   readonly showMonogramText: boolean
   readonly hideImagesOnFastNodes: boolean
   readonly fastNodeVelocityThreshold: number
+  readonly allowZoomedOutImages: boolean
+  readonly maxInteractiveBucket: ImageLodBucket
+  readonly maxSocialCaptureBucket: ImageLodBucket
 }
 
 export type DeviceTier = 'low' | 'mid' | 'high'
@@ -58,11 +61,14 @@ export const DEFAULT_AVATAR_RUNTIME_OPTIONS: AvatarRuntimeOptions = {
   zoomThreshold: 2.1,
   hoverRevealRadiusPx: 72,
   hoverRevealMaxNodes: 24,
-  showZoomedOutMonograms: false,
+  showZoomedOutMonograms: true,
   showMonogramBackgrounds: false,
   showMonogramText: true,
-  hideImagesOnFastNodes: false,
+  hideImagesOnFastNodes: true,
   fastNodeVelocityThreshold: 240,
+  allowZoomedOutImages: true,
+  maxInteractiveBucket: 256,
+  maxSocialCaptureBucket: 512,
 }
 
 export const DEFAULT_BUDGETS: Record<DeviceTier, AvatarBudget> = {

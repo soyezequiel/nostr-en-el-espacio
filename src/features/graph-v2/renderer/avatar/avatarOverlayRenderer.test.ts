@@ -7,6 +7,7 @@ import {
   selectAvatarDrawContext,
   selectAvatarDrawItemsForFrame,
   selectClosestAvatarRevealPubkeys,
+  shouldDisableAvatarImage,
 } from '@/features/graph-v2/renderer/avatar/avatarOverlayRenderer'
 
 test('keeps the forced dragged avatar even when the frame cap is zero', () => {
@@ -132,5 +133,47 @@ test('draws the forced avatar on the forced context when available', () => {
   assert.equal(
     selectAvatarDrawContext('alice', forcedPubkeys, labelContext, null),
     labelContext,
+  )
+})
+
+test('global graph or camera motion degrades image avatars to monograms', () => {
+  assert.equal(
+    shouldDisableAvatarImage({
+      selectedForImage: true,
+      globalMotionActive: true,
+      monogramOnly: false,
+      fastMoving: false,
+      imageDrawCount: 0,
+      maxImageDrawsPerFrame: 12,
+    }),
+    true,
+  )
+})
+
+test('fast node motion degrades image avatars to monograms', () => {
+  assert.equal(
+    shouldDisableAvatarImage({
+      selectedForImage: true,
+      globalMotionActive: false,
+      monogramOnly: false,
+      fastMoving: true,
+      imageDrawCount: 0,
+      maxImageDrawsPerFrame: 12,
+    }),
+    true,
+  )
+})
+
+test('image draw cap degrades remaining avatars to monograms', () => {
+  assert.equal(
+    shouldDisableAvatarImage({
+      selectedForImage: true,
+      globalMotionActive: false,
+      monogramOnly: false,
+      fastMoving: false,
+      imageDrawCount: 12,
+      maxImageDrawsPerFrame: 12,
+    }),
+    true,
   )
 })

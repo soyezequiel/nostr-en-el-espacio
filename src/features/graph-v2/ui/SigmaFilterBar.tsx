@@ -22,7 +22,6 @@ export const SigmaFilterBar = memo(function SigmaFilterBar({
   onSelect,
 }: Props) {
   const stackRef = useRef<HTMLDivElement | null>(null)
-  const activePill = pills.find((pill) => pill.id === activeId) ?? pills[0]
 
   useEffect(() => {
     const stack = stackRef.current
@@ -69,7 +68,7 @@ export const SigmaFilterBar = memo(function SigmaFilterBar({
       className="sg-filter-stack"
       ref={stackRef}
       role="region"
-      aria-label="Filtros y leyenda del grafo"
+      aria-label="Filtros del grafo"
     >
       <div className="sg-filter-bar">
         {pills.map((pill) => (
@@ -99,35 +98,6 @@ export const SigmaFilterBar = memo(function SigmaFilterBar({
             </span>
           </button>
         ))}
-      </div>
-      <div className="sg-filter-help">
-        <span className="sg-filter-help__scope">{activePill?.hint}</span>
-        <span className="sg-filter-group" aria-label="Conexiones visibles">
-          <span className="sg-filter-group__label">Conexiones</span>
-          <span className="sg-filter-key">
-            <span className="sg-filter-key__swatch sg-filter-key__swatch--follow" />
-            Celeste: sigo
-          </span>
-          <span className="sg-filter-key">
-            <span className="sg-filter-key__swatch sg-filter-key__swatch--inbound" />
-            Ambar: me sigue
-          </span>
-          <span className="sg-filter-key">
-            <span className="sg-filter-key__swatch sg-filter-key__swatch--mutual" />
-            Verde: mutuo
-          </span>
-          <span className="sg-filter-key">
-            <span className="sg-filter-key__swatch sg-filter-key__swatch--zap" />
-            Magenta: zap
-          </span>
-        </span>
-        <span className="sg-filter-group" aria-label="Nodos comunes">
-          <span className="sg-filter-group__label">Nodos</span>
-          <span className="sg-filter-key">
-            <span className="sg-filter-key__swatch sg-filter-key__swatch--identity" />
-            Tono estable por pubkey
-          </span>
-        </span>
       </div>
     </div>
   )

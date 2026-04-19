@@ -219,6 +219,77 @@
   color: var(--sg-fg-muted);
 }
 
+[data-graph-v2] .sg-topbar__right {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+[data-graph-v2] .sg-share-control {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+[data-graph-v2] .sg-share-control__select,
+[data-graph-v2] .sg-select {
+  min-height: 32px;
+  border: 1px solid var(--sg-stroke);
+  border-radius: 8px;
+  background: var(--sg-bg-panel-solid);
+  color: var(--sg-fg);
+  font-size: 12px;
+  outline: none;
+  padding: 0 8px;
+}
+
+[data-graph-v2] .sg-share-control__button {
+  min-height: 32px;
+  border: 1px solid var(--sg-stroke);
+  border-radius: 8px;
+  background: var(--sg-bg-panel);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  box-shadow: var(--sg-shadow-panel);
+  color: var(--sg-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+[data-graph-v2] .sg-share-control__button:hover:not(:disabled),
+[data-graph-v2] .sg-share-control__select:hover:not(:disabled),
+[data-graph-v2] .sg-select:hover {
+  border-color: var(--sg-stroke-strong);
+}
+
+[data-graph-v2] .sg-share-control__button:disabled,
+[data-graph-v2] .sg-share-control__select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+[data-graph-v2] .sg-share-control__status {
+  grid-column: 1 / -1;
+  justify-self: end;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sg-fg-muted);
+  font-family: var(--sg-font-mono);
+  font-size: 10.5px;
+}
+
 [data-graph-v2] .sg-brand__dot {
   width: 10px;
   height: 10px;
@@ -307,95 +378,6 @@
 [data-graph-v2] .sg-filter-pill__count {
   font-family: var(--sg-font-mono);
   font-size: 10px;
-}
-
-[data-graph-v2] .sg-filter-help {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  max-width: min(100%, 860px);
-  padding: 8px 10px;
-  border: 1px solid var(--sg-stroke);
-  border-radius: 8px;
-  background: oklch(10% 0.010 230 / 0.78);
-  backdrop-filter: blur(12px) saturate(1.05);
-  -webkit-backdrop-filter: blur(12px) saturate(1.05);
-  box-shadow: 0 12px 30px -24px oklch(0% 0 0 / 0.7);
-  color: var(--sg-fg-muted);
-  font-size: 11px;
-  line-height: 1.25;
-  text-align: center;
-  pointer-events: none;
-}
-
-[data-graph-v2] .sg-filter-help__scope {
-  flex-basis: 100%;
-  color: var(--sg-fg);
-  font-weight: 600;
-}
-
-[data-graph-v2] .sg-filter-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 3px 7px;
-  border: 1px solid oklch(100% 0 0 / 0.08);
-  border-radius: 7px;
-  background: oklch(100% 0 0 / 0.035);
-}
-
-[data-graph-v2] .sg-filter-group__label {
-  color: var(--sg-fg-faint);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-[data-graph-v2] .sg-filter-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-
-[data-graph-v2] .sg-filter-key__swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  box-shadow: 0 0 0 1px oklch(0% 0 0 / 0.32);
-  flex: 0 0 auto;
-}
-
-[data-graph-v2] .sg-filter-key__swatch--follow {
-  background: #84c7ff;
-}
-
-[data-graph-v2] .sg-filter-key__swatch--inbound {
-  background: #ffb86b;
-}
-
-[data-graph-v2] .sg-filter-key__swatch--mutual {
-  background: #5fd39d;
-}
-
-[data-graph-v2] .sg-filter-key__swatch--zap {
-  background: #ff5da2;
-}
-
-[data-graph-v2] .sg-filter-key__swatch--identity {
-  background:
-    linear-gradient(
-      135deg,
-      #91abc8 0%,
-      #b29ecf 18%,
-      #7fbad4 36%,
-      #73c3bb 56%,
-      #b2bf73 76%,
-      #d08e9d 100%
-    );
 }
 
 /* ── Side rail ───────────────────────────────────────────────────────────── */
@@ -1504,34 +1486,57 @@
 
 [data-graph-v2] .sg-toasts {
   position: absolute;
-  top: calc(var(--sg-filter-stack-bottom, 108px) + 12px);
-  left: 50%;
-  transform: translateX(-50%);
+  top: calc(var(--sg-filter-stack-bottom, 108px) + 14px);
+  left: 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   z-index: 50;
   pointer-events: none;
-  width: min(calc(100vw - 32px), 760px);
-  align-items: center;
+  width: min(calc(100vw - 32px), 380px);
+  align-items: stretch;
 }
 
 [data-graph-v2] .sg-toast {
-  padding: 8px 14px;
+  padding: 8px 8px 8px 12px;
   background: var(--sg-bg-panel-solid);
   border: 1px solid var(--sg-stroke);
-  border-radius: 999px;
+  border-radius: 8px;
   font-size: 12px;
   box-shadow: var(--sg-shadow-panel);
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 8px;
   animation: sg-toast-in 200ms ease;
   max-width: 100%;
   white-space: normal;
-  text-align: center;
+  text-align: left;
   color: var(--sg-fg);
+  pointer-events: auto;
+}
+
+[data-graph-v2] .sg-toast__message {
+  min-width: 0;
+}
+
+[data-graph-v2] .sg-toast__close {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: currentColor;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.72;
+}
+
+[data-graph-v2] .sg-toast__close:hover {
+  background: oklch(100% 0 0 / 0.07);
+  opacity: 1;
 }
 
 [data-graph-v2] .sg-toast--warn  { border-color: oklch(80% 0.14 85 / 0.5); color: var(--sg-warn); }
@@ -1557,6 +1562,21 @@
 
   [data-graph-v2] .sg-root-chip__npub { display: none; }
   [data-graph-v2] .sg-brand { display: none; }
+  [data-graph-v2] .sg-topbar__right {
+    flex: 0 0 auto;
+  }
+  [data-graph-v2] .sg-share-control {
+    grid-template-columns: auto;
+  }
+  [data-graph-v2] .sg-share-control__select {
+    display: none;
+  }
+  [data-graph-v2] .sg-share-control__button span {
+    display: none;
+  }
+  [data-graph-v2] .sg-share-control__status {
+    display: none;
+  }
 
   [data-graph-v2] .sg-filter-stack {
     top: auto;
@@ -1573,10 +1593,11 @@
     justify-content: flex-start;
   }
 
-  [data-graph-v2] .sg-filter-help {
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    text-align: left;
+  [data-graph-v2] .sg-toasts {
+    top: 72px;
+    left: 10px;
+    right: 10px;
+    width: auto;
   }
 
   [data-graph-v2] .sg-rail {

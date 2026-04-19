@@ -170,3 +170,81 @@ test('urgent avatars retry failed blocked loads instead of staying on monogram',
     restoreDocument()
   }
 })
+
+test('scheduler clamps requested avatar buckets to the active budget', () => {
+  const restoreDocument = installDocumentStub()
+  const loadCalls: Array<{ bucket: number }> = []
+  const loader = {
+    isBlocked: () => false,
+    block: () => undefined,
+    load: (_url: string, bucket: number) => {
+      loadCalls.push({ bucket })
+      return new Promise(() => undefined)
+    },
+  }
+
+  try {
+    const scheduler = new AvatarScheduler({
+      cache: new AvatarBitmapCache(16),
+      loader: loader as never,
+    })
+
+    scheduler.reconcile(
+      [
+        {
+          pubkey: 'small',
+          urlKey: 'small::https://example.com/small.png',
+          url: 'https://example.com/small.png',
+          bucket: 512,
+          priority: 1,
+          monogram: { label: 'Small', color: '#7dd3a7' },
+        },
+      ],
+      { ...budget, maxBucket: 64 },
+    )
+
+    assert.equal(loadCalls[0]?.bucket, 64)
+    scheduler.dispose()
+  } finally {
+    restoreDocument()
+  }
+})
+
+test('failed avatar loads stay on monogram fallback', async () => {
+  const restoreDocument = installDocumentStub()
+  const cache = new AvatarBitmapCache(16)
+  const urlKey = 'broken::https://example.com/broken.png'
+  const loader = {
+    isBlocked: () => false,
+    block: () => undefined,
+    load: () => Promise.reject(new Error('image_load_failed')),
+  }
+
+  try {
+    const scheduler = new AvatarScheduler({
+      cache,
+      loader: loader as never,
+    })
+
+    scheduler.reconcile(
+      [
+        {
+          pubkey: 'broken',
+          urlKey,
+          url: 'https://example.com/broken.png',
+          bucket: 64,
+          priority: 1,
+          monogram: { label: 'Broken', color: '#7dd3a7' },
+        },
+      ],
+      budget,
+    )
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    assert.equal(cache.get(urlKey)?.state, 'failed')
+    scheduler.dispose()
+  } finally {
+    restoreDocument()
+  }
+})

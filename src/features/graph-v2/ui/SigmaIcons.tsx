@@ -97,6 +97,18 @@ export function PinIcon() {
   )
 }
 
+export function ImageShareIcon() {
+  return (
+    <svg {...COMMON}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="8" cy="10" r="1.5" />
+      <path d="m4 17 5-5 4 4 2-2 5 5" />
+      <path d="M17 4v4" />
+      <path d="m15 6 2-2 2 2" />
+    </svg>
+  )
+}
+
 export function CloseIcon() {
   return (
     <svg {...COMMON}>

@@ -2,6 +2,7 @@
 
 import {
   applyImageBucketHysteresis,
+  buildAvatarUrlKey,
   isSafeAvatarUrl,
   type ImageLodBucket,
 } from '@/features/graph-v2/renderer/avatar/avatarImageUtils'
@@ -94,8 +95,6 @@ export interface AvatarOverlayRendererDeps {
   getRuntimeOptions?: () => AvatarRuntimeOptions
 }
 
-const buildUrlKey = (pubkey: string, url: string): string => `${pubkey}::${url}`
-
 interface AvatarImageSelectionItem {
   pubkey: string
   url: string | null
@@ -115,7 +114,7 @@ export const retainInflightAvatarPubkeys = <
       continue
     }
 
-    if (hasInflight(buildUrlKey(item.pubkey, item.url))) {
+    if (hasInflight(buildAvatarUrlKey(item.pubkey, item.url))) {
       retainedPubkeys.add(item.pubkey)
     }
   }
@@ -256,6 +255,27 @@ export const selectAvatarDrawContext = <T>(
   forcedPubkeys.has(itemPubkey) && forcedContext
     ? forcedContext
     : baseContext
+
+export const shouldDisableAvatarImage = ({
+  selectedForImage,
+  globalMotionActive,
+  monogramOnly,
+  fastMoving,
+  imageDrawCount,
+  maxImageDrawsPerFrame,
+}: {
+  selectedForImage: boolean
+  globalMotionActive: boolean
+  monogramOnly: boolean
+  fastMoving: boolean
+  imageDrawCount: number
+  maxImageDrawsPerFrame: number
+}) =>
+  !selectedForImage ||
+  globalMotionActive ||
+  monogramOnly ||
+  fastMoving ||
+  imageDrawCount >= maxImageDrawsPerFrame
 
 export class AvatarOverlayRenderer {
   private readonly sigma: Sigma<RenderNodeAttributes, RenderEdgeAttributes>
@@ -411,6 +431,7 @@ export class AvatarOverlayRenderer {
       }
       if (
         !budget.showZoomedOutMonograms &&
+        !budget.allowZoomedOutImages &&
         !isPersistentAvatar &&
         !isRevealCandidate &&
         zoomedOutMonogram
@@ -421,7 +442,6 @@ export class AvatarOverlayRenderer {
         revealCandidates.push({ pubkey, distanceSquared: revealDistanceSquared })
       }
       const fastMoving =
-        !isPersistentAvatar &&
         this.isFastMovingNode(
           pubkey,
           viewport.x,
@@ -446,7 +466,10 @@ export class AvatarOverlayRenderer {
         r: drawRadiusPx,
         url: nodeAttrs.pictureUrl,
         fastMoving,
-        monogramOnly: !isPersistentAvatar && zoomedOutMonogram,
+        monogramOnly:
+          !isPersistentAvatar &&
+          zoomedOutMonogram &&
+          !budget.allowZoomedOutImages,
         isPersistentAvatar,
         zoomedOutMonogram,
         priority,
@@ -477,12 +500,16 @@ export class AvatarOverlayRenderer {
         return {
           ...item,
           isPersistentAvatar,
-          monogramOnly: !isPersistentAvatar && item.zoomedOutMonogram,
+          monogramOnly:
+            !isPersistentAvatar &&
+            item.zoomedOutMonogram &&
+            !budget.allowZoomedOutImages,
         }
       })
       .filter(
         (item) =>
           budget.showZoomedOutMonograms ||
+          budget.allowZoomedOutImages ||
           item.isPersistentAvatar ||
           !item.zoomedOutMonogram,
       )
@@ -527,13 +554,14 @@ export class AvatarOverlayRenderer {
       const hasVisibleMonogramPart =
         item.monogramInput.showBackground !== false ||
         item.monogramInput.showText !== false
-      const disableImage =
-        !selectedForImage ||
-        (!isPersistentAvatar &&
-          (moving ||
-            item.monogramOnly ||
-            item.fastMoving ||
-            imageDrawCount >= budget.maxImageDrawsPerFrame))
+      const disableImage = shouldDisableAvatarImage({
+        selectedForImage,
+        globalMotionActive: moving,
+        monogramOnly: item.monogramOnly,
+        fastMoving: item.fastMoving,
+        imageDrawCount,
+        maxImageDrawsPerFrame: budget.maxImageDrawsPerFrame,
+      })
       const drewImage = this.drawAvatarCircle({
         ctx: selectAvatarDrawContext(
           item.pubkey,
@@ -554,27 +582,27 @@ export class AvatarOverlayRenderer {
         imageDrawCount += 1
       }
 
-      if (!isPersistentAvatar && item.fastMoving) {
+      if (item.fastMoving) {
         continue
       }
       if (!selectedForImage) {
         continue
       }
-      if (!isPersistentAvatar && item.monogramOnly) {
+      if (item.monogramOnly) {
         continue
       }
-      if (!isPersistentAvatar && cameraRatio > budget.zoomThreshold) {
+      if (!budget.allowZoomedOutImages && cameraRatio > budget.zoomThreshold) {
         continue
       }
       if (!item.url || !isSafeAvatarUrl(item.url)) {
         continue
       }
       const url = item.url
-      const urlKey = buildUrlKey(item.pubkey, url)
+      const urlKey = buildAvatarUrlKey(item.pubkey, url)
       const bucket = this.resolveBucket(
         urlKey,
         item.r * 2,
-        budget.maxBucket,
+        Math.min(budget.maxBucket, budget.maxInteractiveBucket) as ImageLodBucket,
       )
 
       candidates.push({
@@ -620,7 +648,7 @@ export class AvatarOverlayRenderer {
     let drawable: CanvasImageSource = monogram
     let isImage = false
     if (url && !disableImage) {
-      const urlKey = buildUrlKey(pubkey, url)
+      const urlKey = buildAvatarUrlKey(pubkey, url)
       const entry = this.cache.get(urlKey)
       if (entry && entry.state === 'ready') {
         drawable = entry.bitmap
@@ -701,6 +729,9 @@ export class AvatarOverlayRenderer {
         showMonogramText: true,
         hideImagesOnFastNodes: false,
         fastNodeVelocityThreshold: Number.POSITIVE_INFINITY,
+        allowZoomedOutImages: false,
+        maxInteractiveBucket: budget.maxBucket,
+        maxSocialCaptureBucket: 512,
       }
     }
     const adaptiveVisualsActive = snapshot.isDegraded || budget.maxBucket <= 64
@@ -722,6 +753,10 @@ export class AvatarOverlayRenderer {
       fastNodeVelocityThreshold: snapshot.isDegraded
         ? Math.min(runtimeOptions.fastNodeVelocityThreshold, 180)
         : runtimeOptions.fastNodeVelocityThreshold,
+      allowZoomedOutImages:
+        runtimeOptions.allowZoomedOutImages && !snapshot.isDegraded,
+      maxInteractiveBucket: runtimeOptions.maxInteractiveBucket,
+      maxSocialCaptureBucket: runtimeOptions.maxSocialCaptureBucket,
     }
   }
 
@@ -768,6 +803,7 @@ export class AvatarOverlayRenderer {
     const next = applyImageBucketHysteresis({
       previousBucket: previous,
       requestedPixels,
+      maxBucket,
     })
     const clamped = Math.min(next, maxBucket) as ImageLodBucket
     this.lastBucketByUrl.set(urlKey, clamped)

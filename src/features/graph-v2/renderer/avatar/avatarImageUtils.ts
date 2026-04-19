@@ -21,6 +21,43 @@ export type ImageLodBucket = (typeof IMAGE_LOD_BUCKETS)[number]
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
 
+export const buildAvatarUrlKey = (pubkey: string, url: string): string =>
+  `${pubkey}::${url}`
+
+const clampBucket = (
+  bucket: ImageLodBucket,
+  maxBucket: ImageLodBucket,
+): ImageLodBucket =>
+  (IMAGE_LOD_BUCKETS.find(
+    (candidate) => candidate >= Math.min(bucket, maxBucket),
+  ) ?? maxBucket) as ImageLodBucket
+
+export interface ResolveAvatarBucketForVisibleDiameterInput {
+  visibleDiameterPx: number
+  maxBucket?: ImageLodBucket
+}
+
+export const resolveAvatarBucketForVisibleDiameter = ({
+  visibleDiameterPx,
+  maxBucket = 512,
+}: ResolveAvatarBucketForVisibleDiameterInput): ImageLodBucket => {
+  const diameter = Number.isFinite(visibleDiameterPx)
+    ? Math.max(0, visibleDiameterPx)
+    : 0
+  const bucket =
+    diameter <= 16
+      ? 32
+      : diameter <= 32
+        ? 64
+        : diameter <= 80
+          ? 128
+          : diameter <= 160
+            ? 256
+            : 512
+
+  return clampBucket(bucket, maxBucket)
+}
+
 const readDevicePixelRatio = () => {
   if (
     typeof globalThis !== 'undefined' &&
@@ -79,11 +116,16 @@ export const clampImageBucketForMotion = ({
 export const applyImageBucketHysteresis = ({
   previousBucket,
   requestedPixels,
+  maxBucket,
 }: {
   previousBucket: ImageLodBucket | null
   requestedPixels: number
+  maxBucket?: ImageLodBucket
 }): ImageLodBucket => {
-  const nextBucket = resolveImageTargetBucket({ cssPixels: requestedPixels })
+  const nextBucket = resolveAvatarBucketForVisibleDiameter({
+    visibleDiameterPx: requestedPixels,
+    maxBucket,
+  })
   if (previousBucket === null) {
     return nextBucket
   }

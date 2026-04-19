@@ -3,7 +3,7 @@
 import { memo } from 'react'
 
 export interface FilterPill {
-  id: 'all' | 'following' | 'followers' | 'mutuals' | 'oneway'
+  id: 'all' | 'following' | 'followers' | 'mutuals' | 'oneway' | 'connections'
   label: string
   count: number | null
   swatch: string

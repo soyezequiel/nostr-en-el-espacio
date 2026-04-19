@@ -1214,6 +1214,7 @@ export default function GraphAppV2() {
     if (layer === 'following') return 'following'
     if (layer === 'followers') return 'followers'
     if (layer === 'mutuals') return 'mutuals'
+    if (layer === 'connections') return 'connections'
     if (layer === 'following-non-followers' || layer === 'nonreciprocal-followers') return 'oneway'
     return 'all'
   }, [domainState.activeLayer])
@@ -1224,6 +1225,7 @@ export default function GraphAppV2() {
     { id: 'followers', label: 'Me siguen',        count: null, swatch: 'oklch(65% 0.08 300)' },
     { id: 'mutuals',   label: 'Mutuos',           count: null, swatch: 'oklch(72% 0.06 220)' },
     { id: 'oneway',    label: 'Sin reciprocidad', count: null, swatch: 'oklch(60% 0.06 80)' },
+    { id: 'connections', label: 'Conexiones',     count: null, swatch: 'oklch(76% 0.1 180)' },
   ], [deferredScene.render.diagnostics.nodeCount])
 
   const handleFilterSelect = useCallback((id: FilterPill['id']) => {
@@ -1231,6 +1233,11 @@ export default function GraphAppV2() {
     if (id === 'following') { toggleLayer('following'); return }
     if (id === 'followers') { toggleLayer('followers'); return }
     if (id === 'mutuals')   { toggleLayer('mutuals'); return }
+    if (id === 'connections') {
+      if (domainState.activeLayer === 'connections') return
+      toggleLayer('connections')
+      return
+    }
     if (id === 'oneway') {
       const cur = domainState.activeLayer
       if (cur === 'following-non-followers' || cur === 'nonreciprocal-followers') return

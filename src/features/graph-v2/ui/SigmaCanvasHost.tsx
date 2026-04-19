@@ -22,6 +22,7 @@ interface SigmaCanvasHostProps {
   enableDebugProbe?: boolean
   dragInfluenceTuning?: Partial<DragNeighborhoodInfluenceTuning>
   physicsTuning?: Partial<ForceAtlasPhysicsTuning>
+  physicsAutoFreezeEnabled?: boolean
   hideAvatarsOnMove?: boolean
   avatarRuntimeOptions?: AvatarRuntimeOptions
   onAvatarPerfSnapshot?: (snapshot: PerfBudgetSnapshot | null) => void
@@ -64,6 +65,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       enableDebugProbe = false,
       dragInfluenceTuning,
       physicsTuning,
+      physicsAutoFreezeEnabled = true,
       hideAvatarsOnMove = false,
       avatarRuntimeOptions,
       onAvatarPerfSnapshot,
@@ -78,6 +80,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
   const sceneRef = useRef(scene)
   const dragInfluenceTuningRef = useRef(dragInfluenceTuning)
   const physicsTuningRef = useRef(physicsTuning)
+  const physicsAutoFreezeEnabledRef = useRef(physicsAutoFreezeEnabled)
   const hideAvatarsOnMoveRef = useRef(hideAvatarsOnMove)
   const avatarRuntimeOptionsRef = useRef(avatarRuntimeOptions)
   const lastAvatarPerfSnapshotKeyRef = useRef<string | null>(null)
@@ -86,12 +89,14 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
     sceneRef.current = scene
     dragInfluenceTuningRef.current = dragInfluenceTuning
     physicsTuningRef.current = physicsTuning
+    physicsAutoFreezeEnabledRef.current = physicsAutoFreezeEnabled
     hideAvatarsOnMoveRef.current = hideAvatarsOnMove
     avatarRuntimeOptionsRef.current = avatarRuntimeOptions
   }, [
     avatarRuntimeOptions,
     dragInfluenceTuning,
     hideAvatarsOnMove,
+    physicsAutoFreezeEnabled,
     physicsTuning,
     scene,
   ])
@@ -119,6 +124,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       const nextAdapter = new SigmaRendererAdapter()
       nextAdapter.mount(container, sceneRef.current, callbacks)
       nextAdapter.setDragInfluenceTuning(dragInfluenceTuningRef.current ?? {})
+      nextAdapter.setAutoFreezeEnabled(physicsAutoFreezeEnabledRef.current)
       nextAdapter.setPhysicsTuning(physicsTuningRef.current ?? {})
       nextAdapter.setHideAvatarsOnMove(hideAvatarsOnMoveRef.current)
       if (avatarRuntimeOptionsRef.current) {
@@ -216,6 +222,10 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
   useEffect(() => {
     adapterRef.current?.setPhysicsTuning(physicsTuning ?? {})
   }, [physicsTuning])
+
+  useEffect(() => {
+    adapterRef.current?.setAutoFreezeEnabled(physicsAutoFreezeEnabled)
+  }, [physicsAutoFreezeEnabled])
 
   useEffect(() => {
     adapterRef.current?.setHideAvatarsOnMove(hideAvatarsOnMove)

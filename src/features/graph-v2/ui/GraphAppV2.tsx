@@ -333,7 +333,7 @@ const PHYSICS_TUNING_SLIDERS: Array<{
   max: number
   step: number
 }> = [
-  { key: 'centripetalForce', label: 'Fuerza centrípeta', description: 'Multiplica gravity: compacta el grafo.', min: 0.25, max: 2.5, step: 0.05 },
+  { key: 'centripetalForce', label: 'Fuerza centrípeta', description: 'Multiplica gravity: compacta el grafo. 0 la desactiva.', min: 0, max: 0.5, step: 0.01 },
   { key: 'repulsionForce', label: 'Repulsión', description: 'Multiplica scalingRatio: separa nodos.', min: 0.25, max: 5, step: 0.05 },
   { key: 'linkForce', label: 'Fuerza de enlace', description: 'Multiplica edgeWeightInfluence.', min: 0.25, max: 2.5, step: 0.05 },
   { key: 'linkDistance', label: 'Distancia de enlace', description: 'Aproxima distancia sin cambiar FA2.', min: 0.5, max: 2, step: 0.05 },
@@ -561,7 +561,7 @@ function RenderOptionsPanel({
           <span className="sg-slider-row__val">{avatarRuntimeOptions.hoverRevealRadiusPx.toFixed(0)}px</span>
         </div>
         <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 4px' }}>
-          Fuerza fotos para todos los nodos dentro de ese radio.
+          Fuerza fotos para los nodos más cercanos dentro de ese radio.
         </p>
         <input
           className="sg-slider"
@@ -573,6 +573,26 @@ function RenderOptionsPanel({
           step={4}
           type="range"
           value={avatarRuntimeOptions.hoverRevealRadiusPx}
+        />
+      </div>
+      <div className="sg-slider-row">
+        <div className="sg-slider-row__head">
+          <span className="sg-slider-row__lbl">Máx cerca del mouse</span>
+          <span className="sg-slider-row__val">{avatarRuntimeOptions.hoverRevealMaxNodes.toFixed(0)} nodos</span>
+        </div>
+        <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 4px' }}>
+          Limita cuántas fotos puede forzar el radio; prioriza las más cercanas al puntero.
+        </p>
+        <input
+          className="sg-slider"
+          max={96}
+          min={0}
+          onChange={(event) => {
+            onAvatarRuntimeOptionsChange({ ...avatarRuntimeOptions, hoverRevealMaxNodes: Number.parseInt(event.target.value, 10) })
+          }}
+          step={4}
+          type="range"
+          value={avatarRuntimeOptions.hoverRevealMaxNodes}
         />
       </div>
       <div className="sg-setting-row">
@@ -757,6 +777,7 @@ export default function GraphAppV2() {
     useState<DragNeighborhoodInfluenceTuning>(DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING)
   const [physicsTuning, setPhysicsTuning] =
     useState<ForceAtlasPhysicsTuning>(DEFAULT_FORCE_ATLAS_PHYSICS_TUNING)
+  const [devPhysicsAutoFreezeEnabled, setDevPhysicsAutoFreezeEnabled] = useState(true)
   const [hideAvatarsOnMove, setHideAvatarsOnMove] = useState(false)
   const [avatarRuntimeOptions, setAvatarRuntimeOptions] =
     useState<AvatarRuntimeOptions>(DEFAULT_AVATAR_RUNTIME_OPTIONS)
@@ -1521,6 +1542,26 @@ export default function GraphAppV2() {
       case 'dev':
         return (
           <div>
+            {isDev ? (
+              <div className="sg-settings-section">
+                <h4>ForceAtlas dev</h4>
+                <div className="sg-setting-row">
+                  <div>
+                    <div className="sg-setting-row__lbl">Auto-freeze</div>
+                    <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 0' }}>
+                      Cuando esta apagado, el supervisor ignora convergencia y max iterations.
+                    </p>
+                  </div>
+                  <input
+                    checked={devPhysicsAutoFreezeEnabled}
+                    onChange={(event) => {
+                      setDevPhysicsAutoFreezeEnabled(event.target.checked)
+                    }}
+                    type="checkbox"
+                  />
+                </div>
+              </div>
+            ) : null}
             <RenderOptionsPanel
               avatarPerfSnapshot={avatarPerfSnapshot}
               avatarRuntimeOptions={avatarRuntimeOptions}
@@ -1776,6 +1817,7 @@ export default function GraphAppV2() {
         enableDebugProbe={isTestMode}
         hideAvatarsOnMove={hideAvatarsOnMove}
         onAvatarPerfSnapshot={handleAvatarPerfSnapshot}
+        physicsAutoFreezeEnabled={isDev ? devPhysicsAutoFreezeEnabled : true}
         physicsTuning={physicsTuning}
         ref={sigmaHostRef}
         scene={displayScene}

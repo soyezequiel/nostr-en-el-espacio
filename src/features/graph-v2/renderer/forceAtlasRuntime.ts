@@ -49,6 +49,8 @@ const MIN_SCALING_RATIO = 0.5
 const MAX_SCALING_RATIO = 72
 const MIN_GRAVITY = 0.01
 const MAX_GRAVITY = 1
+const MIN_CENTRIPETAL_FORCE = 0
+const MAX_CENTRIPETAL_FORCE = 0.5
 const MIN_SLOW_DOWN = 1
 const MAX_SLOW_DOWN = 60
 const MIN_EDGE_WEIGHT_INFLUENCE = 0.05
@@ -63,11 +65,11 @@ export interface ForceAtlasPhysicsTuning {
 }
 
 export const DEFAULT_FORCE_ATLAS_PHYSICS_TUNING: ForceAtlasPhysicsTuning = {
-  centripetalForce: 1,
-  repulsionForce: 2.5,
+  centripetalForce: 0,
+  repulsionForce: 5,
   linkForce: 1,
-  linkDistance: 1,
-  damping: 0.35,
+  linkDistance: 0.5,
+  damping: 2,
 }
 
 export interface ForceAtlasPhysicsDiagnostics {
@@ -80,6 +82,7 @@ export interface ForceAtlasPhysicsDiagnostics {
   layoutEligible: boolean
   running: boolean
   suspended: boolean
+  autoFreezeEnabled: boolean
   denseFactor: number
   tuning: ForceAtlasPhysicsTuning
   settings: ForceAtlas2Settings
@@ -108,8 +111,8 @@ export const createForceAtlasPhysicsTuning = (
   centripetalForce: clampNumber(
     tuning.centripetalForce ??
       DEFAULT_FORCE_ATLAS_PHYSICS_TUNING.centripetalForce,
-    0.25,
-    2.5,
+    MIN_CENTRIPETAL_FORCE,
+    MAX_CENTRIPETAL_FORCE,
   ),
   repulsionForce: clampNumber(
     tuning.repulsionForce ?? DEFAULT_FORCE_ATLAS_PHYSICS_TUNING.repulsionForce,
@@ -193,12 +196,15 @@ export const resolveForceAtlasSettings = (
     // Strong gravity scales the pull with distance. Without it, disconnected
     // components and peripheral clusters drift outward for many seconds and
     // keep the render bridge alive as visible residual motion.
-    gravity: clampNumber(
-      interpolateNumber(BASE_GRAVITY, DENSE_GRAVITY, denseFactor) *
-        resolvedTuning.centripetalForce,
-      MIN_GRAVITY,
-      MAX_GRAVITY,
-    ),
+    gravity:
+      resolvedTuning.centripetalForce === 0
+        ? 0
+        : clampNumber(
+            interpolateNumber(BASE_GRAVITY, DENSE_GRAVITY, denseFactor) *
+              resolvedTuning.centripetalForce,
+            MIN_GRAVITY,
+            MAX_GRAVITY,
+          ),
     // SlowDown is the damping knob. Higher dense values preserve controlled
     // inertia without letting hub clusters slingshot after release.
     slowDown: clampNumber(
@@ -228,10 +234,12 @@ export interface ForceAtlasLayoutController {
   start(): void
   stop(): void
   kill(): void
+  setAutoFreezeEnabled?: (enabled: boolean) => void
 }
 
 export interface ConvergingLayoutOptions {
   onSettled?: () => void
+  autoFreezeEnabled?: boolean
 }
 
 // Convergence threshold expressed as a fraction of the current graph diameter.
@@ -265,6 +273,7 @@ class ConvergingFA2Supervisor implements ForceAtlasLayoutController {
   private pendingFrame: number | null = null
   private stableFrames = 0
   private iterationCount = 0
+  private autoFreezeEnabled = true
   private readonly getEdgeWeight: unknown
   private readonly onSettled: (() => void) | undefined
   private readonly handleGraphUpdate = () => {
@@ -277,6 +286,7 @@ class ConvergingFA2Supervisor implements ForceAtlasLayoutController {
     options: ConvergingLayoutOptions = {},
   ) {
     this.onSettled = options.onSettled
+    this.autoFreezeEnabled = options.autoFreezeEnabled ?? true
     this.getEdgeWeight = createEdgeWeightGetter('weight').fromEntry
 
     graph.on('nodeAdded', this.handleGraphUpdate)
@@ -315,6 +325,10 @@ class ConvergingFA2Supervisor implements ForceAtlasLayoutController {
       cancelAnimationFrame(this.pendingFrame)
       this.pendingFrame = null
     }
+  }
+
+  public setAutoFreezeEnabled(enabled: boolean): void {
+    this.autoFreezeEnabled = enabled
   }
 
   public kill(): void {
@@ -376,8 +390,9 @@ class ConvergingFA2Supervisor implements ForceAtlasLayoutController {
     }
 
     if (
-      this.stableFrames >= CONVERGENCE_STABLE_FRAMES ||
-      this.iterationCount >= MAX_ITERATIONS
+      this.autoFreezeEnabled &&
+      (this.stableFrames >= CONVERGENCE_STABLE_FRAMES ||
+        this.iterationCount >= MAX_ITERATIONS)
     ) {
       this.stop()
       this.onSettled?.()
@@ -586,6 +601,8 @@ export class ForceAtlasRuntime {
 
   private settled = false
 
+  private autoFreezeEnabled = true
+
   private physicsTuning = DEFAULT_FORCE_ATLAS_PHYSICS_TUNING
 
   private readonly markSettled = () => {
@@ -700,6 +717,38 @@ export class ForceAtlasRuntime {
     this.layout.start()
   }
 
+  public setAutoFreezeEnabled(enabled: boolean) {
+    if (this.autoFreezeEnabled === enabled) {
+      return
+    }
+
+    this.autoFreezeEnabled = enabled
+    this.layout?.setAutoFreezeEnabled?.(enabled)
+
+    if (enabled) {
+      return
+    }
+
+    this.settled = false
+    if (this.suspended || !this.layoutEligible) {
+      return
+    }
+
+    if (this.layout === null) {
+      this.layout = this.createLayout()
+      this.lastSettingsKey = createSettingsKey(
+        this.graph.order,
+        this.physicsTuning,
+        resolveMaxGraphDegree(this.graph),
+      )
+      this.lastFixedNodeSignature = this.createGraphFixedNodeSignature()
+    }
+
+    if (!this.layout.isRunning()) {
+      this.layout.start()
+    }
+  }
+
   public setPhysicsTuning(tuning: Partial<ForceAtlasPhysicsTuning> = {}) {
     const nextTuning = createForceAtlasPhysicsTuning(tuning)
     const maxDegree = resolveMaxGraphDegree(this.graph)
@@ -795,6 +844,7 @@ export class ForceAtlasRuntime {
       layoutEligible: this.layoutEligible,
       running: this.isRunning(),
       suspended: this.suspended,
+      autoFreezeEnabled: this.autoFreezeEnabled,
       denseFactor: resolveForceAtlasDenseFactor(this.graph.order),
       tuning: this.physicsTuning,
       settings: resolveForceAtlasSettings(this.graph.order, this.physicsTuning, {
@@ -828,7 +878,10 @@ export class ForceAtlasRuntime {
       resolveForceAtlasSettings(this.graph.order, this.physicsTuning, {
         maxDegree: resolveMaxGraphDegree(this.graph),
       }),
-      { onSettled: this.markSettled },
+      {
+        onSettled: this.markSettled,
+        autoFreezeEnabled: this.autoFreezeEnabled,
+      },
     )
   }
 }

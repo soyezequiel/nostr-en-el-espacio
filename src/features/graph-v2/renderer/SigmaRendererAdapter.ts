@@ -82,6 +82,8 @@ const AVATAR_MIN_ZOOM_THRESHOLD = 0.5
 const AVATAR_MAX_ZOOM_THRESHOLD = 6
 const AVATAR_MIN_HOVER_REVEAL_RADIUS = 0
 const AVATAR_MAX_HOVER_REVEAL_RADIUS = 180
+const AVATAR_MIN_HOVER_REVEAL_MAX_NODES = 0
+const AVATAR_MAX_HOVER_REVEAL_MAX_NODES = 96
 const AVATAR_MIN_FAST_NODE_VELOCITY = 40
 const AVATAR_MAX_FAST_NODE_VELOCITY = 2000
 
@@ -590,6 +592,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.ensurePhysicsPositionBridge()
   }
 
+  public setAutoFreezeEnabled(enabled: boolean) {
+    this.forceRuntime?.setAutoFreezeEnabled(enabled)
+    this.ensurePhysicsPositionBridge()
+  }
+
   public setPhysicsSuspended(suspended: boolean) {
     if (!this.forceRuntime) return
     if (suspended) {
@@ -790,6 +797,14 @@ export class SigmaRendererAdapter implements RendererAdapter {
         AVATAR_MIN_HOVER_REVEAL_RADIUS,
         AVATAR_MAX_HOVER_REVEAL_RADIUS,
       ),
+      hoverRevealMaxNodes: Math.round(
+        clampNumber(
+          options.hoverRevealMaxNodes ??
+            DEFAULT_AVATAR_RUNTIME_OPTIONS.hoverRevealMaxNodes,
+          AVATAR_MIN_HOVER_REVEAL_MAX_NODES,
+          AVATAR_MAX_HOVER_REVEAL_MAX_NODES,
+        ),
+      ),
       showZoomedOutMonograms:
         options.showZoomedOutMonograms ??
         DEFAULT_AVATAR_RUNTIME_OPTIONS.showZoomedOutMonograms,
@@ -812,6 +827,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
       this.avatarRuntimeOptions.zoomThreshold === nextOptions.zoomThreshold &&
       this.avatarRuntimeOptions.hoverRevealRadiusPx ===
         nextOptions.hoverRevealRadiusPx &&
+      this.avatarRuntimeOptions.hoverRevealMaxNodes ===
+        nextOptions.hoverRevealMaxNodes &&
       this.avatarRuntimeOptions.showZoomedOutMonograms ===
         nextOptions.showZoomedOutMonograms &&
       this.avatarRuntimeOptions.showMonogramBackgrounds ===

@@ -62,6 +62,7 @@ export interface DebugPhysicsDiagnostics {
   layoutEligible: boolean
   running: boolean
   suspended: boolean
+  autoFreezeEnabled: boolean
   denseFactor: number
   tuning: {
     centripetalForce: number

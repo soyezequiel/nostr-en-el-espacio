@@ -5,6 +5,7 @@ import {
   resolveAvatarDrawRadiusPx,
   selectAvatarDrawContext,
   selectAvatarDrawItemsForFrame,
+  selectClosestAvatarRevealPubkeys,
 } from '@/features/graph-v2/renderer/avatar/avatarOverlayRenderer'
 
 test('keeps the forced dragged avatar even when the frame cap is zero', () => {
@@ -34,21 +35,30 @@ test('draws the forced dragged avatar after budgeted regular avatars', () => {
   )
 })
 
-test('keeps every proximity-forced avatar outside the regular frame cap', () => {
-  const items = [
-    { pubkey: 'regular', priority: 0, r: 10 },
-    { pubkey: 'near-a', priority: 30, r: 8 },
-    { pubkey: 'near-b', priority: 40, r: 8 },
+test('caps proximity reveal pubkeys to the closest nodes before forcing avatars', () => {
+  const candidates = [
+    { pubkey: 'near-b', distanceSquared: 16 },
+    { pubkey: 'far', distanceSquared: 81 },
+    { pubkey: 'near-a', distanceSquared: 9 },
   ]
 
   assert.deepEqual(
-    selectAvatarDrawItemsForFrame(
-      items,
-      0,
-      new Set(['near-a', 'near-b']),
-    ).map((item) => item.pubkey),
+    selectClosestAvatarRevealPubkeys(candidates, 2),
     ['near-a', 'near-b'],
   )
+})
+
+test('uses pubkey order as a deterministic tie breaker for proximity reveal', () => {
+  const candidates = [
+    { pubkey: 'charlie', distanceSquared: 16 },
+    { pubkey: 'alice', distanceSquared: 16 },
+    { pubkey: 'bob', distanceSquared: 16 },
+  ]
+
+  assert.deepEqual(selectClosestAvatarRevealPubkeys(candidates, 2), [
+    'alice',
+    'bob',
+  ])
 })
 
 test('does not enlarge proximity-revealed avatars beyond the node radius', () => {

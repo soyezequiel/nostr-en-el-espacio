@@ -67,6 +67,11 @@ The same panel exposes two live thresholds:
 - `Zoom max`: maximum Sigma camera ratio for enqueueing new avatar loads.
   Raising it loads avatars farther into zoom-out; lowering it protects network
   and decode work. Default: `2.10x`.
+- `Radio cerca del mouse` + `Max cerca del mouse`: proximity reveal for
+  profile photos around the pointer. The radius defines the candidate area, and
+  the max-node cap limits forced photos to the closest nodes in that area so
+  dense zoom levels cannot bypass the avatar/photo budgets. Defaults: `72px`
+  and `24` nodes.
 - `Monograma si se mueve rapido`: per-node option that temporarily replaces a
   cached photo with the monogram when that node's screen velocity exceeds the
   configured `Velocidad max`. Camera movement is ignored so this does not
@@ -89,6 +94,9 @@ the effective radius/zoom thresholds after adaptive limits are applied.
 - **Per-node motion fallback**: when enabled, fast-moving nodes use monograms
   and skip new avatar load enqueueing until their screen velocity drops below
   the configured threshold.
+- **Bounded proximity reveal**: hover proximity is resolved to a capped closest
+  set before nodes are marked as forced avatars, so zooming into dense clusters
+  cannot turn every node inside the pointer radius into a real-photo draw.
 - **Visible adaptive state**: `/labs/sigma` polls the renderer budget at a
   low cadence and shows the current tier/debug values without subscribing React
   to the per-frame render loop.

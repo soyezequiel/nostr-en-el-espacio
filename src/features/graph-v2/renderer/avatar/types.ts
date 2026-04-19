@@ -43,6 +43,7 @@ export interface AvatarRuntimeOptions {
   readonly sizeThreshold: number
   readonly zoomThreshold: number
   readonly hoverRevealRadiusPx: number
+  readonly hoverRevealMaxNodes: number
   readonly showZoomedOutMonograms: boolean
   readonly showMonogramBackgrounds: boolean
   readonly showMonogramText: boolean
@@ -56,6 +57,7 @@ export const DEFAULT_AVATAR_RUNTIME_OPTIONS: AvatarRuntimeOptions = {
   sizeThreshold: 15,
   zoomThreshold: 2.1,
   hoverRevealRadiusPx: 72,
+  hoverRevealMaxNodes: 24,
   showZoomedOutMonograms: false,
   showMonogramBackgrounds: true,
   showMonogramText: true,

@@ -94,20 +94,28 @@ test('ForceAtlas settings scale repulsion and damping for dense sigma graphs', (
   const smallSettings = resolveForceAtlasSettings(80)
   const hubSizedSettings = resolveForceAtlasSettings(500)
   const denseSettings = resolveForceAtlasSettings(2200)
+  const smallCentripetalSettings = resolveForceAtlasSettings(80, {
+    centripetalForce: 0.25,
+  })
+  const denseCentripetalSettings = resolveForceAtlasSettings(2200, {
+    centripetalForce: 0.25,
+  })
   const denseHubSettings = resolveForceAtlasSettings(2200, undefined, {
     maxDegree: 2100,
   })
 
   assert.equal(resolveForceAtlasDenseFactor(80), 0)
   assert.equal(resolveForceAtlasDenseFactor(2200), 1)
-  assert.equal(smallSettings.scalingRatio, 11.25)
-  assert.equal(smallSettings.gravity, 0.2)
-  assert.equal(Math.round((smallSettings.slowDown ?? 0) * 10) / 10, 4.9)
-  assert.equal(smallSettings.edgeWeightInfluence, 1.25)
-  assert.equal(denseSettings.scalingRatio, 22.5)
-  assert.equal(denseSettings.gravity, 0.32)
-  assert.equal(Math.round((denseSettings.slowDown ?? 0) * 10) / 10, 7.7)
-  assert.equal(denseSettings.edgeWeightInfluence, 0.65)
+  assert.equal(Math.round((smallSettings.scalingRatio ?? 0) * 100) / 100, 15.91)
+  assert.equal(smallSettings.gravity, 0)
+  assert.equal(smallCentripetalSettings.gravity, 0.05)
+  assert.equal(Math.round((smallSettings.slowDown ?? 0) * 10) / 10, 28)
+  assert.equal(Math.round((smallSettings.edgeWeightInfluence ?? 0) * 100) / 100, 1.77)
+  assert.equal(Math.round((denseSettings.scalingRatio ?? 0) * 100) / 100, 31.82)
+  assert.equal(denseSettings.gravity, 0)
+  assert.equal(denseCentripetalSettings.gravity, 0.08)
+  assert.equal(Math.round((denseSettings.slowDown ?? 0) * 10) / 10, 44)
+  assert.equal(Math.round((denseSettings.edgeWeightInfluence ?? 0) * 100) / 100, 0.92)
   assert.equal(smallSettings.strongGravityMode, true)
   assert.equal(denseSettings.strongGravityMode, true)
   assert.equal(smallSettings.barnesHutOptimize, false)
@@ -119,7 +127,8 @@ test('ForceAtlas settings scale repulsion and damping for dense sigma graphs', (
     'expected dense graphs to use stronger magnetic repulsion',
   )
   assert.ok(
-    (denseSettings.gravity ?? 0) > (smallSettings.gravity ?? 0),
+    (denseCentripetalSettings.gravity ?? 0) >
+      (smallCentripetalSettings.gravity ?? 0),
     'expected dense graphs to increase bounding gravity with repulsion',
   )
   assert.ok(
@@ -137,15 +146,19 @@ test('ForceAtlas settings scale repulsion and damping for dense sigma graphs', (
 
 test('ForceAtlas tuning maps sliders to settings multipliers', () => {
   const baseSettings = resolveForceAtlasSettings(80)
+  const disabledCentripetalSettings = resolveForceAtlasSettings(80, {
+    centripetalForce: 0,
+  })
   const tunedSettings = resolveForceAtlasSettings(80, {
-    centripetalForce: 2,
+    centripetalForce: 0.45,
     repulsionForce: 1.5,
     linkForce: 1.5,
     linkDistance: 2,
     damping: 1.5,
   })
 
-  assert.equal(tunedSettings.gravity, 0.4)
+  assert.equal(disabledCentripetalSettings.gravity, 0)
+  assert.equal(tunedSettings.gravity, 0.09)
   assert.equal(
     Math.round((tunedSettings.scalingRatio ?? 0) * 100) / 100,
     9.55,
@@ -169,12 +182,16 @@ test('ForceAtlas tuning clamps slider input into supported ranges', () => {
       damping: 99,
     }),
     {
-      centripetalForce: 2.5,
+      centripetalForce: 0.5,
       repulsionForce: 0.25,
       linkForce: 2.5,
       linkDistance: 0.5,
       damping: 2.5,
     },
+  )
+  assert.equal(
+    createForceAtlasPhysicsTuning({ centripetalForce: 0 }).centripetalForce,
+    0,
   )
   assert.equal(createForceAtlasPhysicsTuning({ damping: -1 }).damping, 0.1)
   assert.equal(
@@ -199,9 +216,10 @@ test('reports ForceAtlas physics diagnostics for the sigma debug probe', () => {
   assert.equal(diagnostics.layoutEligible, true)
   assert.equal(diagnostics.running, true)
   assert.equal(diagnostics.suspended, false)
+  assert.equal(diagnostics.autoFreezeEnabled, true)
   assert.deepEqual(diagnostics.tuning, DEFAULT_FORCE_ATLAS_PHYSICS_TUNING)
-  assert.equal(diagnostics.settings.scalingRatio, 11.25)
-  assert.equal(diagnostics.settings.gravity, 0.2)
+  assert.equal(Math.round((diagnostics.settings.scalingRatio ?? 0) * 100) / 100, 15.91)
+  assert.equal(diagnostics.settings.gravity, 0)
   assert.ok(diagnostics.settingsKey?.startsWith('obsidian-v2::'))
   assert.deepEqual(diagnostics.bounds, {
     minX: 0,
@@ -299,9 +317,9 @@ test('setPhysicsTuning recreates a running layout with the tuned settings', () =
   assert.equal(layouts.length, 2)
   assert.equal(layouts[0]?.killCalls, 1)
   assert.equal(layouts[1]?.startCalls, 1)
-  assert.equal(settingsHistory[0]?.scalingRatio, 11.25)
+  assert.equal(Math.round((settingsHistory[0]?.scalingRatio ?? 0) * 100) / 100, 15.91)
   assert.equal(Math.round((settingsHistory[1]?.scalingRatio ?? 0) * 100) / 100, 9.55)
-  assert.equal(settingsHistory[1]?.gravity, 0.4)
+  assert.equal(settingsHistory[1]?.gravity, 0.1)
   assert.equal(settingsHistory[1]?.slowDown, 21)
 })
 
@@ -430,6 +448,33 @@ test('resume can invalidate convergence after drag coordinate edits', () => {
   assert.equal(layouts.length, 1)
   assert.equal(layouts[0]?.startCalls, 2)
   assert.equal(layouts[0]?.killCalls, 0)
+})
+
+test('disabling auto-freeze restarts a settled layout without recreating it', () => {
+  const graph = createGraph(3, 2)
+  const layouts: LayoutStub[] = []
+  let markSettled: (() => void) | undefined
+  const runtime = new ForceAtlasRuntime(graph, (
+    _graph,
+    _settings,
+    options: ConvergingLayoutOptions,
+  ) => {
+    const layout = new LayoutStub()
+    layouts.push(layout)
+    markSettled = options.onSettled
+    return layout
+  })
+
+  runtime.sync(createScene(3, 2))
+  layouts[0]!.running = false
+  markSettled?.()
+
+  runtime.setAutoFreezeEnabled(false)
+
+  assert.equal(layouts.length, 1)
+  assert.equal(layouts[0]?.startCalls, 2)
+  assert.equal(layouts[0]?.killCalls, 0)
+  assert.equal(runtime.getDiagnostics().autoFreezeEnabled, false)
 })
 
 test('sync recreates the layout when node fixed flags change', () => {

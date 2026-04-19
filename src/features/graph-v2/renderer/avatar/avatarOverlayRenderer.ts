@@ -37,6 +37,11 @@ interface AvatarDrawSelectionItem {
   isPersistentAvatar?: boolean
 }
 
+interface AvatarRevealSelectionItem {
+  pubkey: string
+  distanceSquared: number
+}
+
 interface AvatarNodeMotionSample {
   x: number
   y: number
@@ -56,6 +61,7 @@ interface AvatarDrawItem {
   fastMoving: boolean
   monogramOnly: boolean
   isPersistentAvatar: boolean
+  zoomedOutMonogram: boolean
   priority: number
   monogramInput: MonogramInput
   monogramCanvas: HTMLCanvasElement
@@ -74,14 +80,13 @@ export interface AvatarOverlayRendererDeps {
 
 const buildUrlKey = (pubkey: string, url: string): string => `${pubkey}::${url}`
 
-const isInsideRevealRadius = (
+const resolveRevealDistanceSquared = (
   node: AvatarRevealPointer,
   pointer: AvatarRevealPointer,
-  radiusSquared: number,
 ) => {
   const dx = node.x - pointer.x
   const dy = node.y - pointer.y
-  return dx * dx + dy * dy <= radiusSquared
+  return dx * dx + dy * dy
 }
 
 export const resolveAvatarDrawRadiusPx = ({
@@ -137,6 +142,44 @@ export const selectAvatarDrawItemsForFrame = <
           .slice(0, normalizedCap)
 
   return [...selected, ...persistentItems, ...forcedItems]
+}
+
+export const selectClosestAvatarRevealPubkeys = <
+  T extends AvatarRevealSelectionItem,
+>(
+  candidates: T[],
+  cap: number,
+): string[] => {
+  const normalizedCap = Number.isFinite(cap)
+    ? Math.max(0, Math.floor(cap))
+    : 0
+  if (normalizedCap === 0 || candidates.length === 0) {
+    return []
+  }
+
+  const selected: T[] = []
+  for (const candidate of candidates) {
+    const insertIndex = selected.findIndex((item) => {
+      if (candidate.distanceSquared !== item.distanceSquared) {
+        return candidate.distanceSquared < item.distanceSquared
+      }
+      return candidate.pubkey < item.pubkey
+    })
+
+    if (insertIndex === -1) {
+      if (selected.length < normalizedCap) {
+        selected.push(candidate)
+      }
+      continue
+    }
+
+    selected.splice(insertIndex, 0, candidate)
+    if (selected.length > normalizedCap) {
+      selected.pop()
+    }
+  }
+
+  return selected.map((item) => item.pubkey)
 }
 
 export const selectAvatarDrawContext = <T>(
@@ -233,6 +276,7 @@ export class AvatarOverlayRenderer {
     this.lastCameraSignature = cameraSignature
     const graph = this.sigma.getGraph()
     const drawItems: AvatarDrawItem[] = []
+    const revealCandidates: AvatarRevealSelectionItem[] = []
     const seenNodes = new Set<string>()
 
     graph.forEachNode((pubkey, attrs) => {
@@ -247,12 +291,21 @@ export class AvatarOverlayRenderer {
       const nodeRadiusPx = this.sigma.scaleSize(display.size, cameraRatio)
       const avatarRadiusPx = Math.max(0, nodeRadiusPx - AVATAR_NODE_INSET_PX)
       const viewport = this.sigma.framedGraphToViewport(display)
+      let isRevealCandidate = false
+      let revealDistanceSquared: number | null = null
       if (
         revealPointer &&
         revealRadiusPx > 0 &&
-        isInsideRevealRadius(viewport, revealPointer, revealRadiusSquared)
+        pubkey !== directForcedAvatarPubkey
       ) {
-        forcedAvatarPubkeys.add(pubkey)
+        const distanceSquared = resolveRevealDistanceSquared(
+          viewport,
+          revealPointer,
+        )
+        if (distanceSquared <= revealRadiusSquared) {
+          isRevealCandidate = true
+          revealDistanceSquared = distanceSquared
+        }
       }
       const isPersistentAvatar =
         forcedAvatarPubkeys.has(pubkey) ||
@@ -268,6 +321,7 @@ export class AvatarOverlayRenderer {
       if (
         !budget.showZoomedOutMonograms &&
         !isPersistentAvatar &&
+        !isRevealCandidate &&
         zoomedOutMonogram
       ) {
         return
@@ -279,6 +333,9 @@ export class AvatarOverlayRenderer {
       })
       if (!this.isInViewport(viewport.x, viewport.y, drawRadiusPx)) {
         return
+      }
+      if (revealDistanceSquared !== null) {
+        revealCandidates.push({ pubkey, distanceSquared: revealDistanceSquared })
       }
       seenNodes.add(pubkey)
       const fastMoving =
@@ -309,16 +366,40 @@ export class AvatarOverlayRenderer {
         fastMoving,
         monogramOnly: !isPersistentAvatar && zoomedOutMonogram,
         isPersistentAvatar,
+        zoomedOutMonogram,
         priority,
         monogramInput,
         monogramCanvas: this.cache.getMonogram(pubkey, monogramInput),
       })
     })
 
+    for (const pubkey of selectClosestAvatarRevealPubkeys(
+      revealCandidates,
+      budget.hoverRevealMaxNodes,
+    )) {
+      forcedAvatarPubkeys.add(pubkey)
+    }
+
     const candidates: AvatarCandidate[] = []
     let imageDrawCount = 0
+    const resolvedDrawItems = drawItems
+      .map((item) => {
+        const isPersistentAvatar =
+          item.isPersistentAvatar || forcedAvatarPubkeys.has(item.pubkey)
+        return {
+          ...item,
+          isPersistentAvatar,
+          monogramOnly: !isPersistentAvatar && item.zoomedOutMonogram,
+        }
+      })
+      .filter(
+        (item) =>
+          budget.showZoomedOutMonograms ||
+          item.isPersistentAvatar ||
+          !item.zoomedOutMonogram,
+      )
     const selectedDrawItems = selectAvatarDrawItemsForFrame(
-      drawItems,
+      resolvedDrawItems,
       budget.maxAvatarDrawsPerFrame,
       forcedAvatarPubkeys,
     )
@@ -328,7 +409,7 @@ export class AvatarOverlayRenderer {
     const selectedOrder = new Map(
       selectedDrawItems.map((item, index) => [item.pubkey, index]),
     )
-    const unselectedDrawItems = drawItems.filter(
+    const unselectedDrawItems = resolvedDrawItems.filter(
       (item) => !selectedPubkeys.has(item.pubkey),
     )
     const orderedDrawItems = budget.showZoomedOutMonograms
@@ -481,6 +562,7 @@ export class AvatarOverlayRenderer {
         ...budget,
         showZoomedOutMonograms: true,
         hoverRevealRadiusPx: DEFAULT_AVATAR_RUNTIME_OPTIONS.hoverRevealRadiusPx,
+        hoverRevealMaxNodes: DEFAULT_AVATAR_RUNTIME_OPTIONS.hoverRevealMaxNodes,
         showMonogramBackgrounds: true,
         showMonogramText: true,
         hideImagesOnFastNodes: false,
@@ -497,6 +579,7 @@ export class AvatarOverlayRenderer {
         ? Math.min(runtimeOptions.zoomThreshold, budget.zoomThreshold)
         : runtimeOptions.zoomThreshold,
       hoverRevealRadiusPx: runtimeOptions.hoverRevealRadiusPx,
+      hoverRevealMaxNodes: runtimeOptions.hoverRevealMaxNodes,
       showZoomedOutMonograms: runtimeOptions.showZoomedOutMonograms,
       showMonogramBackgrounds: runtimeOptions.showMonogramBackgrounds,
       showMonogramText: runtimeOptions.showMonogramText,

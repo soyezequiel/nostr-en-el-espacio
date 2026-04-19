@@ -1220,12 +1220,48 @@ export default function GraphAppV2() {
   }, [domainState.activeLayer])
 
   const filterPills: FilterPill[] = useMemo(() => [
-    { id: 'all',       label: 'Todos',            count: deferredScene.render.diagnostics.nodeCount, swatch: 'oklch(55% 0.02 230)' },
-    { id: 'following', label: 'Sigo',             count: null, swatch: 'oklch(65% 0.10 220)' },
-    { id: 'followers', label: 'Me siguen',        count: null, swatch: 'oklch(65% 0.08 300)' },
-    { id: 'mutuals',   label: 'Mutuos',           count: null, swatch: 'oklch(72% 0.06 220)' },
-    { id: 'oneway',    label: 'Sin reciprocidad', count: null, swatch: 'oklch(60% 0.06 80)' },
-    { id: 'connections', label: 'Conexiones',     count: null, swatch: 'oklch(76% 0.1 180)' },
+    {
+      id: 'all',
+      label: 'Toda la red',
+      count: deferredScene.render.diagnostics.nodeCount,
+      swatch: 'oklch(55% 0.02 230)',
+      hint: 'Toda la red descubierta: raiz, follows salientes, followers entrantes y conexiones cargadas.',
+    },
+    {
+      id: 'following',
+      label: 'A quienes sigo',
+      count: null,
+      swatch: '#9ec5ff',
+      hint: 'A quienes sigo: follows salientes desde la raiz y desde nodos expandidos.',
+    },
+    {
+      id: 'followers',
+      label: 'Me siguen',
+      count: null,
+      swatch: '#f6c15c',
+      hint: 'Me siguen: follows entrantes encontrados en relays.',
+    },
+    {
+      id: 'mutuals',
+      label: 'Mutuos',
+      count: null,
+      swatch: 'oklch(72% 0.06 220)',
+      hint: 'Mutuos: relacion de ida y vuelta confirmada.',
+    },
+    {
+      id: 'oneway',
+      label: 'Sin reciprocidad',
+      count: null,
+      swatch: 'oklch(60% 0.06 80)',
+      hint: 'Sin reciprocidad: vinculo confirmado de un solo lado.',
+    },
+    {
+      id: 'connections',
+      label: 'Conexiones',
+      count: null,
+      swatch: 'oklch(76% 0.1 180)',
+      hint: 'Conexiones: vinculos entre cuentas visibles, sin centrar la raiz.',
+    },
   ], [deferredScene.render.diagnostics.nodeCount])
 
   const handleFilterSelect = useCallback((id: FilterPill['id']) => {

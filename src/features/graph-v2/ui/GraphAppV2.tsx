@@ -91,6 +91,14 @@ import { SigmaLoadingOverlay } from '@/features/graph-v2/ui/SigmaLoadingOverlay'
 import { SigmaRootInput } from '@/features/graph-v2/ui/SigmaRootInput'
 import { SigmaSavedRootsPanel } from '@/features/graph-v2/ui/SigmaSavedRootsPanel'
 import { SigmaToasts, type SigmaToast } from '@/features/graph-v2/ui/SigmaToasts'
+import {
+  buildSocialCaptureDebugFilename,
+  buildSocialCaptureDebugPayload,
+  isSocialCaptureDebugDownloadEnabled,
+  readSocialCaptureDebugBrowserSnapshot,
+  readSocialCaptureDebugLocationSnapshot,
+  type SocialCaptureDebugProgressSnapshot,
+} from '@/features/graph-v2/ui/socialCaptureDebug'
 import { useLiveZapFeed } from '@/features/graph-v2/zaps/useLiveZapFeed'
 import type { ParsedZap } from '@/features/graph-v2/zaps/zapParser'
 import { downloadBlob } from '@/features/graph-runtime/export/download'
@@ -99,9 +107,9 @@ import { fetchProfileByPubkey, type NostrProfile } from '@/lib/nostr'
 type SigmaSettingsTab = 'renderer' | 'relays' | 'dev'
 
 const SOCIAL_CAPTURE_FORMAT_LABELS: Record<SocialGraphCaptureFormat, string> = {
-  wide: 'Wide 1600x900',
-  square: 'Square 1080',
-  story: 'Story 1080x1920',
+  wide: 'Wide 3840x2160',
+  square: 'Square 2160',
+  story: 'Story 2160x3840',
 }
 
 const SOCIAL_CAPTURE_PHASE_LABELS: Record<SocialGraphCapturePhase, string> = {
@@ -670,7 +678,7 @@ function RenderOptionsPanel({
           })}
           value={avatarRuntimeOptions.maxSocialCaptureBucket}
         >
-          {[128, 256, 512].map((bucket) => (
+          {[128, 256, 512, 1024].map((bucket) => (
             <option key={bucket} value={bucket}>{bucket}px</option>
           ))}
         </select>
@@ -860,14 +868,8 @@ export default function GraphAppV2() {
     useState<SocialGraphCaptureFormat>('wide')
   const [socialCapturePhase, setSocialCapturePhase] =
     useState<SocialGraphCapturePhase | null>(null)
-  const [socialCaptureProgress, setSocialCaptureProgress] = useState<{
-    loaded: number
-    total: number
-    failed?: number
-    missing?: number
-    drawn?: number
-    fallbackWithPhoto?: number
-  } | null>(null)
+  const [socialCaptureProgress, setSocialCaptureProgress] =
+    useState<SocialCaptureDebugProgressSnapshot | null>(null)
   const [isSocialCaptureBusy, setIsSocialCaptureBusy] = useState(false)
   const [activeSettingsTab, setActiveSettingsTab] = useState<SigmaSettingsTab>('relays')
   const [isRootSheetOpen, setIsRootSheetOpen] = useState(!isFixtureMode)
@@ -1532,18 +1534,7 @@ export default function GraphAppV2() {
     setIsSocialCaptureBusy(true)
     setSocialCapturePhase('preparing')
     setSocialCaptureProgress(null)
-    let latestCaptureProgress: {
-      loaded: number
-      total: number
-      failed?: number
-      missing?: number
-      drawn?: number
-      fallbackWithPhoto?: number
-      attempted?: number
-      retried?: number
-      timedOut?: boolean
-      topFailureReason?: string
-    } | null = null
+    let latestCaptureProgress: SocialCaptureDebugProgressSnapshot | null = null
 
     void host
       .captureSocialGraph({
@@ -1560,6 +1551,14 @@ export default function GraphAppV2() {
             const topFailureReason = Object.entries(reasons).sort(
               (a, b) => b[1] - a[1],
             )[0]?.[0]
+            const hosts = progress.failureHosts ?? {}
+            const topFailureHost = Object.entries(hosts).sort(
+              (a, b) => b[1] - a[1],
+            )[0]?.[0]
+            const hostReasons = progress.failureHostReasons ?? {}
+            const topFailureHostReason = Object.entries(hostReasons).sort(
+              (a, b) => b[1] - a[1],
+            )[0]?.[0]
             latestCaptureProgress = {
               loaded: progress.loadedAvatarCount ?? 0,
               total: progress.totalAvatarCount,
@@ -1571,14 +1570,42 @@ export default function GraphAppV2() {
               retried: progress.retriedAvatarCount,
               timedOut: progress.timedOut,
               topFailureReason,
+              topFailureHost,
+              topFailureHostReason,
+              failureReasons: progress.failureReasons,
+              failureHosts: progress.failureHosts,
+              failureHostReasons: progress.failureHostReasons,
+              failureSamples: progress.failureSamples,
+              drawFallbackReasons: progress.drawFallbackReasons,
+              drawFallbackHosts: progress.drawFallbackHosts,
+              drawFallbackSamples: progress.drawFallbackSamples,
             }
             setSocialCaptureProgress(latestCaptureProgress)
           }
         },
       })
       .then((blob) => {
-        const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-        downloadBlob(blob, `sigma-graph-${socialCaptureFormat}-${stamp}.png`)
+        const generatedAt = new Date().toISOString()
+        const stamp = generatedAt.replace(/[:.]/g, '-')
+        const pngFileName = `sigma-graph-${socialCaptureFormat}-${stamp}.png`
+        downloadBlob(blob, pngFileName)
+        if (isSocialCaptureDebugDownloadEnabled()) {
+          const debugPayload = buildSocialCaptureDebugPayload({
+            generatedAt,
+            format: socialCaptureFormat,
+            formatLabel: SOCIAL_CAPTURE_FORMAT_LABELS[socialCaptureFormat],
+            pngFileName,
+            progress: latestCaptureProgress,
+            browser: readSocialCaptureDebugBrowserSnapshot(),
+            location: readSocialCaptureDebugLocationSnapshot(),
+          })
+          downloadBlob(
+            new Blob([JSON.stringify(debugPayload, null, 2)], {
+              type: 'application/json',
+            }),
+            buildSocialCaptureDebugFilename(socialCaptureFormat, stamp),
+          )
+        }
         const failedCount =
           latestCaptureProgress?.fallbackWithPhoto ??
           latestCaptureProgress?.failed ??
@@ -1595,6 +1622,14 @@ export default function GraphAppV2() {
                       ? ` (${latestCaptureProgress.topFailureReason})`
                       : ''
                   }`
+                : ''
+            }${
+              latestCaptureProgress?.topFailureHost
+                ? `; host principal: ${latestCaptureProgress.topFailureHost}`
+                : ''
+            }${
+              latestCaptureProgress?.topFailureHostReason
+                ? `; patrón: ${latestCaptureProgress.topFailureHostReason}`
                 : ''
             }${
               latestCaptureProgress?.retried

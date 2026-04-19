@@ -63,12 +63,12 @@ export const DEFAULT_AVATAR_RUNTIME_OPTIONS: AvatarRuntimeOptions = {
   hoverRevealMaxNodes: 24,
   showZoomedOutMonograms: true,
   showMonogramBackgrounds: false,
-  showMonogramText: true,
+  showMonogramText: false,
   hideImagesOnFastNodes: true,
   fastNodeVelocityThreshold: 240,
   allowZoomedOutImages: true,
   maxInteractiveBucket: 256,
-  maxSocialCaptureBucket: 512,
+  maxSocialCaptureBucket: 1024,
 }
 
 export const DEFAULT_BUDGETS: Record<DeviceTier, AvatarBudget> = {

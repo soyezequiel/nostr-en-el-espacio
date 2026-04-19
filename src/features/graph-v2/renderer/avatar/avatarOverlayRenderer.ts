@@ -731,7 +731,7 @@ export class AvatarOverlayRenderer {
         fastNodeVelocityThreshold: Number.POSITIVE_INFINITY,
         allowZoomedOutImages: false,
         maxInteractiveBucket: budget.maxBucket,
-        maxSocialCaptureBucket: 512,
+        maxSocialCaptureBucket: DEFAULT_AVATAR_RUNTIME_OPTIONS.maxSocialCaptureBucket,
       }
     }
     const adaptiveVisualsActive = snapshot.isDegraded || budget.maxBucket <= 64

@@ -91,7 +91,7 @@ const AVATAR_MAX_HOVER_REVEAL_MAX_NODES = 96
 const AVATAR_MIN_FAST_NODE_VELOCITY = 40
 const AVATAR_MAX_FAST_NODE_VELOCITY = 2000
 const AVATAR_MAX_INTERACTIVE_BUCKETS = [32, 64, 128, 256] as const
-const AVATAR_MAX_SOCIAL_CAPTURE_BUCKETS = [32, 64, 128, 256, 512] as const
+const AVATAR_MAX_SOCIAL_CAPTURE_BUCKETS = [32, 64, 128, 256, 512, 1024] as const
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
@@ -895,9 +895,13 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
 
     const graph = renderStore.getGraph()
-    const cache = this.avatarCache ?? new AvatarBitmapCache(DEFAULT_BUDGETS.high.lruCap)
+    const cache = new AvatarBitmapCache(
+      Math.max(
+        DEFAULT_BUDGETS.high.lruCap,
+        this.avatarCache?.capacity() ?? 0,
+      ),
+    )
     const loader = this.avatarLoader ?? new AvatarLoader()
-    const shouldClearTransientCache = cache !== this.avatarCache
     const previousCameraState = sigma.getCamera().getState()
     const wasPhysicsRunning = this.forceRuntime?.isRunning() ?? false
 
@@ -936,9 +940,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
         this.forceRuntime?.resume()
         this.ensurePhysicsPositionBridge()
       }
-      if (shouldClearTransientCache) {
-        cache.clear()
-      }
+      cache.clear()
       this.safeRefresh()
     }
   }

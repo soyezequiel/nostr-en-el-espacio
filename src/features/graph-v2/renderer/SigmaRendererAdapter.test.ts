@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { AvatarBitmapCache } from '@/features/graph-v2/renderer/avatar/avatarBitmapCache'
 import { createDragNeighborhoodInfluenceState } from '@/features/graph-v2/renderer/dragInfluence'
 import {
   NodePositionLedger,
@@ -252,3 +253,178 @@ test('keeps hovered neighbors on their base color while marking them highlighted
   assert.equal(hoveredNeighbor.highlighted, true)
   assert.equal(hoveredNeighbor.zIndex, 8)
 })
+
+test('social capture uses an isolated avatar cache', async () => {
+  const restoreDocument = installCaptureDocumentStub()
+
+  try {
+    const { SigmaRendererAdapter } = await import(
+      '@/features/graph-v2/renderer/SigmaRendererAdapter'
+    )
+
+    const adapter = new SigmaRendererAdapter() as unknown as {
+      sigma: {
+        getCamera: () => {
+          getState: () => { ratio: number }
+          setState: (_state: { ratio: number }) => void
+        }
+      }
+      renderStore: {
+        getGraph: () => {
+          nodes: () => string[]
+          edges: () => string[]
+          getNodeAttributes: (_pubkey: string) => Record<string, unknown>
+          degree: (_pubkey: string) => number
+          source: (_edgeId: string) => string
+          target: (_edgeId: string) => string
+          getEdgeAttributes: (_edgeId: string) => Record<string, unknown>
+        }
+      }
+      avatarCache: AvatarBitmapCache
+      avatarLoader: {
+        load: () => Promise<{ bitmap: HTMLCanvasElement; bytes: number }>
+      }
+      forceRuntime: {
+        isRunning: () => boolean
+        suspend: () => void
+        resume: () => void
+      } | null
+      cancelPhysicsPositionBridge: () => void
+      safeRefresh: () => void
+      scene: {
+        render: {
+          cameraHint: {
+            rootPubkey: string | null
+          }
+        }
+      }
+      captureSocialGraph: () => Promise<Blob>
+    }
+
+    adapter.sigma = {
+      getCamera: () => ({
+        getState: () => ({ ratio: 1 }),
+        setState: () => {},
+      }),
+    }
+    adapter.renderStore = {
+      getGraph: () => ({
+        nodes: () => ['root'],
+        edges: () => [],
+        getNodeAttributes: () => ({
+          x: 0,
+          y: 0,
+          size: 10,
+          color: '#7dd3a7',
+          focusState: 'root',
+          label: 'root',
+          hidden: false,
+          highlighted: false,
+          forceLabel: false,
+          fixed: false,
+          pictureUrl: 'https://example.com/root.png',
+          isDimmed: false,
+          isSelected: false,
+          isNeighbor: false,
+          isRoot: true,
+          isPinned: false,
+          zIndex: 0,
+        }),
+        degree: () => 0,
+        source: () => '',
+        target: () => '',
+        getEdgeAttributes: () => ({}),
+      }),
+    }
+    adapter.avatarCache = new AvatarBitmapCache(16)
+    adapter.avatarLoader = {
+      load: async () => ({
+        bitmap: document.createElement('canvas') as HTMLCanvasElement,
+        bytes: 64,
+      }),
+    }
+    adapter.forceRuntime = {
+      isRunning: () => false,
+      suspend: () => {},
+      resume: () => {},
+    }
+    adapter.cancelPhysicsPositionBridge = () => {}
+    adapter.safeRefresh = () => {}
+    adapter.scene = {
+      render: {
+        cameraHint: {
+          rootPubkey: 'root',
+        },
+      },
+    }
+
+    const blob = await adapter.captureSocialGraph()
+
+    assert.equal(blob.type, 'image/png')
+    assert.equal(
+      adapter.avatarCache.size(),
+      0,
+      'expected live avatar cache to remain untouched by social capture preload',
+    )
+  } finally {
+    restoreDocument()
+  }
+})
+
+const installCaptureDocumentStub = () => {
+  const originalDocument = globalThis.document
+  const ctx = {
+    save: () => undefined,
+    restore: () => undefined,
+    beginPath: () => undefined,
+    closePath: () => undefined,
+    moveTo: () => undefined,
+    lineTo: () => undefined,
+    quadraticCurveTo: () => undefined,
+    arc: () => undefined,
+    clip: () => undefined,
+    fill: () => undefined,
+    stroke: () => undefined,
+    fillRect: () => undefined,
+    fillText: () => undefined,
+    strokeText: () => undefined,
+    drawImage: () => undefined,
+    getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+    measureText: (text: string) => ({ width: text.length * 8 }),
+    createLinearGradient: () => ({
+      addColorStop: () => undefined,
+    }),
+    createRadialGradient: () => ({
+      addColorStop: () => undefined,
+    }),
+  }
+  const canvasFactory = () => ({
+    width: 0,
+    height: 0,
+    getContext: () => ctx,
+    toBlob: (callback: (blob: Blob | null) => void) => {
+      callback(new Blob(['png'], { type: 'image/png' }))
+    },
+  })
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      createElement: (tagName: string) => {
+        if (tagName === 'canvas') {
+          return canvasFactory()
+        }
+        return {
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+        }
+      },
+    },
+  })
+
+  return () => {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: originalDocument,
+    })
+  }
+}

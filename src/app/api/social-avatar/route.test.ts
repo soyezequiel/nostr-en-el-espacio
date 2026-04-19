@@ -2,9 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  buildBlossomMirrorCandidateUrls,
+  buildTwimgAvatarVariantCandidateUrls,
+  extractBlossomSha256FromUrl,
   isAllowedAvatarContentType,
   isPrivateOrReservedIp,
   resolveEffectiveContentType,
+  resolveProxyErrorStatus,
+  sha256Hex,
+  shouldAttemptBlossomMirrorFallback,
+  shouldAttemptTwimgAvatarVariantFallback,
   sniffImageMime,
   validateSocialAvatarProxyUrl,
 } from '@/app/api/social-avatar/route'
@@ -92,6 +99,13 @@ test('resolveEffectiveContentType prefers sniffed mime over wrong header', () =>
   )
 })
 
+test('social avatar proxy preserves upstream HTTP status for diagnostics', () => {
+  assert.equal(resolveProxyErrorStatus('http_404'), 404)
+  assert.equal(resolveProxyErrorStatus('http_410'), 410)
+  assert.equal(resolveProxyErrorStatus('http_502'), 502)
+  assert.equal(resolveProxyErrorStatus('timeout'), 504)
+})
+
 test('social avatar proxy identifies private and reserved IP ranges', () => {
   assert.equal(isPrivateOrReservedIp('10.0.0.4'), true)
   assert.equal(isPrivateOrReservedIp('172.20.0.4'), true)
@@ -100,4 +114,113 @@ test('social avatar proxy identifies private and reserved IP ranges', () => {
   assert.equal(isPrivateOrReservedIp('93.184.216.34'), false)
   assert.equal(isPrivateOrReservedIp('::1'), true)
   assert.equal(isPrivateOrReservedIp('2606:4700:4700::1111'), false)
+})
+
+test('social avatar proxy detects Blossom content hashes in avatar URLs', () => {
+  const hash = 'a'.repeat(64)
+
+  assert.equal(
+    extractBlossomSha256FromUrl(new URL(`https://blossom.example/${hash}`)),
+    hash,
+  )
+  assert.equal(
+    extractBlossomSha256FromUrl(new URL(`https://blossom.example/${hash}.webp`)),
+    hash,
+  )
+  assert.equal(
+    extractBlossomSha256FromUrl(new URL('https://cdn.example/avatar.webp')),
+    null,
+  )
+})
+
+test('social avatar proxy builds bounded Blossom mirror candidates', () => {
+  const hash = 'b'.repeat(64)
+  const candidates = buildBlossomMirrorCandidateUrls(
+    new URL(`https://down.example/${hash}.jpg?x=1`),
+    ['https://mirror-a.example/base', 'https://down.example'],
+  )
+
+  assert.deepEqual(
+    candidates.map((url) => url.toString()),
+    [
+      `https://mirror-a.example/${hash}.jpg`,
+      `https://mirror-a.example/${hash}`,
+    ],
+  )
+})
+
+test('social avatar proxy only mirrors recoverable Blossom failures', () => {
+  const hash = 'c'.repeat(64)
+  const blossomUrl = new URL(`https://blossom.example/${hash}`)
+  const normalUrl = new URL('https://cdn.example/avatar.png')
+
+  assert.equal(shouldAttemptBlossomMirrorFallback(blossomUrl, 'http_502'), true)
+  assert.equal(shouldAttemptBlossomMirrorFallback(blossomUrl, 'http_404'), true)
+  assert.equal(shouldAttemptBlossomMirrorFallback(blossomUrl, 'unsupported_content_type'), false)
+  assert.equal(shouldAttemptBlossomMirrorFallback(normalUrl, 'http_502'), false)
+})
+
+test('social avatar proxy can verify a mirrored Blossom blob by sha256', () => {
+  const bytes = new TextEncoder().encode('avatar-bytes')
+  assert.equal(
+    sha256Hex(bytes.buffer),
+    '51f62eb5ae9b82cd85654f94c604c022fbbb6ef73daabc624de43e5a2b585582',
+  )
+})
+
+test('social avatar proxy builds Twitter profile image size variants', () => {
+  const candidates = buildTwimgAvatarVariantCandidateUrls(
+    new URL('https://pbs.twimg.com/profile_images/1/avatar_normal.jpg'),
+  )
+
+  assert.deepEqual(
+    candidates.map((url) => url.toString()),
+    [
+      'https://pbs.twimg.com/profile_images/1/avatar.jpg',
+      'https://pbs.twimg.com/profile_images/1/avatar_400x400.jpg',
+      'https://pbs.twimg.com/profile_images/1/avatar_bigger.jpg',
+      'https://pbs.twimg.com/profile_images/1/avatar_mini.jpg',
+    ],
+  )
+})
+
+test('social avatar proxy builds Twitter query size variants', () => {
+  const candidates = buildTwimgAvatarVariantCandidateUrls(
+    new URL('https://pbs.twimg.com/media/avatar?format=jpg&name=small'),
+  )
+
+  assert.deepEqual(
+    candidates.map((url) => url.toString()),
+    [
+      'https://pbs.twimg.com/media/avatar?format=jpg&name=4096x4096',
+      'https://pbs.twimg.com/media/avatar?format=jpg&name=large',
+      'https://pbs.twimg.com/media/avatar?format=jpg&name=400x400',
+      'https://pbs.twimg.com/media/avatar?format=jpg&name=medium',
+      'https://pbs.twimg.com/media/avatar?format=jpg&name=normal',
+    ],
+  )
+})
+
+test('social avatar proxy only retries Twitter variants for recoverable pbs.twimg.com misses', () => {
+  assert.equal(
+    shouldAttemptTwimgAvatarVariantFallback(
+      new URL('https://pbs.twimg.com/profile_images/1/avatar_normal.jpg'),
+      'http_404',
+    ),
+    true,
+  )
+  assert.equal(
+    shouldAttemptTwimgAvatarVariantFallback(
+      new URL('https://pbs.twimg.com/profile_images/1/avatar_normal.jpg'),
+      'timeout',
+    ),
+    false,
+  )
+  assert.equal(
+    shouldAttemptTwimgAvatarVariantFallback(
+      new URL('https://example.com/profile_images/1/avatar_normal.jpg'),
+      'http_404',
+    ),
+    false,
+  )
 })

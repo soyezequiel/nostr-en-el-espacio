@@ -53,7 +53,9 @@ export const resolveAvatarBucketForVisibleDiameter = ({
           ? 128
           : diameter <= 160
             ? 256
-            : 512
+            : diameter <= 320
+              ? 512
+              : 1024
 
   return clampBucket(bucket, maxBucket)
 }

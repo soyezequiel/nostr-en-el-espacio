@@ -185,6 +185,10 @@ export class AvatarBitmapCache {
     this.evictMonogramsIfNeeded()
   }
 
+  public capacity(): number {
+    return this.cap
+  }
+
   public getMonogram(pubkey: string, input: MonogramInput): HTMLCanvasElement {
     const signature = createMonogramSignature(input)
     const existing = this.monograms.get(pubkey)

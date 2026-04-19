@@ -2,11 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  captureSocialGraphImage,
   extractLoadErrorReason,
   isCanvasImageSourceExportSafe,
+  resolveSocialCaptureCacheCap,
   selectSocialCaptureAvatarNodes,
   type SocialGraphCaptureNode,
 } from '@/features/graph-v2/renderer/socialGraphCapture'
+import { AvatarBitmapCache } from '@/features/graph-v2/renderer/avatar/avatarBitmapCache'
 import type { RenderNodeAttributes } from '@/features/graph-v2/renderer/graphologyProjectionStore'
 
 const node = (
@@ -110,6 +113,68 @@ test('social capture accepts origin-clean canvas sources for PNG export', () => 
   }
 })
 
+test('social capture expands cache cap enough to retain loaded avatars until draw', () => {
+  assert.equal(
+    resolveSocialCaptureCacheCap({
+      currentCap: 64,
+      currentSize: 64,
+      avatarNodeCount: 208,
+    }),
+    272,
+  )
+  assert.equal(
+    resolveSocialCaptureCacheCap({
+      currentCap: 512,
+      currentSize: 12,
+      avatarNodeCount: 80,
+    }),
+    512,
+  )
+})
+
+test('social capture emits draw fallback diagnostics only after drawing', async () => {
+  const restoreDocument = installCaptureDocumentStub()
+  const progress: Array<{
+    phase: string
+    drawFallbackReasons?: Record<string, number>
+  }> = []
+
+  try {
+    const blob = await captureSocialGraphImage({
+      nodes: [],
+      edges: [],
+      cache: new AvatarBitmapCache(16),
+      loader: {
+        load: async () => {
+          throw new Error('unexpected_load')
+        },
+      } as never,
+      rootPubkey: null,
+      options: {
+        onProgress: (next) => progress.push(next),
+      },
+    })
+
+    assert.equal(blob.type, 'image/png')
+    assert.deepEqual(
+      progress.map((next) => next.phase),
+      ['preparing', 'loading-avatars', 'generating-image', 'completed'],
+    )
+    assert.equal(
+      progress.find((next) => next.phase === 'generating-image')
+        ?.drawFallbackReasons,
+      undefined,
+    )
+    assert.deepEqual(
+      progress.find((next) => next.phase === 'completed')
+        ?.drawFallbackReasons,
+      {},
+    )
+  } finally {
+    restoreDocument()
+  }
+})
+
 const installDocumentStub = ({
   getImageData,
 }: {
@@ -127,6 +192,49 @@ const installDocumentStub = ({
           getImageData,
         }),
       }),
+    },
+  })
+
+  return () => {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: originalDocument,
+    })
+  }
+}
+
+const installCaptureDocumentStub = () => {
+  const originalDocument = globalThis.document
+  const ctx = {
+    save: () => undefined,
+    restore: () => undefined,
+    beginPath: () => undefined,
+    closePath: () => undefined,
+    moveTo: () => undefined,
+    lineTo: () => undefined,
+    quadraticCurveTo: () => undefined,
+    arc: () => undefined,
+    clip: () => undefined,
+    fill: () => undefined,
+    stroke: () => undefined,
+    fillRect: () => undefined,
+    fillText: () => undefined,
+    drawImage: () => undefined,
+    getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+    measureText: (text: string) => ({ width: text.length * 8 }),
+  }
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: () => ctx,
+    toBlob: (callback: (blob: Blob | null) => void) => {
+      callback(new Blob(['png'], { type: 'image/png' }))
+    },
+  }
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      createElement: () => canvas,
     },
   })
 

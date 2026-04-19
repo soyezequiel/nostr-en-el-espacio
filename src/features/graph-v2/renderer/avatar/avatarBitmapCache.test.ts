@@ -13,12 +13,19 @@ const installDocumentStub = () => {
           width: 0,
           height: 0,
           getContext: () => ({
+            save: () => undefined,
+            restore: () => undefined,
             beginPath: () => undefined,
             arc: () => undefined,
             closePath: () => undefined,
+            clip: () => undefined,
+            createLinearGradient: () => ({
+              addColorStop: () => undefined,
+            }),
             createRadialGradient: () => ({
               addColorStop: () => undefined,
             }),
+            fillRect: () => undefined,
             fill: () => undefined,
             stroke: () => undefined,
             strokeText: () => undefined,
@@ -68,6 +75,14 @@ test('AvatarBitmapCache closes ImageBitmap entries when evicted', () => {
       value: originalImageBitmap,
     })
   }
+})
+
+test('AvatarBitmapCache reports its active capacity', () => {
+  const cache = new AvatarBitmapCache(2)
+  assert.equal(cache.capacity(), 16)
+
+  cache.setCap(40)
+  assert.equal(cache.capacity(), 40)
 })
 
 test('AvatarBitmapCache keeps monograms bounded and LRU ordered', () => {

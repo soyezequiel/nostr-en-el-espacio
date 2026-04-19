@@ -1,7 +1,6 @@
 import {
   buildAvatarUrlKey,
   isSafeAvatarUrl,
-  resolveAvatarBucketForVisibleDiameter,
   type ImageLodBucket,
 } from '@/features/graph-v2/renderer/avatar/avatarImageUtils'
 import type {
@@ -35,6 +34,11 @@ export interface SocialGraphCaptureProgress {
   retriedAvatarCount?: number
   failureReasons?: Record<string, number>
   failureHosts?: Record<string, number>
+  failureHostReasons?: Record<string, number>
+  failureSamples?: Record<string, string[]>
+  drawFallbackReasons?: Record<string, number>
+  drawFallbackHosts?: Record<string, number>
+  drawFallbackSamples?: Record<string, string[]>
   timedOut?: boolean
 }
 
@@ -72,9 +76,9 @@ export const SOCIAL_GRAPH_CAPTURE_FORMATS: Record<
   SocialGraphCaptureFormat,
   { width: number; height: number }
 > = {
-  wide: { width: 1600, height: 900 },
-  square: { width: 1080, height: 1080 },
-  story: { width: 1080, height: 1920 },
+  wide: { width: 3840, height: 2160 },
+  square: { width: 2160, height: 2160 },
+  story: { width: 2160, height: 3840 },
 }
 
 const DEFAULT_CAPTURE_TIMEOUT_MS = 30000
@@ -96,11 +100,11 @@ const CAPTURE_RETRYABLE_REASONS = new Set<string>([
   'http_504',
   'image_load_failed',
 ])
-const CAPTURE_PADDING_PX = 72
-const FOOTER_HEIGHT_PX = 40
-const MIN_CAPTURE_NODE_RADIUS_PX = 4
-const MAX_CAPTURE_NODE_RADIUS_PX = 42
-const PRIORITY_NODE_MIN_RADIUS_PX = 16
+const CAPTURE_PADDING_PX = 144
+const FOOTER_HEIGHT_PX = 88
+const MIN_CAPTURE_NODE_RADIUS_PX = 10
+const MAX_CAPTURE_NODE_RADIUS_PX = 120
+const PRIORITY_NODE_MIN_RADIUS_PX = 44
 const HUB_LABEL_LIMIT = 10
 const EXPORT_PROBE_SIZE_PX = 1
 
@@ -152,7 +156,7 @@ export const captureSocialGraphImage = async ({
     500,
     MAX_CAPTURE_TIMEOUT_MS,
   )
-  const maxBucket = options?.maxBucket ?? 512
+  const maxBucket = options?.maxBucket ?? 1024
   const concurrency = Math.round(
     clampFinite(options?.concurrency ?? DEFAULT_CAPTURE_CONCURRENCY, 1, 32),
   )
@@ -170,93 +174,133 @@ export const captureSocialGraphImage = async ({
       x: point.x,
       y: point.y,
       r: radius,
-      bucket: resolveAvatarBucketForVisibleDiameter({
-        visibleDiameterPx: radius * 2,
-        maxBucket,
-      }),
+      // Capture always requests the highest bucket available so avatars
+      // stay sharp when scaled down to the final node radius. The canvas
+      // uses high-quality smoothing at draw time.
+      bucket: maxBucket,
       monogram,
     }
   })
 
   const avatarNodes = selectSocialCaptureAvatarNodes(renderNodes)
-  options?.onProgress?.({
-    phase: 'loading-avatars',
-    loadedAvatarCount: 0,
-    totalAvatarCount: avatarNodes.length,
-  })
+  const originalCacheCap = cache.capacity()
+  cache.setCap(
+    resolveSocialCaptureCacheCap({
+      currentCap: originalCacheCap,
+      currentSize: cache.size(),
+      avatarNodeCount: avatarNodes.length,
+    }),
+  )
 
-  const preloadResult = await preloadCaptureAvatars({
-    nodes: avatarNodes,
-    cache,
-    loader,
-    timeoutMs,
-    concurrency,
-    onProgress: options?.onProgress,
-  })
+  try {
+    options?.onProgress?.({
+      phase: 'loading-avatars',
+      loadedAvatarCount: 0,
+      totalAvatarCount: avatarNodes.length,
+    })
 
-  logCaptureDiagnostics({
-    visibleNodes: visibleNodes.length,
-    nodesWithPicture: avatarNodes.length,
-    preload: preloadResult,
-  })
+    const preloadResult = await preloadCaptureAvatars({
+      nodes: avatarNodes,
+      cache,
+      loader,
+      timeoutMs,
+      concurrency,
+      onProgress: options?.onProgress,
+    })
 
-  options?.onProgress?.({
-    phase: 'generating-image',
-    loadedAvatarCount: preloadResult.loaded,
-    totalAvatarCount: avatarNodes.length,
-    failedAvatarCount: preloadResult.failed,
-    missingPhotoCount: visibleNodes.length - avatarNodes.length,
-    attemptedAvatarCount: preloadResult.attempted,
-    retriedAvatarCount: preloadResult.retried,
-    failureReasons: preloadResult.failureReasons,
-    failureHosts: preloadResult.failureHosts,
-    timedOut: preloadResult.timedOut,
-  })
+    logCaptureDiagnostics({
+      visibleNodes: visibleNodes.length,
+      nodesWithPicture: avatarNodes.length,
+      preload: preloadResult,
+    })
 
-  const canvas = document.createElement('canvas')
-  canvas.width = format.width
-  canvas.height = format.height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) {
-    throw new Error('canvas_unavailable')
+    options?.onProgress?.({
+      phase: 'generating-image',
+      loadedAvatarCount: preloadResult.loaded,
+      totalAvatarCount: avatarNodes.length,
+      failedAvatarCount: preloadResult.failed,
+      missingPhotoCount: visibleNodes.length - avatarNodes.length,
+      attemptedAvatarCount: preloadResult.attempted,
+      retriedAvatarCount: preloadResult.retried,
+      failureReasons: preloadResult.failureReasons,
+      failureHosts: preloadResult.failureHosts,
+      failureHostReasons: preloadResult.failureHostReasons,
+      failureSamples: preloadResult.failureSamples,
+      timedOut: preloadResult.timedOut,
+    })
+
+    const canvas = document.createElement('canvas')
+    canvas.width = format.width
+    canvas.height = format.height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      throw new Error('canvas_unavailable')
+    }
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+
+    drawCaptureBackground(ctx, format.width, format.height)
+    drawCaptureEdges(ctx, edges, renderNodes, format)
+    const drawStats = drawCaptureNodes(ctx, renderNodes, cache)
+    drawCaptureLabels(ctx, renderNodes, format)
+    drawCaptureFooter(ctx, {
+      width: format.width,
+      height: format.height,
+      rootLabel:
+        renderNodes.find((node) => node.pubkey === rootPubkey)?.attrs.label ??
+        renderNodes.find((node) => node.attrs.isRoot)?.attrs.label ??
+        null,
+      nodeCount: visibleNodes.length,
+      edgeCount: edges.filter((edge) => !edge.attrs.hidden).length,
+      now: now(),
+      drawnImageCount: drawStats.drawnImageCount,
+      fallbackWithPhotoCount: drawStats.fallbackWithPhotoCount,
+      missingPhotoCount: drawStats.missingPhotoCount,
+    })
+
+    options?.onProgress?.({
+      phase: 'completed',
+      loadedAvatarCount: preloadResult.loaded,
+      totalAvatarCount: avatarNodes.length,
+      failedAvatarCount: preloadResult.failed,
+      missingPhotoCount: drawStats.missingPhotoCount,
+      drawnImageCount: drawStats.drawnImageCount,
+      fallbackWithPhotoCount: drawStats.fallbackWithPhotoCount,
+      attemptedAvatarCount: preloadResult.attempted,
+      retriedAvatarCount: preloadResult.retried,
+      failureReasons: preloadResult.failureReasons,
+      failureHosts: preloadResult.failureHosts,
+      failureHostReasons: preloadResult.failureHostReasons,
+      failureSamples: preloadResult.failureSamples,
+      drawFallbackReasons: drawStats.fallbackReasons,
+      drawFallbackHosts: drawStats.fallbackHosts,
+      drawFallbackSamples: drawStats.fallbackSamples,
+      timedOut: preloadResult.timedOut,
+    })
+
+    return await canvasToPngBlob(canvas)
+  } finally {
+    cache.setCap(originalCacheCap)
   }
-
-  drawCaptureBackground(ctx, format.width, format.height)
-  drawCaptureEdges(ctx, edges, renderNodes)
-  const drawStats = drawCaptureNodes(ctx, renderNodes, cache)
-  drawCaptureLabels(ctx, renderNodes)
-  drawCaptureFooter(ctx, {
-    width: format.width,
-    height: format.height,
-    rootLabel:
-      renderNodes.find((node) => node.pubkey === rootPubkey)?.attrs.label ??
-      renderNodes.find((node) => node.attrs.isRoot)?.attrs.label ??
-      null,
-    nodeCount: visibleNodes.length,
-    edgeCount: edges.filter((edge) => !edge.attrs.hidden).length,
-    now: now(),
-    drawnImageCount: drawStats.drawnImageCount,
-    fallbackWithPhotoCount: drawStats.fallbackWithPhotoCount,
-    missingPhotoCount: drawStats.missingPhotoCount,
-  })
-
-  options?.onProgress?.({
-    phase: 'completed',
-    loadedAvatarCount: preloadResult.loaded,
-    totalAvatarCount: avatarNodes.length,
-    failedAvatarCount: preloadResult.failed,
-    missingPhotoCount: drawStats.missingPhotoCount,
-    drawnImageCount: drawStats.drawnImageCount,
-    fallbackWithPhotoCount: drawStats.fallbackWithPhotoCount,
-    attemptedAvatarCount: preloadResult.attempted,
-    retriedAvatarCount: preloadResult.retried,
-    failureReasons: preloadResult.failureReasons,
-    failureHosts: preloadResult.failureHosts,
-    timedOut: preloadResult.timedOut,
-  })
-
-  return await canvasToPngBlob(canvas)
 }
+
+export const resolveSocialCaptureCacheCap = ({
+  currentCap,
+  currentSize,
+  avatarNodeCount,
+}: {
+  currentCap: number
+  currentSize: number
+  avatarNodeCount: number
+}) =>
+  Math.max(
+    16,
+    ceilFinite(currentCap),
+    ceilFinite(currentSize) + ceilFinite(avatarNodeCount),
+  )
+
+const ceilFinite = (value: number) =>
+  Number.isFinite(value) ? Math.max(0, Math.ceil(value)) : 0
 
 export interface PreloadCaptureResult {
   loaded: number
@@ -265,6 +309,8 @@ export interface PreloadCaptureResult {
   retried: number
   failureReasons: Record<string, number>
   failureHosts: Record<string, number>
+  failureHostReasons: Record<string, number>
+  failureSamples: Record<string, string[]>
   timedOut: boolean
 }
 
@@ -299,6 +345,8 @@ const preloadCaptureAvatars = async ({
   let cursor = 0
   const failureReasons: Record<string, number> = {}
   const failureHosts: Record<string, number> = {}
+  const failureHostReasons: Record<string, number> = {}
+  const failureSamples: Record<string, string[]> = {}
 
   const reportFailure = (url: string, reason: string) => {
     failureReasons[reason] = (failureReasons[reason] ?? 0) + 1
@@ -309,6 +357,14 @@ const preloadCaptureAvatars = async ({
       /* keep default */
     }
     failureHosts[host] = (failureHosts[host] ?? 0) + 1
+    const hostReasonKey = `${reason} @ ${host}`
+    failureHostReasons[hostReasonKey] =
+      (failureHostReasons[hostReasonKey] ?? 0) + 1
+    const samples = failureSamples[hostReasonKey] ?? []
+    if (samples.length < 6 && url && !samples.includes(url)) {
+      samples.push(url)
+      failureSamples[hostReasonKey] = samples
+    }
   }
 
   const loadWithRetries = async (
@@ -422,6 +478,8 @@ const preloadCaptureAvatars = async ({
     retried,
     failureReasons,
     failureHosts,
+    failureHostReasons,
+    failureSamples,
     timedOut: deadlineCtrl.signal.aborted,
   }
 }
@@ -491,6 +549,12 @@ const logCaptureDiagnostics = ({
     }
     if (Object.keys(preload.failureHosts).length > 0) {
       console.info('failure hosts:', preload.failureHosts)
+    }
+    if (Object.keys(preload.failureHostReasons).length > 0) {
+      console.info('failure host/reasons:', preload.failureHostReasons)
+    }
+    if (Object.keys(preload.failureSamples).length > 0) {
+      console.info('failure samples:', preload.failureSamples)
     }
     const groupEnd = (console as { groupEnd?: () => void }).groupEnd
     if (typeof groupEnd === 'function') {
@@ -576,7 +640,7 @@ const resolveCaptureNodeRadius = (
   return clampFinite(
     base,
     priorityMin,
-    MAX_CAPTURE_NODE_RADIUS_PX * formatScale,
+    MAX_CAPTURE_NODE_RADIUS_PX,
   )
 }
 
@@ -596,14 +660,15 @@ const drawCaptureBackground = (
   ctx.fillStyle = '#091017'
   ctx.fillRect(0, 0, width, height)
   ctx.strokeStyle = 'rgba(216, 227, 240, 0.06)'
-  ctx.lineWidth = 1
-  for (let x = 0; x <= width; x += 80) {
+  ctx.lineWidth = Math.max(1, Math.round(Math.min(width, height) / 1080))
+  const gridStep = Math.max(80, Math.round(Math.min(width, height) / 18))
+  for (let x = 0; x <= width; x += gridStep) {
     ctx.beginPath()
     ctx.moveTo(x + 0.5, 0)
     ctx.lineTo(x + 0.5, height)
     ctx.stroke()
   }
-  for (let y = 0; y <= height; y += 80) {
+  for (let y = 0; y <= height; y += gridStep) {
     ctx.beginPath()
     ctx.moveTo(0, y + 0.5)
     ctx.lineTo(width, y + 0.5)
@@ -615,6 +680,7 @@ const drawCaptureEdges = (
   ctx: CanvasRenderingContext2D,
   edges: readonly SocialGraphCaptureEdge[],
   nodes: ReadonlyArray<SocialGraphCaptureNode & { x: number; y: number }>,
+  format: { width: number; height: number },
 ) => {
   const positions = new Map(nodes.map((node) => [node.pubkey, node]))
   ctx.save()
@@ -627,7 +693,8 @@ const drawCaptureEdges = (
     ctx.strokeStyle = edge.attrs.touchesFocus
       ? 'rgba(216, 227, 240, 0.40)'
       : 'rgba(122, 146, 189, 0.20)'
-    ctx.lineWidth = clampFinite(edge.attrs.size, 0.5, 2.6)
+    const edgeScale = Math.max(1, Math.min(format.width, format.height) / 900)
+    ctx.lineWidth = clampFinite(edge.attrs.size * edgeScale, 0.5, 8)
     ctx.beginPath()
     ctx.moveTo(source.x, source.y)
     ctx.lineTo(target.x, target.y)
@@ -653,6 +720,9 @@ const drawCaptureNodes = (
     drawnImageCount: 0,
     fallbackWithPhotoCount: 0,
     missingPhotoCount: 0,
+    fallbackReasons: {} as Record<string, number>,
+    fallbackHosts: {} as Record<string, number>,
+    fallbackSamples: {} as Record<string, string[]>,
   }
   const ordered = [...nodes].sort((left, right) => {
     const leftZ = left.attrs.zIndex ?? 0
@@ -675,17 +745,22 @@ const drawCaptureNodes = (
       stats.drawnImageCount += 1
     } else if (url && isSafeAvatarUrl(url)) {
       stats.fallbackWithPhotoCount += 1
+      reportDrawFallback(stats, url, resolveDrawFallbackReason(entry))
     } else {
       stats.missingPhotoCount += 1
     }
     const size = node.r * 2
+    const shadowScale = Math.max(1, node.r / 20)
     ctx.save()
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
     ctx.shadowColor = 'rgba(0, 0, 0, 0.38)'
-    ctx.shadowBlur = node.attrs.isRoot ? 18 : 8
-    ctx.shadowOffsetY = 2
+    ctx.shadowBlur = (node.attrs.isRoot ? 18 : 8) * shadowScale
+    ctx.shadowOffsetY = 2 * shadowScale
     ctx.drawImage(drawable, node.x - node.r, node.y - node.r, size, size)
     ctx.shadowColor = 'transparent'
-    ctx.lineWidth = node.attrs.isRoot || node.attrs.isSelected ? 2.4 : 1
+    ctx.lineWidth =
+      (node.attrs.isRoot || node.attrs.isSelected ? 2.4 : 1) * shadowScale
     ctx.strokeStyle =
       node.attrs.isRoot || node.attrs.isSelected
         ? 'rgba(244, 251, 255, 0.9)'
@@ -697,6 +772,40 @@ const drawCaptureNodes = (
   }
 
   return stats
+}
+
+const reportDrawFallback = (
+  stats: {
+    fallbackReasons: Record<string, number>
+    fallbackHosts: Record<string, number>
+    fallbackSamples: Record<string, string[]>
+  },
+  url: string,
+  reason: string,
+) => {
+  stats.fallbackReasons[reason] = (stats.fallbackReasons[reason] ?? 0) + 1
+  let host = 'unknown'
+  try {
+    host = new URL(url).hostname || 'unknown'
+  } catch {
+    /* keep default */
+  }
+  stats.fallbackHosts[host] = (stats.fallbackHosts[host] ?? 0) + 1
+  const key = `${reason} @ ${host}`
+  const samples = stats.fallbackSamples[key] ?? []
+  if (samples.length < 8 && !samples.includes(url)) {
+    samples.push(url)
+    stats.fallbackSamples[key] = samples
+  }
+}
+
+const resolveDrawFallbackReason = (
+  entry: ReturnType<AvatarBitmapCache['get']> | null,
+) => {
+  if (!entry) return 'cache_miss'
+  if (entry.state === 'loading') return 'cache_loading'
+  if (entry.state === 'failed') return 'cache_failed'
+  return 'not_export_safe'
 }
 
 export const isCanvasImageSourceExportSafe = (
@@ -745,6 +854,7 @@ const drawCaptureLabels = (
   nodes: ReadonlyArray<
     SocialGraphCaptureNode & { x: number; y: number; r: number }
   >,
+  format: { width: number; height: number },
 ) => {
   const hubs = [...nodes]
     .filter((node) => !node.attrs.isRoot && !node.attrs.isSelected && !node.attrs.isPinned)
@@ -760,8 +870,15 @@ const drawCaptureLabels = (
     ...hubs.map((node) => node.pubkey),
   ])
 
+  const scale = Math.min(format.width, format.height) / 900
+  const fontPx = Math.round(14 * scale)
+  const padX = Math.round(14 * scale)
+  const boxHeight = Math.round(26 * scale)
+  const gap = Math.round(8 * scale)
+  const radius = Math.round(8 * scale)
+
   ctx.save()
-  ctx.font = '600 14px Inter Tight, Inter, ui-sans-serif, system-ui, sans-serif'
+  ctx.font = `600 ${fontPx}px Inter Tight, Inter, ui-sans-serif, system-ui, sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
   for (const node of nodes) {
@@ -769,17 +886,17 @@ const drawCaptureLabels = (
     const label = node.attrs.label.length > 22
       ? `${node.attrs.label.slice(0, 21)}...`
       : node.attrs.label
-    const y = node.y + node.r + 6
+    const y = node.y + node.r + gap
     const metrics = ctx.measureText(label)
-    const boxWidth = metrics.width + 14
+    const boxWidth = metrics.width + padX
     ctx.fillStyle = 'rgba(9, 16, 23, 0.74)'
     ctx.strokeStyle = 'rgba(216, 227, 240, 0.16)'
-    ctx.lineWidth = 1
-    roundRect(ctx, node.x - boxWidth / 2, y, boxWidth, 24, 6)
+    ctx.lineWidth = Math.max(1, Math.round(scale))
+    roundRect(ctx, node.x - boxWidth / 2, y, boxWidth, boxHeight, radius)
     ctx.fill()
     ctx.stroke()
     ctx.fillStyle = 'rgba(244, 251, 255, 0.92)'
-    ctx.fillText(label, node.x, y + 5)
+    ctx.fillText(label, node.x, y + Math.round(boxHeight / 2 - fontPx / 2))
   }
   ctx.restore()
 }
@@ -809,21 +926,29 @@ const drawCaptureFooter = (
   },
 ) => {
   const footerY = height - FOOTER_HEIGHT_PX
+  const scale = Math.min(width, height) / 900
+  const titleFont = Math.round(18 * scale)
+  const statsFont = Math.round(15 * scale)
+  const pad = Math.round(28 * scale)
   ctx.save()
   ctx.fillStyle = 'rgba(4, 9, 13, 0.72)'
   ctx.fillRect(0, footerY, width, FOOTER_HEIGHT_PX)
-  ctx.fillStyle = 'rgba(244, 251, 255, 0.76)'
-  ctx.font = '600 15px Inter Tight, Inter, ui-sans-serif, system-ui, sans-serif'
+  ctx.fillStyle = 'rgba(244, 251, 255, 0.86)'
+  ctx.font = `600 ${titleFont}px Inter Tight, Inter, ui-sans-serif, system-ui, sans-serif`
   ctx.textBaseline = 'middle'
   ctx.textAlign = 'left'
-  ctx.fillText(rootLabel ? `Sigma graph: ${rootLabel}` : 'Sigma graph', 24, footerY + 20)
-  ctx.font = '500 13px ui-monospace, SF Mono, JetBrains Mono, monospace'
+  ctx.fillText(
+    rootLabel ? `Sigma graph: ${rootLabel}` : 'Sigma graph',
+    pad,
+    footerY + FOOTER_HEIGHT_PX / 2,
+  )
+  ctx.font = `500 ${statsFont}px ui-monospace, SF Mono, JetBrains Mono, monospace`
   ctx.textAlign = 'right'
-  ctx.fillStyle = 'rgba(216, 227, 240, 0.58)'
+  ctx.fillStyle = 'rgba(216, 227, 240, 0.68)'
   ctx.fillText(
     `${drawnImageCount} photos / ${fallbackWithPhotoCount} failed / ${missingPhotoCount} no photo / ${nodeCount} nodes / ${edgeCount} edges / ${now.toISOString().slice(0, 10)}`,
-    width - 24,
-    footerY + 20,
+    width - pad,
+    footerY + FOOTER_HEIGHT_PX / 2,
   )
   ctx.restore()
 }

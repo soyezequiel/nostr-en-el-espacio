@@ -15,6 +15,13 @@ test('resolves avatar LOD from final visible diameter', () => {
   assert.equal(resolveAvatarBucketForVisibleDiameter({ visibleDiameterPx: 81 }), 256)
   assert.equal(resolveAvatarBucketForVisibleDiameter({ visibleDiameterPx: 160 }), 256)
   assert.equal(resolveAvatarBucketForVisibleDiameter({ visibleDiameterPx: 161 }), 512)
+  assert.equal(
+    resolveAvatarBucketForVisibleDiameter({
+      visibleDiameterPx: 321,
+      maxBucket: 1024,
+    }),
+    1024,
+  )
 })
 
 test('caps high quality buckets when the active budget does not allow them', () => {

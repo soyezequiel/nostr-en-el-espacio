@@ -193,7 +193,7 @@ export class AvatarLoader {
         raw = await this.createImageBitmapImpl(blob, {
           resizeWidth: bucket,
           resizeHeight: bucket,
-          resizeQuality: 'medium',
+          resizeQuality: 'high',
         })
       } catch (decodeErr) {
         if (signal.aborted || isAbortError(decodeErr)) {

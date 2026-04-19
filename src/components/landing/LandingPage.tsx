@@ -2,35 +2,35 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import BrandLogo from '@/components/BrandLogo'
 import IdentityPulse from '@/components/landing/IdentityPulse'
 import LandingMotionProvider from '@/components/landing/LandingMotionProvider'
-import OrangeSurprise from '@/components/landing/OrangeSurprise'
 import Reveal from '@/components/landing/Reveal'
 
 const signalMarks = [
   { title: 'Relaciones', detail: '1ro a n orden' },
-  { title: 'Relays', detail: 'Cobertura visible' },
-  { title: 'Contexto', detail: 'Badges y perfiles' },
+  { title: 'Relays', detail: 'stale y timeouts' },
+  { title: 'Senal', detail: 'contexto social' },
 ]
 
-const surfaces = [
+const explorerFlow = [
   {
-    href: '/labs/sigma',
-    label: 'Demo principal',
-    title: 'Sigma',
-    detail: 'Explorador de identidad',
+    eyebrow: 'Identidad',
+    title: 'identidad',
+    detail: 'Pega un npub o nprofile y abre el punto de partida.',
+    status: 'root',
   },
   {
-    href: '/profile',
-    label: 'Vista clasica',
-    title: 'Profile',
-    detail: 'Cuentas conectadas',
+    eyebrow: 'Mapa',
+    title: 'mapa vivo',
+    detail: 'Mira conexiones, relays y huecos de cobertura sin esconder la incertidumbre.',
+    status: 'live',
   },
   {
-    href: '/badges',
-    label: 'NIP-58',
-    title: 'Badges',
-    detail: 'Senales verificables',
+    eyebrow: 'Senal',
+    title: 'contexto',
+    detail: 'Lee zaps, badges y perfiles como pistas para entender que esta pasando en la red.',
+    status: 'social',
   },
 ]
 
@@ -38,6 +38,11 @@ const ecosystem = [
   { name: 'La Crypta', href: 'https://lacrypta.ar/' },
   { name: 'IDENTITY', href: 'https://hackaton.lacrypta.ar/' },
   { name: 'Nostr', href: 'https://github.com/nostr-protocol/nips' },
+]
+
+const quietRoutes = [
+  { name: 'Profile', href: '/profile' },
+  { name: 'Badges', href: '/badges' },
 ]
 
 export default function LandingPage() {
@@ -51,29 +56,33 @@ export default function LandingPage() {
 
           <header className="relative z-10 flex items-center justify-between gap-6 text-sm">
             <Link
-              className="font-semibold uppercase tracking-[0.18em] text-[#f6f1e8]"
+              className="block"
               href="/"
             >
-              Nostr Espacial
+              <BrandLogo
+                className="block"
+                imageClassName="h-14 w-auto object-contain sm:h-16"
+                priority
+              />
             </Link>
             <span className="hidden text-[#b8b0a6] sm:block">
-              IDENTITY / NOSTR EXPLORER
+              IDENTITY / NOSTR ESPACIAL
             </span>
           </header>
 
           <div className="relative z-10 grid min-h-[calc(100svh-76px)] items-center gap-14 py-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,0.95fr)] lg:gap-8 lg:py-16">
             <Reveal className="max-w-2xl">
               <p className="mb-5 text-xs font-semibold uppercase tracking-[0.34em] text-[#ff6675] sm:text-sm">
-                Naranja Labs
-                <OrangeSurprise />
+                La Crypta IDENTITY
               </p>
               <h1 className="max-w-4xl text-[3.4rem] font-black leading-[0.88] text-[#f6f1e8] sm:text-[5.4rem] lg:text-[7.4rem]">
                 Nostr
                 <br />
-                explorer
+                Espacial
               </h1>
               <p className="mt-6 max-w-lg text-base leading-7 text-[#cbc2b7] sm:text-lg">
-                Mira identidad como red, no como ficha.
+                Explora identidad como mapa relay-aware. Carga un npub o nprofile,
+                lee cobertura parcial y cruza zaps, badges y perfiles para entender la red.
               </p>
 
               <div className="mt-8 flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-center">
@@ -81,16 +90,20 @@ export default function LandingPage() {
                   className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#ff4b5d] px-6 text-base font-bold text-[#080808] shadow-[0_0_44px_rgba(255,75,93,0.24)] transition hover:bg-[#ff6a78] focus:outline-none focus:ring-2 focus:ring-[#ff9aa4] focus:ring-offset-2 focus:ring-offset-[#060606]"
                   href="/labs/sigma"
                 >
-                  Probar Nostr explorer
+                  Abrir el grafo
                 </Link>
                 <div className="flex flex-wrap gap-3 text-sm">
                   <span className="inline-flex items-center gap-2 rounded-full border border-[#ff4b5d]/35 bg-[#ff4b5d]/10 px-3 py-2 text-[#f6d7d3]">
                     <span className="h-2.5 w-2.5 rounded-full bg-[#ff6675]" />
-                    Escritorio
+                    Nostr Espacial
                   </span>
                   <span className="inline-flex items-center gap-2 rounded-full border border-[#ffffff1f] bg-[#ffffff08] px-3 py-2 text-[#ada59b]">
                     <span className="h-2.5 w-2.5 rounded-full border border-[#ada59b]/60" />
-                    Movil en progreso
+                    Relays visibles
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-[#ffffff1f] bg-[#ffffff08] px-3 py-2 text-[#ada59b]">
+                    <span className="h-2.5 w-2.5 rounded-full border border-[#ada59b]/60" />
+                    Contexto social
                   </span>
                 </div>
               </div>
@@ -119,13 +132,13 @@ export default function LandingPage() {
                 <div className="absolute inset-x-0 top-0 h-28 bg-[linear-gradient(180deg,rgba(6,6,6,0.7),transparent)]" />
                 <div className="absolute left-6 top-6 flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[#f6f1e8]">
                   <span className="h-2 w-2 rounded-full bg-[#ff4b5d]" />
-                  Sigma live
+                  Nostr Espacial live
                 </div>
                 <div className="absolute right-6 top-6 text-right">
                   <p className="text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[#918980]">
                     Relay-aware
                   </p>
-                  <p className="mt-2 text-3xl font-black text-[#f6f1e8]">graph</p>
+                  <p className="mt-2 text-3xl font-black text-[#f6f1e8]">mapa</p>
                 </div>
                 <div className="absolute left-6 top-24 text-[10rem] font-black leading-none tracking-[-0.08em] text-[#f6f1e8]/7 sm:text-[12rem]">
                   01
@@ -144,17 +157,17 @@ export default function LandingPage() {
                 <div className="absolute bottom-6 left-6 right-6 flex items-end justify-between gap-6">
                   <div>
                     <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-[#8f877f]">
-                      Identity map
+                      Identity graph
                     </p>
                     <p className="mt-2 text-xl font-bold text-[#f6f1e8]">
-                      conexiones, badges y contexto
+                      relays, mutuals y contexto verificable
                     </p>
                   </div>
                   <div className="hidden text-right lg:block">
                     <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-[#8f877f]">
-                      Explorer mode
+                      Signal mode
                     </p>
-                    <p className="mt-2 text-sm text-[#cbc2b7]">menos lectura, mas senal</p>
+                    <p className="mt-2 text-sm text-[#cbc2b7]">stale, badges y contexto social</p>
                   </div>
                 </div>
               </div>
@@ -167,51 +180,54 @@ export default function LandingPage() {
             <Reveal className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="max-w-2xl">
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#ff6675]">
-                  Sigma hoy
+                  Nostr Espacial hoy
                 </p>
                 <h2 className="mt-4 text-4xl font-black leading-tight text-[#f6f1e8] sm:text-5xl">
-                  Lo que abre el demo.
+                  Lo que abre el mapa.
                 </h2>
               </div>
               <p className="max-w-md text-sm leading-6 text-[#a9a197] sm:text-base">
-                Entrada raiz, estado de relays y contexto de identidad.
+                Carga un root, muestra estados parciales y suma contexto social sin maquillar huecos.
               </p>
             </Reveal>
 
-            <div className="mt-10 grid gap-px overflow-hidden rounded-[1.5rem] bg-[#ffffff12] lg:grid-cols-3">
-              <Reveal className="bg-[#0d0d0d] px-6 py-7 sm:px-8 sm:py-9" delay={0.06}>
-                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[#8f877f]">
-                  Entrada
-                </p>
-                <p className="mt-6 text-5xl font-black tracking-[-0.06em] text-[#f6f1e8] sm:text-6xl">
-                  npub
-                </p>
-                <p className="mt-3 max-w-xs text-sm leading-6 text-[#b9b0a5]">
-                  Carga una identidad desde npub o nprofile.
-                </p>
-              </Reveal>
-              <Reveal className="bg-[#101010] px-6 py-7 sm:px-8 sm:py-9" delay={0.12}>
-                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[#8f877f]">
-                  Relays
-                </p>
-                <p className="mt-6 text-5xl font-black tracking-[-0.06em] text-[#f6f1e8] sm:text-6xl">
-                  stale
-                </p>
-                <p className="mt-3 max-w-xs text-sm leading-6 text-[#b9b0a5]">
-                  Muestra cobertura parcial, timeouts y faltantes.
-                </p>
-              </Reveal>
-              <Reveal className="bg-[#0d0d0d] px-6 py-7 sm:px-8 sm:py-9" delay={0.18}>
-                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[#8f877f]">
-                  Contexto
-                </p>
-                <p className="mt-6 text-5xl font-black tracking-[-0.06em] text-[#f6f1e8] sm:text-6xl">
-                  badges
-                </p>
-                <p className="mt-3 max-w-xs text-sm leading-6 text-[#b9b0a5]">
-                  Suma perfiles, badges y actividad al grafo.
-                </p>
-              </Reveal>
+            <div className="relative mt-12">
+              <div className="absolute left-[14%] right-[14%] top-[4.4rem] hidden h-px bg-[linear-gradient(90deg,transparent,rgba(255,75,93,0.82),rgba(255,75,93,0.18),transparent)] lg:block" />
+              <div className="grid gap-4 lg:grid-cols-3 lg:gap-0">
+                {explorerFlow.map((step, index) => (
+                  <Reveal
+                    className={`group relative border-t border-[#ffffff18] px-0 py-7 sm:py-9 lg:px-8 ${
+                      index > 0 ? 'lg:border-l' : ''
+                    }`}
+                    delay={0.06 + index * 0.08}
+                    key={step.title}
+                  >
+                    <div className="mb-7 flex items-center justify-between gap-4">
+                      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[#8f877f]">
+                        {step.eyebrow}
+                      </p>
+                      <span className="rounded-full border border-[#ff4b5d]/24 bg-[#ff4b5d]/8 px-2.5 py-1 font-mono text-[0.66rem] uppercase tracking-[0.2em] text-[#ff7b88]">
+                        {step.status}
+                      </span>
+                    </div>
+                    <div className="relative inline-flex">
+                      <span className="absolute -inset-x-2 bottom-2 h-4 origin-left scale-x-0 bg-[#ff4b5d]/20 transition duration-300 group-hover:scale-x-100" />
+                      <p className="relative text-5xl font-black tracking-[-0.075em] text-[#f6f1e8] sm:text-6xl lg:text-7xl">
+                        {step.title}
+                      </p>
+                    </div>
+                    <p className="mt-4 max-w-sm text-sm leading-6 text-[#b9b0a5]">
+                      {step.detail}
+                    </p>
+                    {index < explorerFlow.length - 1 ? (
+                      <div className="mt-6 flex items-center gap-3 text-[#ff4b5d] lg:hidden">
+                        <span className="h-px flex-1 bg-[#ff4b5d]/40" />
+                        <span className="font-mono text-xs uppercase tracking-[0.24em]">sigue</span>
+                      </div>
+                    ) : null}
+                  </Reveal>
+                ))}
+              </div>
             </div>
           </div>
         </section>
@@ -221,64 +237,75 @@ export default function LandingPage() {
           <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <Reveal className="max-w-xl">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#ff6675]">
-                Rutas
+                Demo principal
               </p>
               <h2 className="mt-4 text-4xl font-black leading-tight text-[#f6f1e8] sm:text-5xl">
-                Entra por la superficie correcta.
+                Entra por Nostr Espacial.
               </h2>
+              <p className="mt-4 max-w-lg text-sm leading-6 text-[#b9b0a5] sm:text-base">
+                La home no compite con vistas auxiliares: abre el mapa, mira relaciones,
+                lee senales y entiende contexto social cuando el recorte ya tiene sentido.
+              </p>
             </Reveal>
 
-            <div className="divide-y divide-[#ffffff12] border-y border-[#ffffff12]">
-              {surfaces.map((surface, index) => (
-                <Reveal delay={0.08 + index * 0.08} key={surface.title}>
-                  <Link
-                    className="group flex items-center justify-between gap-6 py-6 sm:py-7"
-                    href={surface.href}
-                  >
-                    <div>
-                      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[#8f877f]">
-                        {surface.label}
-                      </p>
-                      <p className="mt-2 text-3xl font-black text-[#f6f1e8] transition group-hover:text-[#ff7b88] sm:text-5xl">
-                        {surface.title}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <p className="hidden text-sm text-[#b9b0a5] sm:block">{surface.detail}</p>
-                      <span className="text-2xl text-[#ff6675] transition group-hover:translate-x-1">
-                        -&gt;
-                      </span>
-                    </div>
-                  </Link>
-                </Reveal>
-              ))}
-            </div>
+            <Reveal className="border-y border-[#ffffff12] py-8" delay={0.08}>
+              <Link
+                className="group flex items-center justify-between gap-6"
+                href="/labs/sigma"
+              >
+                <div>
+                  <p className="text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-[#8f877f]">
+                    Ruta del producto
+                  </p>
+                  <p className="mt-2 text-4xl font-black tracking-[-0.055em] text-[#f6f1e8] transition group-hover:text-[#ff7b88] sm:text-6xl">
+                    Abrir Nostr Espacial
+                  </p>
+                </div>
+                <span className="text-2xl text-[#ff6675] transition group-hover:translate-x-1">
+                  -&gt;
+                </span>
+              </Link>
+            </Reveal>
           </div>
         </section>
 
         <section className="border-t border-[#ffffff14] bg-[#080808] px-5 py-10 sm:px-8 lg:px-12">
           <div className="mx-auto flex max-w-6xl flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
             <Reveal>
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#f6f1e8]">
-                Nostr Espacial
-              </p>
+              <BrandLogo
+                className="block"
+                imageClassName="h-14 w-auto object-contain sm:h-16"
+              />
               <p className="mt-3 max-w-md text-sm leading-6 text-[#9c948a]">
-                Minimal afuera. Grafo adentro.
+                Landing de entrada para abrir Nostr Espacial, leer relays y contexto social.
               </p>
             </Reveal>
 
-            <Reveal className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-[#b9b0a5]" delay={0.08}>
-              {ecosystem.map((item) => (
-                <Link
-                  className="uppercase tracking-[0.18em] transition hover:text-[#ff7b88]"
-                  href={item.href}
-                  key={item.name}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  {item.name}
-                </Link>
-              ))}
+            <Reveal className="flex flex-col gap-5 text-right" delay={0.08}>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-[#b9b0a5] lg:justify-end">
+                {ecosystem.map((item) => (
+                  <Link
+                    className="uppercase tracking-[0.18em] transition hover:text-[#ff7b88]"
+                    href={item.href}
+                    key={item.name}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {item.name}
+                  </Link>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.62rem] uppercase tracking-[0.22em] text-[#6f6861] opacity-55 lg:justify-end">
+                {quietRoutes.map((route) => (
+                  <Link
+                    className="transition hover:text-[#b9b0a5]"
+                    href={route.href}
+                    key={route.name}
+                  >
+                    {route.name}
+                  </Link>
+                ))}
+              </div>
             </Reveal>
           </div>
         </section>

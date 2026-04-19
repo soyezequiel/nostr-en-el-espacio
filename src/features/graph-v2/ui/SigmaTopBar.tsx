@@ -1,6 +1,8 @@
 'use client'
 
 import { memo } from 'react'
+import Link from 'next/link'
+import BrandLogo from '@/components/BrandLogo'
 
 interface Props {
   rootDisplayName: string | null
@@ -62,9 +64,12 @@ export const SigmaTopBar = memo(function SigmaTopBar({
       )}
 
       <div className="sg-brand">
-        <div className="sg-brand__dot" />
-        <span className="sg-brand__path">/labs/</span>
-        <span className="sg-brand__active">sigma</span>
+        <Link href="/" style={{ display: 'inline-flex', alignItems: 'center' }}>
+          <BrandLogo
+            className="block"
+            imageClassName="h-10 w-auto object-contain"
+          />
+        </Link>
         <span style={{ marginLeft: 8, color: 'var(--sg-fg-faint)' }}>
           {brandVersion}
         </span>

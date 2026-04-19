@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import BrandLogo from '@/components/BrandLogo';
 import { useAuthStore } from '@/store/auth';
 import { getInitials } from '@/lib/media';
 import AvatarFallback from './AvatarFallback';
@@ -12,7 +13,7 @@ import SkeletonImage from './SkeletonImage';
 const navItems = [
   {
     href: '/',
-    label: 'Home',
+    label: 'Inicio',
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 10.5L12 3l9 7.5" />
@@ -23,7 +24,7 @@ const navItems = [
   },
   {
     href: '/labs/sigma',
-    label: 'Sigma Lab',
+    label: 'Sigma',
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M7 5h10" />
@@ -35,7 +36,7 @@ const navItems = [
   },
   {
     href: '/profile',
-    label: 'Profile',
+    label: 'Perfil',
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
@@ -66,16 +67,11 @@ export default function Navbar() {
       <nav className="fixed top-0 left-0 right-0 z-40 bg-lc-black/90 backdrop-blur-xl border-b border-lc-border/50">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 sm:h-16 sm:flex-nowrap sm:justify-between sm:px-6 sm:py-0">
           <Link href="/" className="flex min-w-0 flex-1 items-center gap-3 sm:flex-none">
-            <div className="w-8 h-8 bg-lc-green rounded-lg flex items-center justify-center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                <path d="M2 17l10 5 10-5" />
-                <path d="M2 12l10 5 10-5" />
-              </svg>
-            </div>
-            <span className="truncate font-bold text-base tracking-tight text-lc-white sm:text-lg">
-              nostr<span className="text-lc-green">.</span>starter
-            </span>
+            <BrandLogo
+              className="block"
+              imageClassName="h-12 w-auto object-contain sm:h-14"
+              priority
+            />
           </Link>
 
           <div className="order-3 flex w-full items-center gap-0.5 overflow-x-auto pb-1 sm:order-none sm:w-auto sm:gap-1 sm:overflow-visible sm:pb-0">
@@ -131,7 +127,7 @@ export default function Navbar() {
                     )}
                   </div>
                   <span className="hidden sm:block text-sm text-lc-white font-medium max-w-[120px] truncate">
-                    {profile.displayName || profile.name || 'Anon'}
+                    {profile.displayName || profile.name || 'Anonimo'}
                   </span>
                 </button>
 
@@ -159,7 +155,7 @@ export default function Navbar() {
                           <polyline points="16 17 21 12 16 7" />
                           <line x1="21" y1="12" x2="9" y2="12" />
                         </svg>
-                        Disconnect
+                        Desconectar
                       </button>
                     </div>
                   </>
@@ -175,7 +171,7 @@ export default function Navbar() {
                   <polyline points="10 17 15 12 10 7" />
                   <line x1="15" y1="12" x2="3" y2="12" />
                 </svg>
-                <span className="hidden sm:inline">Connect</span>
+                <span className="hidden sm:inline">Conectar</span>
               </button>
             )}
           </div>

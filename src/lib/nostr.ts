@@ -183,8 +183,8 @@ export async function createNostrConnectSession(relay?: string): Promise<NostrCo
   const connectRelay = relay || 'wss://relay.nsec.app';
 
   const signer = NDKNip46Signer.nostrconnect(ndk, connectRelay, undefined, {
-    name: 'Nostr Starter Kit',
-    url: typeof window !== 'undefined' ? window.location.origin : 'https://nostr-starter.local',
+    name: 'Nostr Espacial',
+    url: typeof window !== 'undefined' ? window.location.origin : 'https://nostr-espacial.local',
   });
 
   const uri = signer.nostrConnectUri || '';

@@ -181,10 +181,10 @@ export default function Profile() {
             </svg>
           </div>
           <h1 className="text-3xl sm:text-4xl font-extrabold text-lc-white mb-3 tracking-tight">
-            Nostr Starter Kit
+            Nostr Espacial
           </h1>
           <p className="text-base sm:text-lg text-lc-muted mb-8">
-            Connect your identity to explore the decentralized social network
+            Conecta tu identidad para abrir la vista clasica del perfil y revisar actividad publica en Nostr
           </p>
           <div className="flex items-center justify-center gap-3 text-sm text-lc-muted/70">
             <span className="flex items-center gap-1.5">
@@ -203,7 +203,7 @@ export default function Profile() {
             </span>
           </div>
           <div className="mt-12 text-xs text-lc-muted/40 font-mono">
-            Powered by La Crypta
+            La Crypta IDENTITY
           </div>
         </div>
       </div>

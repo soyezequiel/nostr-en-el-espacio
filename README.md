@@ -1,8 +1,8 @@
 <div align="center">
 
-# Nostr Explorer
+# Nostr Espacial
 
-### Explorador de identidad Nostr orientado a grafos, relays y evidencia exportable
+### Explorador relay-aware de identidad Nostr con Sigma y evidencia exportable
 
 [![Demo en vivo](https://img.shields.io/badge/Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://nostr-en-el-espacio.vercel.app/)
 [![Hackathon](https://img.shields.io/badge/La%20Crypta-IDENTITY%202026-f7931a?style=for-the-badge)](https://github.com/lacrypta/hackathons-2026)
@@ -13,7 +13,7 @@
 
 <br />
 
-<img src="./public/graph-explorer-preview.png" alt="Vista del explorador de grafo de identidad Nostr" width="760" />
+<img src="./public/graph-explorer-preview.png" alt="Vista de Nostr Espacial en Sigma" width="760" />
 
 <sub>Vista graph-first para explorar identidades, relaciones y senales de confianza con lectura relay-aware.</sub>
 
@@ -21,7 +21,7 @@
 
 > Proyecto participante de **IDENTITY**, el desafio de **abril de 2026** dentro de **Lightning Hackathons 2026** de **La Crypta**.
 
-Este repositorio nacio a partir de `nostr-starter`, pero hoy responde a otro producto: una experiencia **graph-first** para explorar identidad en Nostr, leer contexto social, entender incertidumbre de relays y exportar snapshots auditables.
+Este repositorio nacio a partir de `nostr-starter`, pero hoy responde a otro producto: **Nostr Espacial**, una experiencia **graph-first** para explorar identidad en Nostr, leer contexto social, entender incertidumbre de relays y exportar snapshots auditables.
 
 La documentacion esta escrita en espanol y pensada para una audiencia tecnica de Argentina: gente que quiera preparar una demo para jurado, investigar identidad en Nostr o extender el proyecto sin tener que reconstruir primero el estado real del repo.
 
@@ -53,7 +53,7 @@ Ese enfoque conversa bien con lo que suele valorar un jurado tecnico: innovacion
 
 | Ruta | Para que sirve |
 | --- | --- |
-| `/` | Home minima no-grafo con accesos a las superficies principales |
+| `/` | Landing de entrada con narrativa de producto y acceso a Sigma, Profile y Badges |
 | `/labs/sigma` | Explorador principal del grafo de identidad con Sigma |
 | `/profile` | Vista clasica del perfil autenticado |
 | `/badges` | Vista de badges NIP-58 de la cuenta autenticada |
@@ -120,6 +120,6 @@ src/
 
 ## Nota importante
 
-La superficie principal del producto es el grafo Sigma en `/labs/sigma`. `/` es una home minima de entrada; `profile` y `badges` siguen siendo utiles, pero la historia mas fuerte del proyecto esta en la exploracion de identidad, la incertidumbre de relays y la exportacion de evidencia.
+La superficie principal del producto es el grafo Sigma en `/labs/sigma`. `/` funciona como landing de entrada para orientar la demo y enviar a las rutas clave; `profile` y `badges` siguen siendo utiles, pero la historia mas fuerte del proyecto esta en la exploracion de identidad, la incertidumbre de relays y la exportacion de evidencia.
 
 

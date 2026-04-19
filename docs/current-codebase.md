@@ -10,7 +10,7 @@ Complemento recomendado para onboarding tecnico:
 
 Hoy:
 
-- `/` es una home minima no-grafo
+- `/` es una landing de entrada sin runtime de grafo
 - `/labs/sigma` monta el explorador de identidad con Sigma.js, Graphology y ForceAtlas2
 - `profile` y `badges` viven en rutas separadas
 - la incertidumbre de relays forma parte de la UX, no es un caso borde
@@ -27,7 +27,7 @@ Punto de entrada:
 
 Objetivo:
 
-- presentar una home liviana sin canvas ni runtime de grafo
+- presentar una landing de entrada sin canvas ni runtime de grafo
 - enviar a `/labs/sigma`, `/profile` y `/badges`
 
 ### `/labs/sigma`

@@ -1,4 +1,4 @@
-﻿import type { Event, Filter } from 'nostr-tools'
+import type { Event, Filter } from 'nostr-tools'
 
 import type {
   AppStore,
@@ -991,6 +991,7 @@ export async function collectAdditionalPaginatedInboundFollowerEvents({
     return left.relayUrl.localeCompare(right.relayUrl)
   })
 
+  const finalError = firstError as Error | null
   if (debugEnabled) {
     console.info(
       '[graph-v2:debug] collectAdditionalPaginatedInboundFollowerEvents: result',
@@ -999,7 +1000,7 @@ export async function collectAdditionalPaginatedInboundFollowerEvents({
         eventCount: events.length,
         pageCount,
         relaySummaries: sortedRelaySummaries,
-        errorMessage: firstError?.message ?? null,
+        errorMessage: finalError?.message ?? null,
       },
     )
   }
@@ -1011,7 +1012,7 @@ export async function collectAdditionalPaginatedInboundFollowerEvents({
       includesTraceTarget: events.some((envelope) =>
         isAccountTraceTarget(envelope.event.pubkey),
       ),
-      errorMessage: firstError?.message ?? null,
+      errorMessage: finalError?.message ?? null,
     })
   }
 

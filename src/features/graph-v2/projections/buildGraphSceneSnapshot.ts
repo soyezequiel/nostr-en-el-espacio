@@ -377,6 +377,10 @@ const computeGraphSceneSnapshot = (
           ...(hasVisualFocus
             ? Object.values(state.edgesById).filter(
                 (edge) =>
+                  // Solo aristas que ya pertenecen a la capa activa: evita que
+                  // capas filtradas (ej: 'mutuals') muestren conexiones no mutuas
+                  // al seleccionar un nodo.
+                  visibleEdgeIds.has(edge.id) &&
                   visibleNodePubkeys.has(edge.source) &&
                   visibleNodePubkeys.has(edge.target) &&
                   (edge.source === visualFocusPubkey ||

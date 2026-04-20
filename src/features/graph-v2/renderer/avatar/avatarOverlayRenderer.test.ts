@@ -229,14 +229,14 @@ test('all visible photos mode lifts frame draw caps to the visible count', () =>
   )
 })
 
-test('all visible photos mode expands cache cap to the visible photo count', () => {
+test('all visible photos mode expands cache cap beyond the visible photo count', () => {
   assert.equal(
     resolveAvatarCacheCap({
       baseCap: 128,
       visiblePhotoCount: 221,
       showAllVisibleImages: true,
     }),
-    221,
+    277,
   )
   assert.equal(
     resolveAvatarCacheCap({

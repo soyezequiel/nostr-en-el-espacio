@@ -5,6 +5,12 @@ import {
   traceAvatarFlow,
   truncateAvatarPubkey,
 } from '@/features/graph-runtime/debug/avatarTrace'
+import {
+  clearTerminalAvatarFailure,
+  getTerminalAvatarFailure,
+  isTerminalAvatarFailureReason,
+  rememberTerminalAvatarFailure,
+} from '@/features/graph-runtime/debug/avatarTerminalFailures'
 
 import {
   AvatarBitmapCache,
@@ -19,9 +25,16 @@ import { AvatarLoader } from '@/features/graph-v2/renderer/avatar/avatarLoader'
 import type { AvatarBudget, AvatarUrlKey } from '@/features/graph-v2/renderer/avatar/types'
 
 const BLOCKLIST_TTL_MS = 10 * 60 * 1000
+const TRANSIENT_FAILURE_TTL_MS = 15 * 60 * 1000
+const SEMI_PERSISTENT_FAILURE_TTL_MS = 30 * 60 * 1000
 const URGENT_RETRY_TTL_MS = 15 * 1000
 const OUT_OF_VIEWPORT_GRACE_MS = 1500
 const MAX_RECENT_DEBUG_EVENTS = 200
+const DISK_CACHE_CONCURRENCY_FLOOR = 8
+const DISK_CACHE_CONCURRENCY_HEADROOM = 12
+const DISK_CACHE_CONCURRENCY_MULTIPLIER = 4
+const DISK_CACHE_PROBE_BATCH_SIZE = 16
+const DISK_CACHE_MISS_PROBE_COOLDOWN_MS = 5000
 
 export interface AvatarCandidate {
   pubkey: string
@@ -59,6 +72,8 @@ export class AvatarScheduler {
   private readonly now: () => number
   private readonly inflight = new Map<AvatarUrlKey, InflightEntry>()
   private readonly nextUrgentRetryAt = new Map<AvatarUrlKey, number>()
+  private readonly diskCacheLaneProbes = new Set<AvatarUrlKey>()
+  private readonly nextDiskCacheProbeAt = new Map<AvatarUrlKey, number>()
   private readonly recentEvents: AvatarSchedulerEventDebugSnapshot[] = []
   private disposed = false
 
@@ -152,7 +167,15 @@ export class AvatarScheduler {
   ) {
     const sorted = [...candidates].sort((a, b) => a.priority - b.priority)
 
-    for (const candidate of sorted) {
+    for (let index = 0; index < sorted.length; index += 1) {
+      const candidate = sorted[index]
+      if (!candidate) {
+        continue
+      }
+      if (this.disposed) {
+        return
+      }
+
       const inflightEntry = this.inflight.get(candidate.urlKey)
       if (inflightEntry) {
         inflightEntry.lastWantedAt = now
@@ -184,11 +207,159 @@ export class AvatarScheduler {
         // keep reclaiming obsolete slots until the candidate can start or no slot can be freed
       }
       if (this.inflight.size >= budget.concurrency) {
+        this.queueDiskCacheLaneCandidates(sorted.slice(index), budget)
         break
       }
 
       this.kickoff(candidate, budget, now)
     }
+  }
+
+  private queueDiskCacheLaneCandidates(
+    candidates: readonly AvatarCandidate[],
+    budget: AvatarBudget,
+  ) {
+    const diskCacheConcurrency = resolveDiskCacheConcurrencyLimit(
+      budget.concurrency,
+    )
+    if (
+      diskCacheConcurrency <= budget.concurrency ||
+      this.inflight.size + this.diskCacheLaneProbes.size >= diskCacheConcurrency
+    ) {
+      return
+    }
+
+    const diskCacheProbe = this.loader.hasDiskCached
+    if (typeof diskCacheProbe !== 'function') {
+      return
+    }
+
+    let queued = 0
+    for (const candidate of candidates) {
+      if (queued >= DISK_CACHE_PROBE_BATCH_SIZE) {
+        return
+      }
+      if (
+        this.inflight.size + this.diskCacheLaneProbes.size >=
+        diskCacheConcurrency
+      ) {
+        return
+      }
+      if (!this.canProbeDiskCacheLaneCandidate(candidate)) {
+        continue
+      }
+
+      queued += 1
+      this.diskCacheLaneProbes.add(candidate.urlKey)
+      void this.tryKickoffDiskCacheLaneCandidate(
+        candidate,
+        budget,
+        diskCacheConcurrency,
+        diskCacheProbe,
+      )
+    }
+  }
+
+  private canProbeDiskCacheLaneCandidate(candidate: AvatarCandidate) {
+    if (this.diskCacheLaneProbes.has(candidate.urlKey)) {
+      return false
+    }
+    const nextProbeAt = this.nextDiskCacheProbeAt.get(candidate.urlKey) ?? 0
+    if (nextProbeAt > this.now()) {
+      return false
+    }
+    if (this.inflight.has(candidate.urlKey)) {
+      return false
+    }
+
+    const existing = this.cache.get(candidate.urlKey)
+    if (existing && (existing.state === 'ready' || existing.state === 'loading')) {
+      return false
+    }
+    if (existing?.state === 'failed' && !candidate.urgent) {
+      return false
+    }
+    if (this.loader.isBlocked(candidate.urlKey) && !candidate.urgent) {
+      return false
+    }
+
+    return true
+  }
+
+  private async tryKickoffDiskCacheLaneCandidate(
+    candidate: AvatarCandidate,
+    budget: AvatarBudget,
+    diskCacheConcurrency: number,
+    diskCacheProbe: AvatarLoader['hasDiskCached'],
+  ) {
+    const targetBucket = Math.min(
+      candidate.bucket,
+      budget.maxBucket,
+    ) as ImageLodBucket
+
+    try {
+      const hasDiskCached = await diskCacheProbe.call(
+        this.loader,
+        candidate.url,
+        targetBucket,
+      )
+      if (!hasDiskCached) {
+        this.nextDiskCacheProbeAt.set(
+          candidate.urlKey,
+          this.now() + DISK_CACHE_MISS_PROBE_COOLDOWN_MS,
+        )
+        return
+      }
+      if (
+        this.disposed ||
+        this.inflight.size >= diskCacheConcurrency ||
+        !this.isStillPending(candidate)
+      ) {
+        return
+      }
+
+      traceAvatarFlow('renderer.avatarScheduler.diskCacheLaneAccepted', () => ({
+        pubkey: candidate.pubkey,
+        pubkeyShort: truncateAvatarPubkey(candidate.pubkey),
+        url: summarizeAvatarUrl(candidate.url),
+        urlKey: summarizeAvatarUrlKey(candidate.urlKey),
+        bucket: targetBucket,
+        priority: candidate.priority,
+        regularConcurrency: budget.concurrency,
+        diskCacheConcurrency,
+        inflightCount: this.inflight.size,
+      }))
+      this.kickoff(candidate, budget, this.now(), { diskCacheOnly: true })
+    } catch (err) {
+      this.nextDiskCacheProbeAt.set(
+        candidate.urlKey,
+        this.now() + DISK_CACHE_MISS_PROBE_COOLDOWN_MS,
+      )
+      traceAvatarFlow('renderer.avatarScheduler.diskCacheLaneProbeFailed', () => ({
+        pubkey: candidate.pubkey,
+        pubkeyShort: truncateAvatarPubkey(candidate.pubkey),
+        url: summarizeAvatarUrl(candidate.url),
+        urlKey: summarizeAvatarUrlKey(candidate.urlKey),
+        bucket: targetBucket,
+        priority: candidate.priority,
+        reason: extractAvatarLoadFailureReason(err),
+      }))
+    } finally {
+      this.diskCacheLaneProbes.delete(candidate.urlKey)
+    }
+  }
+
+  private isStillPending(candidate: AvatarCandidate) {
+    if (this.inflight.has(candidate.urlKey)) {
+      return false
+    }
+
+    const existing = this.cache.get(candidate.urlKey)
+    if (existing && (existing.state === 'ready' || existing.state === 'loading')) {
+      return false
+    }
+
+    return !this.loader.isBlocked(candidate.urlKey)
   }
 
   private abortAll() {
@@ -199,6 +370,20 @@ export class AvatarScheduler {
 
   private prepareUrgentRetry(candidate: AvatarCandidate) {
     if (!candidate.urgent) {
+      return false
+    }
+
+    const terminalFailure = getTerminalAvatarFailure(candidate.urlKey)
+    if (terminalFailure) {
+      traceAvatarFlow('renderer.avatarScheduler.urgentRetrySkippedTerminal', () => ({
+        pubkey: candidate.pubkey,
+        pubkeyShort: truncateAvatarPubkey(candidate.pubkey),
+        urlKey: summarizeAvatarUrlKey(candidate.urlKey),
+        bucket: candidate.bucket,
+        priority: candidate.priority,
+        reason: terminalFailure.reason,
+        host: terminalFailure.host,
+      }))
       return false
     }
 
@@ -222,7 +407,12 @@ export class AvatarScheduler {
     return true
   }
 
-  private kickoff(candidate: AvatarCandidate, budget: AvatarBudget, now: number) {
+  private kickoff(
+    candidate: AvatarCandidate,
+    budget: AvatarBudget,
+    now: number,
+    options: { diskCacheOnly?: boolean } = {},
+  ) {
     const targetBucket = Math.min(candidate.bucket, budget.maxBucket) as ImageLodBucket
     const controller = new AbortController()
     this.inflight.set(candidate.urlKey, {
@@ -253,10 +443,29 @@ export class AvatarScheduler {
     const monogram = this.cache.getMonogram(candidate.pubkey, candidate.monogram)
     this.cache.markLoading(candidate.urlKey, targetBucket, monogram)
 
-    this.loader
-      .load(candidate.url, targetBucket, controller.signal)
+    const loadPromise = options.diskCacheOnly
+      ? this.loader.loadDiskCached(candidate.url, targetBucket, controller.signal)
+      : this.loader.load(candidate.url, targetBucket, controller.signal)
+
+    loadPromise
       .then((loaded) => {
         if (this.disposed || controller.signal.aborted) {
+          return
+        }
+        if (!loaded) {
+          this.cache.delete(candidate.urlKey, 'disk_cache_lane_miss')
+          this.recordEvent({
+            at: this.now(),
+            type: 'aborted',
+            urlKey: candidate.urlKey,
+            pubkey: candidate.pubkey,
+            url: candidate.url,
+            host: readAvatarDebugHost(candidate.url),
+            bucket: targetBucket,
+            priority: candidate.priority,
+            urgent: candidate.urgent ?? false,
+            reason: 'disk_cache_lane_miss',
+          })
           return
         }
 
@@ -267,6 +476,7 @@ export class AvatarScheduler {
           monogram,
           loaded.bytes,
         )
+        clearTerminalAvatarFailure(candidate.urlKey)
         this.recordEvent({
           at: this.now(),
           type: 'ready',
@@ -291,8 +501,39 @@ export class AvatarScheduler {
         }
 
         const reason = extractAvatarLoadFailureReason(err)
-        this.cache.markFailed(candidate.urlKey, monogram, reason)
-        this.loader.block(candidate.urlKey, BLOCKLIST_TTL_MS, reason)
+        const failurePolicy = resolveAvatarFailurePolicy(reason)
+        this.cache.markFailed(
+          candidate.urlKey,
+          monogram,
+          reason,
+          failurePolicy.ttlMs,
+        )
+        if (failurePolicy.terminal) {
+          rememberTerminalAvatarFailure({
+            urlKey: candidate.urlKey,
+            pubkey: candidate.pubkey,
+            url: candidate.url,
+            reason,
+            at: this.now(),
+          })
+          traceAvatarFlow('renderer.avatarScheduler.terminalQuarantined', () => ({
+            pubkey: candidate.pubkey,
+            pubkeyShort: truncateAvatarPubkey(candidate.pubkey),
+            url: summarizeAvatarUrl(candidate.url),
+            urlKey: summarizeAvatarUrlKey(candidate.urlKey),
+            bucket: targetBucket,
+            priority: candidate.priority,
+            urgent: candidate.urgent ?? false,
+            reason,
+          }))
+        } else {
+          clearTerminalAvatarFailure(candidate.urlKey)
+          this.loader.block(
+            candidate.urlKey,
+            failurePolicy.ttlMs ?? BLOCKLIST_TTL_MS,
+            reason,
+          )
+        }
         this.recordEvent({
           at: this.now(),
           type: 'failed',
@@ -451,6 +692,21 @@ export class AvatarScheduler {
 const isAbortError = (err: unknown) =>
   (err as { name?: string } | null)?.name === 'AbortError'
 
+const resolveDiskCacheConcurrencyLimit = (regularConcurrency: number) => {
+  if (regularConcurrency <= 0) {
+    return regularConcurrency
+  }
+
+  const expanded = Math.max(
+    DISK_CACHE_CONCURRENCY_FLOOR,
+    regularConcurrency * DISK_CACHE_CONCURRENCY_MULTIPLIER,
+  )
+  return Math.max(
+    regularConcurrency,
+    Math.min(regularConcurrency + DISK_CACHE_CONCURRENCY_HEADROOM, expanded),
+  )
+}
+
 const extractAvatarLoadFailureReason = (err: unknown) => {
   const candidate = err as
     | { reason?: string; message?: string; name?: string }
@@ -462,4 +718,60 @@ const extractAvatarLoadFailureReason = (err: unknown) => {
     candidate?.name ??
     'avatar_load_failed'
   )
+}
+
+const resolveAvatarFailurePolicy = (reason: string | null) => {
+  if (!reason) {
+    return {
+      terminal: false,
+      ttlMs: BLOCKLIST_TTL_MS,
+    }
+  }
+
+  if (isTerminalAvatarFailureReason(reason)) {
+    return {
+      terminal: true,
+      ttlMs: null,
+    }
+  }
+
+  const httpMatch = /^http_(\d{3})(?:_|$)/.exec(reason)
+  if (httpMatch) {
+    const status = Number.parseInt(httpMatch[1] ?? '', 10)
+    if ([400, 401, 403, 404, 410, 422].includes(status)) {
+      return {
+        terminal: true,
+        ttlMs: null,
+      }
+    }
+    if (status === 408 || status === 425 || status === 429 || status >= 500) {
+      return {
+        terminal: false,
+        ttlMs: TRANSIENT_FAILURE_TTL_MS,
+      }
+    }
+    return {
+      terminal: false,
+      ttlMs: SEMI_PERSISTENT_FAILURE_TTL_MS,
+    }
+  }
+
+  switch (reason) {
+    case 'timeout':
+      return {
+        terminal: false,
+        ttlMs: TRANSIENT_FAILURE_TTL_MS,
+      }
+    case 'image_load_failed':
+    case 'avatar_load_failed':
+      return {
+        terminal: false,
+        ttlMs: SEMI_PERSISTENT_FAILURE_TTL_MS,
+      }
+    default:
+      return {
+        terminal: false,
+        ttlMs: SEMI_PERSISTENT_FAILURE_TTL_MS,
+      }
+  }
 }

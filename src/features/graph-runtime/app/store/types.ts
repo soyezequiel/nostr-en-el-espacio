@@ -256,6 +256,13 @@ export interface UpsertGraphNodesResult {
   rejectedPubkeys: string[]
 }
 
+export interface ReplaceGraphSnapshotInput {
+  rootNodePubkey: string
+  nodes: GraphNode[]
+  links: GraphLink[]
+  inboundLinks: GraphLink[]
+}
+
 export interface ToggleDeepUserSelectionResult {
   selectedDeepUserPubkeys: string[]
   slotsRemaining: number
@@ -281,6 +288,9 @@ export interface GraphSlice {
   nodeStructurePreviewStates: Record<string, NodeStructurePreviewState>
   setRootNodePubkey: (pubkey: string | null) => void
   upsertNodes: (nodes: GraphNode[]) => UpsertGraphNodesResult
+  replaceGraphSnapshot: (
+    snapshot: ReplaceGraphSnapshotInput,
+  ) => UpsertGraphNodesResult
   removeNodes: (pubkeys: readonly string[]) => void
   upsertLinks: (links: GraphLink[]) => void
   upsertInboundLinks: (links: GraphLink[]) => void

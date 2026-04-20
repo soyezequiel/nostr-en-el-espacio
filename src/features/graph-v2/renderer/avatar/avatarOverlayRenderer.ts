@@ -341,7 +341,21 @@ export const resolveAvatarCacheCap = ({
   showAllVisibleImages: boolean
 }) =>
   showAllVisibleImages
-    ? Math.max(Math.max(16, Math.floor(baseCap)), Math.max(0, Math.floor(visiblePhotoCount)))
+    ? (() => {
+        const normalizedBaseCap = Math.max(16, Math.floor(baseCap))
+        const normalizedVisiblePhotoCount = Math.max(
+          0,
+          Math.floor(visiblePhotoCount),
+        )
+        const visibleHeadroom = Math.max(
+          32,
+          Math.ceil(normalizedVisiblePhotoCount * 0.25),
+        )
+        return Math.max(
+          normalizedBaseCap,
+          normalizedVisiblePhotoCount + visibleHeadroom,
+        )
+      })()
     : Math.max(16, Math.floor(baseCap))
 
 export const resolveAvatarLoadConcurrency = ({

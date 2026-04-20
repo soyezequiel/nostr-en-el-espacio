@@ -21,6 +21,7 @@ import {
   traceAvatarFlow,
   truncateAvatarPubkey,
 } from '@/features/graph-runtime/debug/avatarTrace'
+import { getTerminalAvatarFailureForPicture } from '@/features/graph-runtime/debug/avatarTerminalFailures'
 import { normalizeMediaUrl } from '@/lib/media'
 
 export function createProfileHydrationModule(ctx: KernelContext) {
@@ -434,7 +435,31 @@ export function createProfileHydrationModule(ctx: KernelContext) {
       return
     }
 
-    if ((existingNode.picture ?? null) !== (profile.picture ?? null)) {
+    const terminalAvatarFailure = getTerminalAvatarFailureForPicture(
+      pubkey,
+      profile.picture,
+    )
+    const nextPicture = terminalAvatarFailure ? null : profile.picture
+
+    if (terminalAvatarFailure) {
+      traceAvatarFlow('profileHydration.syncNodeProfile.invalidPictureSuppressed', {
+        pubkey,
+        pubkeyShort: truncateAvatarPubkey(pubkey),
+        previousProfileState: existingNode.profileState,
+        nextProfileState: 'ready',
+        previousProfileSource: existingNode.profileSource,
+        nextProfileSource: profile.profileSource ?? null,
+        suppressedReason: terminalAvatarFailure.reason,
+        suppressedHost: terminalAvatarFailure.host,
+        ...summarizeAvatarPictureTransition(
+          existingNode.picture,
+          nextPicture,
+        ),
+        ...(traceContext ?? {}),
+      })
+    }
+
+    if ((existingNode.picture ?? null) !== (nextPicture ?? null)) {
       traceAvatarFlow('profileHydration.syncNodeProfile.pictureChanged', {
         pubkey,
         pubkeyShort: truncateAvatarPubkey(pubkey),
@@ -444,7 +469,7 @@ export function createProfileHydrationModule(ctx: KernelContext) {
         nextProfileSource: profile.profileSource ?? null,
         ...summarizeAvatarPictureTransition(
           existingNode.picture,
-          profile.picture,
+          nextPicture,
         ),
         ...(traceContext ?? {}),
       })
@@ -454,7 +479,7 @@ export function createProfileHydrationModule(ctx: KernelContext) {
       {
         ...existingNode,
         label: profile.name ?? undefined,
-        picture: profile.picture,
+        picture: nextPicture,
         about: profile.about,
         nip05: profile.nip05,
         lud16: profile.lud16,

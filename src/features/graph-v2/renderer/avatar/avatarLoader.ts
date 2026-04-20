@@ -8,6 +8,10 @@ import type {
 } from '@/features/graph-v2/renderer/avatar/avatarDebug'
 import type { AvatarBitmap, AvatarUrlKey } from '@/features/graph-v2/renderer/avatar/types'
 import {
+  getDefaultAvatarDiskCache,
+  type AvatarDiskCache,
+} from '@/features/graph-v2/renderer/avatar/avatarDiskCache'
+import {
   summarizeAvatarUrl,
   traceAvatarFlow,
 } from '@/features/graph-runtime/debug/avatarTrace'
@@ -18,6 +22,8 @@ const FETCH_TIMEOUT_MS = 8000
 export interface LoadedAvatar {
   bitmap: AvatarBitmap
   bytes: number
+  blob?: Blob
+  mimeType?: string | null
 }
 
 export interface AvatarLoaderDeps {
@@ -25,6 +31,7 @@ export interface AvatarLoaderDeps {
   createImageBitmapImpl?: typeof createImageBitmap
   now?: () => number
   proxyOrigin?: string | null
+  diskCache?: AvatarDiskCache | null
 }
 
 type CircularBitmapSource = ImageBitmap | HTMLImageElement
@@ -101,6 +108,7 @@ export class AvatarLoader {
   private readonly createImageBitmapImpl: typeof createImageBitmap
   private readonly now: () => number
   private readonly proxyOrigin: string | null
+  private readonly diskCache: AvatarDiskCache | null
 
   constructor(deps: AvatarLoaderDeps = {}) {
     this.fetchImpl =
@@ -119,6 +127,10 @@ export class AvatarLoader {
           }))
     this.now = deps.now ?? (() => Date.now())
     this.proxyOrigin = deps.proxyOrigin ?? readBrowserOrigin()
+    this.diskCache =
+      Object.prototype.hasOwnProperty.call(deps, 'diskCache')
+        ? deps.diskCache ?? null
+        : getDefaultAvatarDiskCache()
   }
 
   public isBlocked(urlKey: AvatarUrlKey): boolean {
@@ -178,6 +190,35 @@ export class AvatarLoader {
     }
   }
 
+  public async hasDiskCached(url: string, bucket: ImageLodBucket): Promise<boolean> {
+    if (!this.diskCache || !isSafeAvatarUrl(url)) {
+      return false
+    }
+
+    try {
+      return await this.diskCache.has(url, bucket, this.now())
+    } catch (err) {
+      traceAvatarFlow('renderer.avatarLoader.diskCache.hasFailed', () => ({
+        url: summarizeAvatarUrl(url),
+        bucket,
+        reason: extractAvatarLoadFailureReason(err),
+      }))
+      return false
+    }
+  }
+
+  public async loadDiskCached(
+    url: string,
+    bucket: ImageLodBucket,
+    signal: AbortSignal,
+  ): Promise<LoadedAvatar | null> {
+    if (!isSafeAvatarUrl(url)) {
+      return null
+    }
+
+    return this.loadFromDiskCache(url, bucket, signal)
+  }
+
   public async load(
     url: string,
     bucket: ImageLodBucket,
@@ -191,12 +232,19 @@ export class AvatarLoader {
       throw new Error('unsafe_url')
     }
 
+    const cached = await this.loadFromDiskCache(url, bucket, signal)
+    if (cached) {
+      return cached
+    }
+
     const allowFallback = options.useImageElementFallback !== false
     const allowProxyFallback = options.useProxyFallback !== false
     let fetchError: unknown
 
     try {
-      return await this.loadViaFetch(url, bucket, signal)
+      const loaded = await this.loadViaFetch(url, bucket, signal)
+      void this.writeDiskCache(url, bucket, loaded, 'direct')
+      return loaded
     } catch (err) {
       if (signal.aborted || isAbortError(err)) {
         throw err
@@ -209,10 +257,12 @@ export class AvatarLoader {
       }))
     }
 
+    const directFailureReason = extractAvatarLoadFailureReason(fetchError)
+
     const proxyUrl = allowProxyFallback
       ? buildRuntimeAvatarProxyUrl(url, this.proxyOrigin)
       : null
-    if (proxyUrl) {
+    if (proxyUrl && !shouldSkipProxyFallback(directFailureReason)) {
       traceAvatarFlow('renderer.avatarLoader.proxyFallback.start', () => ({
         sourceUrl: summarizeAvatarUrl(url),
         proxyUrl: summarizeAvatarUrl(proxyUrl),
@@ -220,6 +270,7 @@ export class AvatarLoader {
       }))
       try {
         const loaded = await this.loadViaFetch(proxyUrl, bucket, signal)
+        void this.writeDiskCache(url, bucket, loaded, 'proxy')
         traceAvatarFlow('renderer.avatarLoader.proxyFallback.ready', () => ({
           sourceUrl: summarizeAvatarUrl(url),
           proxyUrl: summarizeAvatarUrl(proxyUrl),
@@ -239,9 +290,26 @@ export class AvatarLoader {
           reason: extractAvatarLoadFailureReason(err),
         }))
       }
+    } else if (proxyUrl && shouldSkipProxyFallback(directFailureReason)) {
+      traceAvatarFlow('renderer.avatarLoader.proxyFallback.skipped', () => ({
+        sourceUrl: summarizeAvatarUrl(url),
+        proxyUrl: summarizeAvatarUrl(proxyUrl),
+        bucket,
+        reason: directFailureReason,
+      }))
     }
 
     if (!allowFallback || !hasDocumentImageElement()) {
+      throw fetchError
+    }
+
+    const finalFailureReason = extractAvatarLoadFailureReason(fetchError)
+    if (shouldSkipImageElementFallback(finalFailureReason)) {
+      traceAvatarFlow('renderer.avatarLoader.imageElementFallback.skipped', () => ({
+        url: summarizeAvatarUrl(url),
+        bucket,
+        preservedReason: finalFailureReason,
+      }))
       throw fetchError
     }
 
@@ -302,33 +370,12 @@ export class AvatarLoader {
       if (signal.aborted) {
         throw new DOMException('aborted', 'AbortError')
       }
-      let raw: ImageBitmap
-      try {
-        raw = await this.createImageBitmapImpl(blob, {
-          resizeWidth: bucket,
-          resizeHeight: bucket,
-          resizeQuality: 'high',
-        })
-      } catch (decodeErr) {
-        if (signal.aborted || isAbortError(decodeErr)) {
-          throw decodeErr
-        }
-        const err = new Error('decode_failed')
-        ;(err as { reason?: string; cause?: unknown }).reason = 'decode_failed'
-        ;(err as { cause?: unknown }).cause = decodeErr
-        throw err
+      const loaded = await this.loadViaBlob(blob, bucket, signal)
+      return {
+        ...loaded,
+        blob,
+        mimeType: blob.type || response.headers.get('content-type'),
       }
-      if (signal.aborted) {
-        try {
-          raw.close()
-        } catch {
-          // ignore
-        }
-        throw new DOMException('aborted', 'AbortError')
-      }
-      const bitmap = await composeCircularBitmap(raw, bucket)
-      const bytes = bucket * bucket * 4
-      return { bitmap, bytes }
     } catch (err) {
       if (timeoutCtrl.signal.aborted && !signal.aborted) {
         throw new Error('timeout')
@@ -346,6 +393,117 @@ export class AvatarLoader {
   ): Promise<LoadedAvatar> {
     const image = await loadHtmlImage(url, signal)
     const bitmap = await composeCircularBitmap(image, bucket)
+    return { bitmap, bytes: bucket * bucket * 4 }
+  }
+
+  private async loadFromDiskCache(
+    url: string,
+    bucket: ImageLodBucket,
+    signal: AbortSignal,
+  ): Promise<LoadedAvatar | null> {
+    if (!this.diskCache || signal.aborted) {
+      return null
+    }
+
+    try {
+      const cached = await this.diskCache.get(url, bucket, this.now())
+      if (!cached || signal.aborted) {
+        return null
+      }
+
+      const loaded = await this.loadViaBlob(cached.blob, bucket, signal)
+      traceAvatarFlow('renderer.avatarLoader.diskCache.ready', () => ({
+        url: summarizeAvatarUrl(url),
+        bucket,
+        bytes: loaded.bytes,
+        storedBytes: cached.byteSize,
+        mimeType: cached.mimeType,
+      }))
+      return loaded
+    } catch (err) {
+      await this.deleteDiskCacheEntry(url, bucket)
+      traceAvatarFlow('renderer.avatarLoader.diskCache.failed', () => ({
+        url: summarizeAvatarUrl(url),
+        bucket,
+        reason: extractAvatarLoadFailureReason(err),
+      }))
+      return null
+    }
+  }
+
+  private async writeDiskCache(
+    url: string,
+    bucket: ImageLodBucket,
+    loaded: LoadedAvatar,
+    source: 'direct' | 'proxy',
+  ) {
+    if (!this.diskCache || !loaded.blob) {
+      return
+    }
+
+    try {
+      await this.diskCache.put({
+        sourceUrl: url,
+        bucket,
+        blob: loaded.blob,
+        mimeType: loaded.mimeType || loaded.blob.type || 'application/octet-stream',
+        now: this.now(),
+      })
+      traceAvatarFlow('renderer.avatarLoader.diskCache.stored', () => ({
+        url: summarizeAvatarUrl(url),
+        bucket,
+        source,
+        byteSize: loaded.blob?.size ?? null,
+        mimeType: loaded.mimeType ?? loaded.blob?.type ?? null,
+      }))
+    } catch (err) {
+      traceAvatarFlow('renderer.avatarLoader.diskCache.storeFailed', () => ({
+        url: summarizeAvatarUrl(url),
+        bucket,
+        source,
+        reason: extractAvatarLoadFailureReason(err),
+      }))
+    }
+  }
+
+  private async deleteDiskCacheEntry(url: string, bucket: ImageLodBucket) {
+    try {
+      await this.diskCache?.delete(url, bucket)
+    } catch {
+      // ignore
+    }
+  }
+
+  private async loadViaBlob(
+    blob: Blob,
+    bucket: ImageLodBucket,
+    signal: AbortSignal,
+  ): Promise<LoadedAvatar> {
+    let raw: ImageBitmap
+    try {
+      raw = await this.createImageBitmapImpl(blob, {
+        resizeWidth: bucket,
+        resizeHeight: bucket,
+        resizeQuality: 'high',
+      })
+    } catch (decodeErr) {
+      if (signal.aborted || isAbortError(decodeErr)) {
+        throw decodeErr
+      }
+      const err = new Error('decode_failed')
+      ;(err as { reason?: string; cause?: unknown }).reason = 'decode_failed'
+      ;(err as { cause?: unknown }).cause = decodeErr
+      throw err
+    }
+    if (signal.aborted) {
+      try {
+        raw.close()
+      } catch {
+        // ignore
+      }
+      throw new DOMException('aborted', 'AbortError')
+    }
+    const bitmap = await composeCircularBitmap(raw, bucket)
     return { bitmap, bytes: bucket * bucket * 4 }
   }
 }
@@ -375,6 +533,47 @@ const extractAvatarLoadFailureReason = (err: unknown) => {
     candidate?.name ??
     'avatar_load_failed'
   )
+}
+
+const TERMINAL_AVATAR_LOAD_FAILURE_REASONS = new Set([
+  'unsafe_url',
+  'decode_failed',
+  'unsupported_content_type',
+  'avatar_too_large',
+  'unresolved_host',
+])
+
+const parseAvatarHttpStatus = (reason: string | null) => {
+  if (!reason) {
+    return null
+  }
+  const match = /^http_(\d{3})(?:_|$)/.exec(reason)
+  if (!match) {
+    return null
+  }
+  return Number.parseInt(match[1] ?? '', 10)
+}
+
+const shouldSkipProxyFallback = (reason: string | null) => {
+  if (!reason) {
+    return false
+  }
+  if (TERMINAL_AVATAR_LOAD_FAILURE_REASONS.has(reason)) {
+    return true
+  }
+  const status = parseAvatarHttpStatus(reason)
+  return status !== null && [400, 404, 410, 422].includes(status)
+}
+
+const shouldSkipImageElementFallback = (reason: string | null) => {
+  if (!reason) {
+    return false
+  }
+  if (TERMINAL_AVATAR_LOAD_FAILURE_REASONS.has(reason)) {
+    return true
+  }
+  const status = parseAvatarHttpStatus(reason)
+  return status !== null && [400, 403, 404, 410, 422].includes(status)
 }
 
 const readBrowserOrigin = () => {

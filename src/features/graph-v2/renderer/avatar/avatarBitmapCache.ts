@@ -280,6 +280,7 @@ export class AvatarBitmapCache {
     urlKey: AvatarUrlKey,
     monogram: HTMLCanvasElement,
     reason: string | null = null,
+    ttlMs: number | null = FAILED_TTL_MS,
   ): AvatarFailedEntry {
     const previous = this.entries.get(urlKey)
     if (previous && previous.state === 'ready') {
@@ -291,7 +292,8 @@ export class AvatarBitmapCache {
       state: 'failed',
       monogram,
       failedAt,
-      expiresAt: failedAt + FAILED_TTL_MS,
+      expiresAt:
+        ttlMs === null ? null : failedAt + Math.max(1, ttlMs),
       reason,
     }
     this.entries.set(urlKey, entry)
@@ -299,6 +301,7 @@ export class AvatarBitmapCache {
       urlKey: summarizeAvatarUrlKey(urlKey),
       reason,
       expiresAt: entry.expiresAt,
+      permanent: entry.expiresAt === null,
       cacheSize: this.entries.size,
       capacity: this.cap,
       previousState: previous?.state ?? null,
@@ -400,7 +403,11 @@ export class AvatarBitmapCache {
     if (!entry) {
       return undefined
     }
-    if (entry.state === 'failed' && entry.expiresAt <= Date.now()) {
+    if (
+      entry.state === 'failed' &&
+      entry.expiresAt !== null &&
+      entry.expiresAt <= Date.now()
+    ) {
       this.entries.delete(urlKey)
       traceAvatarFlow('renderer.avatarBitmapCache.failedExpired', () => ({
         urlKey: summarizeAvatarUrlKey(urlKey),
@@ -416,7 +423,11 @@ export class AvatarBitmapCache {
 
   private pruneExpiredFailedEntries(now: number) {
     for (const [urlKey, entry] of this.entries) {
-      if (entry.state === 'failed' && entry.expiresAt <= now) {
+      if (
+        entry.state === 'failed' &&
+        entry.expiresAt !== null &&
+        entry.expiresAt <= now
+      ) {
         this.entries.delete(urlKey)
         traceAvatarFlow('renderer.avatarBitmapCache.failedExpired', () => ({
           urlKey: summarizeAvatarUrlKey(urlKey),

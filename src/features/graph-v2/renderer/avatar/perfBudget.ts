@@ -108,7 +108,7 @@ export class PerfBudget {
       sizeThreshold: Math.min(current.sizeThreshold + 6, 32),
       concurrency: Math.max(1, current.concurrency - 1),
       maxBucket: Math.min(current.maxBucket, 32) as ImageLodBucket,
-      lruCap: Math.max(64, Math.floor(current.lruCap / 2)),
+      lruCap: Math.max(160, Math.floor(current.lruCap * 0.75)),
       maxAvatarDrawsPerFrame: Math.max(
         32,
         Math.floor(current.maxAvatarDrawsPerFrame * 0.65),

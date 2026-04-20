@@ -463,6 +463,76 @@ test('avatar runtime debug snapshot combines cache, loader, scheduler, and overl
   assert.equal(snapshot?.physicsRunning, true)
 })
 
+test('avatar-settled refresh is coalesced by Sigma without forcing a synchronous refresh', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const adapter = new SigmaRendererAdapter() as unknown as {
+    sigma: {
+      scheduleRefresh: () => void
+      refresh: () => void
+    } | null
+    container: { clientWidth: number; clientHeight: number } | null
+    pendingContainerRefresh: boolean
+    scheduleAvatarSettledRefresh: () => void
+  }
+
+  let scheduled = 0
+  let refreshed = 0
+  adapter.sigma = {
+    scheduleRefresh: () => {
+      scheduled += 1
+    },
+    refresh: () => {
+      refreshed += 1
+    },
+  }
+  adapter.container = {
+    clientWidth: 1440,
+    clientHeight: 900,
+  }
+  adapter.pendingContainerRefresh = false
+
+  adapter.scheduleAvatarSettledRefresh()
+
+  assert.equal(scheduled, 1)
+  assert.equal(refreshed, 0)
+  assert.equal(adapter.pendingContainerRefresh, false)
+})
+
+test('avatar-settled refresh defers while the container is not renderable', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const adapter = new SigmaRendererAdapter() as unknown as {
+    sigma: {
+      scheduleRefresh: () => void
+    } | null
+    container: { clientWidth: number; clientHeight: number } | null
+    pendingContainerRefresh: boolean
+    scheduleAvatarSettledRefresh: () => void
+  }
+
+  let scheduled = 0
+  adapter.sigma = {
+    scheduleRefresh: () => {
+      scheduled += 1
+    },
+  }
+  adapter.container = {
+    clientWidth: 0,
+    clientHeight: 0,
+  }
+  adapter.pendingContainerRefresh = false
+
+  adapter.scheduleAvatarSettledRefresh()
+
+  assert.equal(scheduled, 0)
+  assert.equal(adapter.pendingContainerRefresh, true)
+})
+
 const installCaptureDocumentStub = () => {
   const originalDocument = globalThis.document
   const ctx = {

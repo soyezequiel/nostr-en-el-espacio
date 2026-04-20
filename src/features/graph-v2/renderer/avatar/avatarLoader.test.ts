@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { AvatarLoader } from '@/features/graph-v2/renderer/avatar/avatarLoader'
+import type { AvatarDiskCache } from '@/features/graph-v2/renderer/avatar/avatarDiskCache'
 
 const makeLoader = (nowRef: { t: number }) =>
   new AvatarLoader({
@@ -285,6 +286,297 @@ test('AvatarLoader.load falls back to the same-origin proxy when direct browser 
       proxyUrl.searchParams.get('url'),
       'https://images.example/avatar.png',
     )
+  } finally {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: originalDocument,
+    })
+    Object.defineProperty(globalThis, 'ImageBitmap', {
+      configurable: true,
+      value: originalImageBitmap,
+    })
+  }
+})
+
+test('AvatarLoader.load fails fast on terminal direct fetch errors without trying proxy fallback', async () => {
+  const originalDocument = globalThis.document
+  const fetchUrls: string[] = []
+  let imageCreateCount = 0
+
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      createElement: (tag: string) => {
+        if (tag === 'img') {
+          imageCreateCount += 1
+        }
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({
+            save: () => undefined,
+            beginPath: () => undefined,
+            arc: () => undefined,
+            closePath: () => undefined,
+            clip: () => undefined,
+            drawImage: () => undefined,
+            restore: () => undefined,
+          }),
+        }
+      },
+    },
+  })
+
+  try {
+    const loader = new AvatarLoader({
+      proxyOrigin: 'http://localhost:3000',
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        fetchUrls.push(String(input))
+        return new Response(null, { status: 404 })
+      }) as unknown as typeof fetch,
+      createImageBitmapImpl: (async () => {
+        throw new Error('not used')
+      }) as unknown as typeof createImageBitmap,
+    })
+
+    await assert.rejects(
+      () =>
+        loader.load(
+          'https://images.example/avatar.png',
+          64,
+          new AbortController().signal,
+        ),
+      /http_404/,
+    )
+
+    assert.equal(fetchUrls.length, 1)
+    assert.equal(imageCreateCount, 0)
+  } finally {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: originalDocument,
+    })
+  }
+})
+
+test('AvatarLoader.load skips image fallback after terminal proxy failure reasons', async () => {
+  const originalDocument = globalThis.document
+  const fetchUrls: string[] = []
+  let imageCreateCount = 0
+
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      createElement: (tag: string) => {
+        if (tag === 'img') {
+          imageCreateCount += 1
+        }
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({
+            save: () => undefined,
+            beginPath: () => undefined,
+            arc: () => undefined,
+            closePath: () => undefined,
+            clip: () => undefined,
+            drawImage: () => undefined,
+            restore: () => undefined,
+          }),
+        }
+      },
+    },
+  })
+
+  try {
+    const loader = new AvatarLoader({
+      proxyOrigin: 'http://localhost:3000',
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        const url = String(input)
+        fetchUrls.push(url)
+        if (fetchUrls.length === 1) {
+          throw new TypeError('Failed to fetch')
+        }
+        return new Response(null, {
+          status: 502,
+          headers: { 'x-avatar-proxy-reason': 'unresolved_host' },
+        })
+      }) as unknown as typeof fetch,
+      createImageBitmapImpl: (async () => {
+        throw new Error('not used')
+      }) as unknown as typeof createImageBitmap,
+    })
+
+    await assert.rejects(
+      () =>
+        loader.load(
+          'https://images.example/avatar.png',
+          64,
+          new AbortController().signal,
+        ),
+      /Failed to fetch|unresolved_host|http_502/,
+    )
+
+    assert.equal(fetchUrls.length, 2)
+    assert.equal(imageCreateCount, 0)
+  } finally {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: originalDocument,
+    })
+  }
+})
+
+test('AvatarLoader.load reads avatar blobs from IndexedDB disk cache before fetching', async () => {
+  const originalDocument = globalThis.document
+  const originalImageBitmap = globalThis.ImageBitmap
+  let fetchCount = 0
+  let deletedKey: Array<[string, number]> = []
+
+  class MockImageBitmap {
+    close() {}
+  }
+
+  Object.defineProperty(globalThis, 'ImageBitmap', {
+    configurable: true,
+    value: MockImageBitmap,
+  })
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          save: () => undefined,
+          beginPath: () => undefined,
+          arc: () => undefined,
+          closePath: () => undefined,
+          clip: () => undefined,
+          drawImage: () => undefined,
+          restore: () => undefined,
+        }),
+      }),
+    },
+  })
+
+  const diskCache: AvatarDiskCache = {
+    has: async () => true,
+    get: async () => ({
+      blob: new Blob(['cached-avatar'], { type: 'image/webp' }),
+      mimeType: 'image/webp',
+      byteSize: 13,
+    }),
+    put: async () => {
+      throw new Error('put should not be called for disk hits')
+    },
+    delete: async (sourceUrl, bucket) => {
+      deletedKey = [[sourceUrl, bucket]]
+    },
+  }
+
+  try {
+    const loader = new AvatarLoader({
+      diskCache,
+      fetchImpl: (async () => {
+        fetchCount += 1
+        throw new Error('fetch should not be used')
+      }) as unknown as typeof fetch,
+      createImageBitmapImpl: (async () =>
+        new MockImageBitmap()) as unknown as typeof createImageBitmap,
+    })
+
+    const loaded = await loader.load(
+      'https://images.example/avatar.png',
+      64,
+      new AbortController().signal,
+    )
+
+    assert.equal(loaded.bytes, 64 * 64 * 4)
+    assert.ok(loaded.bitmap)
+    assert.equal(fetchCount, 0)
+    assert.deepEqual(deletedKey, [])
+  } finally {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: originalDocument,
+    })
+    Object.defineProperty(globalThis, 'ImageBitmap', {
+      configurable: true,
+      value: originalImageBitmap,
+    })
+  }
+})
+
+test('AvatarLoader.load stores successful fetched avatar blobs in IndexedDB disk cache', async () => {
+  const originalDocument = globalThis.document
+  const originalImageBitmap = globalThis.ImageBitmap
+  const puts: Array<{ sourceUrl: string; bucket: number; blob: Blob }> = []
+
+  class MockImageBitmap {
+    close() {}
+  }
+
+  Object.defineProperty(globalThis, 'ImageBitmap', {
+    configurable: true,
+    value: MockImageBitmap,
+  })
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          save: () => undefined,
+          beginPath: () => undefined,
+          arc: () => undefined,
+          closePath: () => undefined,
+          clip: () => undefined,
+          drawImage: () => undefined,
+          restore: () => undefined,
+        }),
+      }),
+    },
+  })
+
+  const diskCache: AvatarDiskCache = {
+    has: async () => false,
+    get: async () => null,
+    put: async (input) => {
+      puts.push({
+        sourceUrl: input.sourceUrl,
+        bucket: input.bucket,
+        blob: input.blob,
+      })
+    },
+    delete: async () => undefined,
+  }
+
+  try {
+    const loader = new AvatarLoader({
+      diskCache,
+      fetchImpl: (async () =>
+        new Response(new Blob(['network-avatar'], { type: 'image/png' }), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        })) as unknown as typeof fetch,
+      createImageBitmapImpl: (async () =>
+        new MockImageBitmap()) as unknown as typeof createImageBitmap,
+    })
+
+    const loaded = await loader.load(
+      'https://images.example/avatar.png',
+      64,
+      new AbortController().signal,
+    )
+    await Promise.resolve()
+
+    assert.equal(loaded.bytes, 64 * 64 * 4)
+    assert.equal(puts.length, 1)
+    assert.equal(puts[0]?.sourceUrl, 'https://images.example/avatar.png')
+    assert.equal(puts[0]?.bucket, 64)
+    assert.equal(puts[0]?.blob.type, 'image/png')
   } finally {
     Object.defineProperty(globalThis, 'document', {
       configurable: true,

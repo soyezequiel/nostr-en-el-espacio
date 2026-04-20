@@ -6,6 +6,7 @@
   NodeExpansionState,
   NodeStructurePreviewState,
   GraphSlice,
+  ReplaceGraphSnapshotInput,
 } from '@/features/graph-runtime/app/store/types'
 import {
   summarizeAvatarPictureTransition,
@@ -98,6 +99,22 @@ const addNeighbor = (
 
 const getNodeCount = (nodes: Record<string, GraphNode>) => Object.keys(nodes).length
 
+const buildAdjacencyFromLinks = (links: readonly GraphLink[]) => {
+  const adjacency: Record<string, string[]> = {}
+  for (const link of links) {
+    addNeighbor(adjacency, link.source, link.target)
+  }
+  return adjacency
+}
+
+const buildInboundAdjacencyFromLinks = (links: readonly GraphLink[]) => {
+  const adjacency: Record<string, string[]> = {}
+  for (const link of links) {
+    addNeighbor(adjacency, link.target, link.source)
+  }
+  return adjacency
+}
+
 const hasGraphNodeChanged = (left: GraphNode, right: GraphNode) =>
   left.pubkey !== right.pubkey ||
   left.label !== right.label ||
@@ -112,6 +129,21 @@ const hasGraphNodeChanged = (left: GraphNode, right: GraphNode) =>
   left.keywordHits !== right.keywordHits ||
   left.discoveredAt !== right.discoveredAt ||
   left.source !== right.source
+
+const mergeGraphNodePatch = (
+  existingNode: GraphNode,
+  incomingNode: GraphNode,
+): GraphNode => {
+  const nextNode = { ...existingNode }
+  for (const [key, value] of Object.entries(incomingNode) as Array<
+    [keyof GraphNode, GraphNode[keyof GraphNode]]
+  >) {
+    if (value !== undefined) {
+      Object.assign(nextNode, { [key]: value })
+    }
+  }
+  return nextNode
+}
 
 export const createGraphSlice: AppStateCreator<GraphSlice> = (set, get) => ({
   ...createInitialGraphSliceState(),
@@ -131,10 +163,7 @@ export const createGraphSlice: AppStateCreator<GraphSlice> = (set, get) => ({
       const existingNode = nextNodes[node.pubkey]
 
       if (existingNode) {
-        const nextNode = {
-          ...existingNode,
-          ...node,
-        }
+        const nextNode = mergeGraphNodePatch(existingNode, node)
         if (hasGraphNodeChanged(existingNode, nextNode)) {
           if ((existingNode.picture ?? null) !== (nextNode.picture ?? null)) {
             traceAvatarFlow('graphStore.upsertNode.pictureChanged', {
@@ -206,6 +235,77 @@ export const createGraphSlice: AppStateCreator<GraphSlice> = (set, get) => ({
         },
       })
     }
+
+    return {
+      acceptedPubkeys,
+      rejectedPubkeys,
+    }
+  },
+  replaceGraphSnapshot: (snapshot: ReplaceGraphSnapshotInput) => {
+    const state = get()
+    const nextNodes: Record<string, GraphNode> = {}
+    const acceptedPubkeys: string[] = []
+    const rejectedPubkeys: string[] = []
+    let capReached = false
+
+    for (const node of snapshot.nodes) {
+      if (getNodeCount(nextNodes) >= state.graphCaps.maxNodes) {
+        capReached = true
+        if (node.picture) {
+          traceAvatarFlow('graphStore.upsertNode.rejectedWithPicture', {
+            pubkey: node.pubkey,
+            pubkeyShort: truncateAvatarPubkey(node.pubkey),
+            maxNodes: state.graphCaps.maxNodes,
+            currentNodeCount: getNodeCount(nextNodes),
+            ...summarizeAvatarPictureTransition(null, node.picture),
+          })
+        }
+        rejectedPubkeys.push(node.pubkey)
+        continue
+      }
+
+      if (node.picture && !state.nodes[node.pubkey]?.picture) {
+        traceAvatarFlow('graphStore.upsertNode.createdWithPicture', {
+          pubkey: node.pubkey,
+          pubkeyShort: truncateAvatarPubkey(node.pubkey),
+          profileState: node.profileState,
+          profileSource: node.profileSource,
+          nodeSource: node.source,
+          ...summarizeAvatarPictureTransition(null, node.picture),
+        })
+      }
+
+      nextNodes[node.pubkey] = node
+      acceptedPubkeys.push(node.pubkey)
+    }
+
+    const acceptedSet = new Set(acceptedPubkeys)
+    const nextLinks = snapshot.links.filter(
+      (link) => acceptedSet.has(link.source) && acceptedSet.has(link.target),
+    )
+    const nextInboundLinks = snapshot.inboundLinks.filter(
+      (link) => acceptedSet.has(link.source) && acceptedSet.has(link.target),
+    )
+
+    set({
+      nodes: nextNodes,
+      links: nextLinks,
+      adjacency: buildAdjacencyFromLinks(nextLinks),
+      inboundLinks: nextInboundLinks,
+      inboundAdjacency: buildInboundAdjacencyFromLinks(nextInboundLinks),
+      connectionsLinks: [],
+      connectionsLinksRevision: 0,
+      graphRevision: state.graphRevision + 1,
+      inboundGraphRevision: state.inboundGraphRevision + 1,
+      rootNodePubkey: snapshot.rootNodePubkey,
+      graphCaps: {
+        ...state.graphCaps,
+        capReached,
+      },
+      expandedNodePubkeys: new Set(),
+      nodeExpansionStates: {},
+      nodeStructurePreviewStates: {},
+    })
 
     return {
       acceptedPubkeys,

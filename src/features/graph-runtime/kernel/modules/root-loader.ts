@@ -1715,11 +1715,9 @@ export function createRootLoaderModule(
     const previousRootPubkey = state.rootNodePubkey
     const previousNodes = state.nodes
     state.resetGraphAnalysis()
-    state.resetGraph()
     state.resetZapLayer()
     state.setSelectedNodePubkey(null)
     state.clearComparedNodes()
-    state.setRootNodePubkey(rootPubkey)
     if (previousRootPubkey !== rootPubkey) {
       state.setFixedRootPubkey(rootPubkey)
     }
@@ -1806,28 +1804,29 @@ export function createRootLoaderModule(
           source: 'inbound' as const,
         })),
     ]
-    const nodeResult = state.upsertNodes(nodes)
+    const nodeResult = state.replaceGraphSnapshot({
+      rootNodePubkey: rootPubkey,
+      nodes,
+      links: followPubkeys.map((pubkey) => ({
+        source: rootPubkey,
+        target: pubkey,
+        relation: 'follow' as const,
+      })),
+      inboundLinks: inboundFollowerPubkeys
+        .filter((pubkey) => pubkey !== rootPubkey)
+        .map((pubkey) => ({
+          source: pubkey,
+          target: rootPubkey,
+          relation: 'inbound' as const,
+        })),
+    })
     const acceptedFollowPubkeys = followPubkeys.filter((pubkey) =>
       nodeResult.acceptedPubkeys.includes(pubkey),
     )
     const acceptedInboundFollowerPubkeys = inboundFollowerPubkeys.filter(
       (pubkey) =>
         pubkey !== rootPubkey &&
-        (nodeResult.acceptedPubkeys.includes(pubkey) || state.nodes[pubkey]),
-    )
-    state.upsertLinks(
-      acceptedFollowPubkeys.map((pubkey) => ({
-        source: rootPubkey,
-        target: pubkey,
-        relation: 'follow' as const,
-      })),
-    )
-    state.upsertInboundLinks(
-      acceptedInboundFollowerPubkeys.map((pubkey) => ({
-        source: pubkey,
-        target: rootPubkey,
-        relation: 'inbound' as const,
-      })),
+        nodeResult.acceptedPubkeys.includes(pubkey),
     )
     if (isAccountTraceRoot(rootPubkey)) {
       const traceConfig = getAccountTraceConfig()

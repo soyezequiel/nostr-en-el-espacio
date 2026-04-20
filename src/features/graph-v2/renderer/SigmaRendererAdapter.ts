@@ -1408,7 +1408,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
         cache: this.avatarCache,
         loader: this.avatarLoader,
         onSettled: () => {
-          this.safeRefresh()
+          this.scheduleAvatarSettledRefresh()
         },
       })
       this.avatarBudget = new PerfBudget(tier)
@@ -1475,6 +1475,19 @@ export class SigmaRendererAdapter implements RendererAdapter {
       this.pendingAvatarRevealRenderFrame = null
       this.sigma?.scheduleRender()
     })
+  }
+
+  private scheduleAvatarSettledRefresh() {
+    if (!this.sigma) {
+      return
+    }
+    if (!hasRenderableSigmaContainer(this.container)) {
+      this.pendingContainerRefresh = true
+      return
+    }
+
+    this.pendingContainerRefresh = false
+    this.sigma.scheduleRefresh()
   }
 
   private copyHoverFocusSnapshot(): HoverFocusSnapshot {

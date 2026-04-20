@@ -15,6 +15,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "**/*_tmp/**",
     "tmp_*.js",
+    // Temporary debug scripts and dependency bundles — not product code
+    "tmp/**",
+    "scratch/**",
   ]),
 ]);
 

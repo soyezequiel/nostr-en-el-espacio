@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 /* eslint-disable @next/next/no-img-element */
 
 import {
@@ -2363,7 +2363,7 @@ export default function GraphAppV2() {
         canShare={hasRoot}
         onSwitchRoot={handleOpenRootSheet}
         onShareFormatChange={setSocialCaptureFormat}
-        onShareImage={handleShareImage}
+        onShareImage={isDev ? handleShareImage : undefined}
         rootDisplayName={hasRoot ? (rootDisplayName ?? domainState.rootPubkey?.slice(0, 10) ?? null) : null}
         rootNpub={rootNpubEncoded}
         rootPictureUrl={rootPictureUrl}

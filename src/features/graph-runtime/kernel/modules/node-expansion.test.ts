@@ -31,6 +31,68 @@ const flushMicrotasks = async (times = 3) => {
   }
 }
 
+const createExpandableStore = () => {
+  const store = createStore<Record<string, unknown>>()((...args) => ({
+    ...createGraphSlice(...args),
+    ...createRelaySlice(...args),
+    ...createUiSlice(...args),
+  }))
+
+  store.getState().setRelayUrls(['wss://relay.example'])
+  store.getState().setRootNodePubkey('root')
+  store.getState().upsertNodes([
+    {
+      pubkey: 'root',
+      keywordHits: 0,
+      discoveredAt: 0,
+      profileState: 'ready',
+      source: 'root',
+    },
+    {
+      pubkey: 'target',
+      keywordHits: 0,
+      discoveredAt: 1,
+      profileState: 'ready',
+      source: 'follow',
+    },
+  ])
+  store.getState().upsertLinks([
+    {
+      source: 'root',
+      target: 'target',
+      relation: 'follow',
+    },
+  ])
+  store.getState().setSelectedNodePubkey('target')
+  store.getState().setOpenPanel('node-detail')
+
+  return store
+}
+
+const createBaseCollaborators = () => ({
+  analysis: {
+    schedule: () => {},
+  },
+  persistence: {
+    persistContactListEvent: async () => {},
+    persistProfileEvent: async () => {},
+  },
+  profileHydration: {
+    hydrateNodeProfiles: async () => {},
+  },
+  rootLoader: {
+    getLoadSequence: () => 1,
+    isStaleLoad: () => false,
+  },
+  zapLayer: {
+    getZapTargetPubkeys: () => [],
+    prefetchZapLayer: async () => {},
+  },
+  nodeDetail: {
+    getActivePreviewRequest: () => undefined,
+  },
+})
+
 test('expandNode resolves before reciprocal enrichment finishes and merges late inbound followers afterwards', async () => {
   const store = createStore<Record<string, unknown>>()((...args) => ({
     ...createGraphSlice(...args),
@@ -203,4 +265,294 @@ test('expandNode resolves before reciprocal enrichment finishes and merges late 
     ['late-follower'],
   )
   assert.equal(store.getState().nodes['late-follower']?.source, 'inbound')
+})
+
+test('expandNode reports partial when relays fail without cached contact list', async () => {
+  const store = createExpandableStore()
+
+  const createRelayAdapter = () => ({
+    subscribe() {
+      return {
+        subscribe(observer: {
+          error?: (error: Error) => void
+        }) {
+          queueMicrotask(() => {
+            observer.error?.(new Error('cannot connect'))
+          })
+
+          return () => {}
+        },
+      }
+    },
+    count: async () => [],
+    getRelayHealth: () => ({}),
+    subscribeToRelayHealth: () => () => {},
+    close: () => {},
+  })
+
+  const ctx = {
+    store,
+    repositories: {
+      contactLists: {
+        get: async () => null,
+      },
+    },
+    eventsWorker: {
+      invoke: async () => {
+        throw new Error('events worker should not be used without events')
+      },
+    },
+    graphWorker: {
+      invoke: async () => {
+        throw new Error('graph worker should not be used in this test')
+      },
+      dispose: () => {},
+    },
+    createRelayAdapter,
+    defaultRelayUrls: ['wss://relay.example'],
+    now: (() => {
+      let now = 1_000
+      return () => ++now
+    })(),
+    emitter: createKernelEventEmitter(),
+  }
+
+  const expansion = createNodeExpansionModule(ctx, {
+    ...createBaseCollaborators(),
+    loadDirectInboundFollowerEvidence: async () => ({
+      followerPubkeys: [],
+      partial: false,
+    }),
+  })
+
+  const result = await expansion.expandNode('target')
+
+  assert.equal(result.status, 'partial')
+  assert.equal(store.getState().nodeExpansionStates.target.status, 'partial')
+  assert.equal(store.getState().expandedNodePubkeys.has('target'), true)
+  assert.equal(store.getState().selectedNodePubkey, null)
+})
+
+test('expandNode reports partial when live contact list parsing fails', async () => {
+  const store = createExpandableStore()
+
+  const createRelayAdapter = () => ({
+    subscribe(filters: Array<Record<string, unknown>>) {
+      return {
+        subscribe(observer: {
+          next?: (value: unknown) => void
+          complete?: (summary: unknown) => void
+        }) {
+          queueMicrotask(() => {
+            const firstFilter = filters[0] ?? {}
+            if (Array.isArray(firstFilter.authors)) {
+              observer.next?.({
+                event: {
+                  id: 'contact-list-event',
+                  pubkey: 'target',
+                  kind: 3,
+                  created_at: 123,
+                  tags: [['p', 'visible-follow']],
+                },
+                relayUrl: 'wss://relay.example',
+                receivedAtMs: 123,
+              })
+            }
+
+            observer.complete?.({
+              relayCount: 1,
+            })
+          })
+
+          return () => {}
+        },
+      }
+    },
+    count: async () => [],
+    getRelayHealth: () => ({}),
+    subscribeToRelayHealth: () => () => {},
+    close: () => {},
+  })
+
+  const ctx = {
+    store,
+    repositories: {
+      contactLists: {
+        get: async () => null,
+      },
+    },
+    eventsWorker: {
+      invoke: async () => {
+        throw new Error('parse failed')
+      },
+    },
+    graphWorker: {
+      invoke: async () => {
+        throw new Error('graph worker should not be used in this test')
+      },
+      dispose: () => {},
+    },
+    createRelayAdapter,
+    defaultRelayUrls: ['wss://relay.example'],
+    now: (() => {
+      let now = 1_000
+      return () => ++now
+    })(),
+    emitter: createKernelEventEmitter(),
+  }
+
+  const expansion = createNodeExpansionModule(ctx, {
+    ...createBaseCollaborators(),
+    loadDirectInboundFollowerEvidence: async () => ({
+      followerPubkeys: ['fallback-follower'],
+      partial: false,
+    }),
+  })
+
+  const result = await expansion.expandNode('target')
+
+  assert.equal(result.status, 'partial')
+  assert.equal(store.getState().nodeExpansionStates.target.status, 'partial')
+  assert.deepEqual(
+    store.getState().inboundAdjacency.target,
+    ['fallback-follower'],
+  )
+  assert.equal(store.getState().expandedNodePubkeys.has('target'), true)
+  assert.equal(store.getState().selectedNodePubkey, null)
+})
+
+test('expandNode reports partial when the foreground relay adapter cannot be created', async () => {
+  const store = createExpandableStore()
+
+  const ctx = {
+    store,
+    repositories: {
+      contactLists: {
+        get: async () => null,
+      },
+    },
+    eventsWorker: {
+      invoke: async () => {
+        throw new Error('events worker should not be used in this test')
+      },
+    },
+    graphWorker: {
+      invoke: async () => {
+        throw new Error('graph worker should not be used in this test')
+      },
+      dispose: () => {},
+    },
+    createRelayAdapter: () => {
+      throw new Error('bad relay config')
+    },
+    defaultRelayUrls: ['wss://relay.example'],
+    now: (() => {
+      let now = 1_000
+      return () => ++now
+    })(),
+    emitter: createKernelEventEmitter(),
+  }
+
+  const expansion = createNodeExpansionModule(ctx, createBaseCollaborators())
+
+  const result = await expansion.expandNode('target')
+
+  assert.equal(result.status, 'partial')
+  assert.equal(store.getState().nodeExpansionStates.target.status, 'partial')
+  assert.equal(store.getState().expandedNodePubkeys.has('target'), false)
+  assert.equal(store.getState().selectedNodePubkey, 'target')
+})
+
+test('expandNode does not let background enrichment adapter failures overwrite success', async () => {
+  const store = createExpandableStore()
+  let createRelayAdapterCallCount = 0
+
+  const foregroundAdapter = {
+    subscribe(filters: Array<Record<string, unknown>>) {
+      return {
+        subscribe(observer: {
+          next?: (value: unknown) => void
+          complete?: (summary: unknown) => void
+        }) {
+          queueMicrotask(() => {
+            const firstFilter = filters[0] ?? {}
+            if (Array.isArray(firstFilter.authors)) {
+              observer.next?.({
+                event: {
+                  id: 'contact-list-event',
+                  pubkey: 'target',
+                  kind: 3,
+                  created_at: 123,
+                  tags: [['p', 'visible-follow']],
+                },
+                relayUrl: 'wss://relay.example',
+                receivedAtMs: 123,
+              })
+            }
+
+            observer.complete?.({
+              relayCount: 1,
+            })
+          })
+
+          return () => {}
+        },
+      }
+    },
+    count: async () => [],
+    getRelayHealth: () => ({}),
+    subscribeToRelayHealth: () => () => {},
+    close: () => {},
+  }
+
+  const ctx = {
+    store,
+    repositories: {
+      contactLists: {
+        get: async () => null,
+      },
+    },
+    eventsWorker: {
+      invoke: async (action: string) => {
+        if (action !== 'PARSE_CONTACT_LIST') {
+          throw new Error(`unexpected action ${action}`)
+        }
+
+        return {
+          followPubkeys: ['visible-follow'],
+          relayHints: [],
+          diagnostics: [],
+        }
+      },
+    },
+    graphWorker: {
+      invoke: async () => {
+        throw new Error('graph worker should not be used in this test')
+      },
+      dispose: () => {},
+    },
+    createRelayAdapter: () => {
+      createRelayAdapterCallCount += 1
+      if (createRelayAdapterCallCount === 1) {
+        return foregroundAdapter
+      }
+      throw new Error('background adapter failed')
+    },
+    defaultRelayUrls: ['wss://relay.example'],
+    now: (() => {
+      let now = 1_000
+      return () => ++now
+    })(),
+    emitter: createKernelEventEmitter(),
+  }
+
+  const expansion = createNodeExpansionModule(ctx, createBaseCollaborators())
+
+  const result = await expansion.expandNode('target')
+
+  assert.equal(result.status, 'ready')
+  assert.equal(store.getState().nodeExpansionStates.target.status, 'ready')
+  assert.equal(store.getState().expandedNodePubkeys.has('target'), true)
+  assert.equal(store.getState().selectedNodePubkey, null)
+  assert.ok(createRelayAdapterCallCount > 1)
 })

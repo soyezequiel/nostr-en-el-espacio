@@ -278,7 +278,9 @@ export function buildExpandedStructureMessage(options: {
             false,
             options.acceptedNodesCount,
           )
-      : `Sin lista de follows descubierta para ${options.pubkey.slice(0, 8)}...`
+      : options.hasPartialSignals
+        ? `Sin lista de follows completa para ${options.pubkey.slice(0, 8)}... ${COVERAGE_RECOVERY_MESSAGE}`
+        : `Sin lista de follows descubierta para ${options.pubkey.slice(0, 8)}...`
 
   if (options.discoveredFollowerCount === 0) {
     return authoredMessage

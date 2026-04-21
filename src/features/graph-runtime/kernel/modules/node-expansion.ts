@@ -32,6 +32,7 @@ import type { ProfileHydrationModule } from '@/features/graph-runtime/kernel/mod
 import type { RootLoaderModule } from '@/features/graph-runtime/kernel/modules/root-loader'
 import type { ZapLayerModule } from '@/features/graph-runtime/kernel/modules/zap-layer'
 import type { NodeDetailModule } from '@/features/graph-runtime/kernel/modules/node-detail'
+import type { ParseContactListResult } from '@/features/graph-runtime/workers/events/contracts'
 import {
   buildContactListPartialMessage,
   buildDiscoveredMessage,
@@ -104,6 +105,66 @@ export function createNodeExpansionModule(
     updatedAt: ctx.now(),
     ...state,
   })
+
+  const normalizeExpansionError = (error: unknown, fallbackMessage: string) =>
+    error instanceof Error ? error : new Error(fallbackMessage)
+
+  const getCachedContactList = async (targetPubkey: string) => {
+    try {
+      return await ctx.repositories.contactLists.get(targetPubkey)
+    } catch (error) {
+      console.warn(
+        'Contact list cache lookup failed during node expansion:',
+        error,
+      )
+      return null
+    }
+  }
+
+  const collectExpansionRelayEvents = async (
+    adapter: RelayAdapterInstance,
+    filters: Parameters<typeof collectRelayEvents>[1],
+    options: Parameters<typeof collectRelayEvents>[2],
+  ): ReturnType<typeof collectRelayEvents> => {
+    try {
+      return await collectRelayEvents(adapter, filters, options)
+    } catch (error) {
+      return {
+        events: [],
+        summary: null,
+        error: normalizeExpansionError(
+          error,
+          'No se pudo consultar la estructura del nodo.',
+        ),
+      }
+    }
+  }
+
+  const loadDirectInboundFollowerEvidenceSafely = async (input: {
+    adapter: RelayAdapterInstance
+    pubkey: string
+  }) => {
+    try {
+      return await loadDirectInboundFollowerEvidence(input)
+    } catch (error) {
+      console.warn(
+        'Direct inbound follower evidence failed during node expansion:',
+        error,
+      )
+      return {
+        followerPubkeys: [],
+        partial: true,
+      }
+    }
+  }
+
+  const buildRecoverableExpansionMessage = (pubkey: string, error: unknown) => {
+    const detail =
+      error instanceof Error && error.message.trim().length > 0
+        ? ` ${error.message}`
+        : ''
+    return `Expansion parcial para ${pubkey.slice(0, 8)}...${detail}`
+  }
 
   const setLoadingState = (
     pubkey: string,
@@ -261,13 +322,22 @@ export function createNodeExpansionModule(
       return
     }
 
-    const adapter = ctx.createRelayAdapter({
-      relayUrls: relayUrls.slice(),
-      connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
-      pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
-      retryCount: NODE_EXPAND_RETRY_COUNT,
-      stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
-    })
+    let adapter: RelayAdapterInstance
+    try {
+      adapter = ctx.createRelayAdapter({
+        relayUrls: relayUrls.slice(),
+        connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
+        pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
+        retryCount: NODE_EXPAND_RETRY_COUNT,
+        stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+      })
+    } catch (error) {
+      console.warn(
+        'Background targeted reciprocal adapter creation failed during expansion:',
+        error,
+      )
+      return
+    }
 
     const request = loadTargetedReciprocalFollowerEvidence({
       adapter,
@@ -306,13 +376,22 @@ export function createNodeExpansionModule(
       return
     }
 
-    const adapter = ctx.createRelayAdapter({
-      relayUrls: relayUrls.slice(),
-      connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
-      pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
-      retryCount: NODE_EXPAND_RETRY_COUNT,
-      stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
-    })
+    let adapter: RelayAdapterInstance
+    try {
+      adapter = ctx.createRelayAdapter({
+        relayUrls: relayUrls.slice(),
+        connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
+        pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
+        retryCount: NODE_EXPAND_RETRY_COUNT,
+        stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+      })
+    } catch (error) {
+      console.warn(
+        'Background direct inbound adapter creation failed during expansion:',
+        error,
+      )
+      return
+    }
 
     const request = loadDirectInboundFollowerEvidence({
       adapter,
@@ -428,7 +507,7 @@ export function createNodeExpansionModule(
         'Revisando evidencia local para acelerar la expansion...',
         startedAt,
       )
-      const cachedContactList = await ctx.repositories.contactLists.get(pubkey)
+      const cachedContactList = await getCachedContactList(pubkey)
       if (cachedContactList) {
         const cachePreviewMessage =
           buildContactListPartialMessage({
@@ -473,15 +552,16 @@ export function createNodeExpansionModule(
       }
     }
 
-    const adapter = ctx.createRelayAdapter({
-      relayUrls,
-      connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
-      pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
-      retryCount: NODE_EXPAND_RETRY_COUNT,
-      stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
-    })
+    let adapter: RelayAdapterInstance | null = null
 
     try {
+      adapter = ctx.createRelayAdapter({
+        relayUrls,
+        connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
+        pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
+        retryCount: NODE_EXPAND_RETRY_COUNT,
+        stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+      })
       setLoadingState(
         pubkey,
         'fetching-structure',
@@ -489,11 +569,12 @@ export function createNodeExpansionModule(
         'Consultando relays activos para recuperar follows y followers...',
         startedAt,
       )
-      const contactListResult = await collectRelayEvents(adapter, [
+      const contactListResult = await collectExpansionRelayEvents(adapter, [
         { authors: [pubkey], kinds: [3] } satisfies Filter,
       ], {
         hardTimeoutMs: NODE_EXPAND_HARD_TIMEOUT_MS,
       })
+      const authoredRelayHadPartialSignals = contactListResult.error !== null
 
       setLoadingState(
         pubkey,
@@ -505,7 +586,7 @@ export function createNodeExpansionModule(
       const latestContactListEvent = selectLatestReplaceableEvent(contactListResult.events)
 
       if (!latestContactListEvent) {
-        const cachedContactList = await ctx.repositories.contactLists.get(pubkey)
+        const cachedContactList = await getCachedContactList(pubkey)
         if (cachedContactList) {
           const cachePreviewMessage =
             buildContactListPartialMessage({
@@ -548,7 +629,7 @@ export function createNodeExpansionModule(
           return result
         }
 
-        const inboundFollowerEvidence = await loadDirectInboundFollowerEvidence({
+        const inboundFollowerEvidence = await loadDirectInboundFollowerEvidenceSafely({
           adapter,
           pubkey,
         })
@@ -565,26 +646,109 @@ export function createNodeExpansionModule(
           inboundFollowerEvidence.followerPubkeys,
           {
             relayUrls,
-            authoredHasPartialSignals: false,
+            authoredHasPartialSignals: authoredRelayHadPartialSignals,
             inboundHasPartialSignals: inboundFollowerEvidence.partial,
             previewMessage: `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
           },
         )
       }
 
-      const parsedContactList = await ctx.eventsWorker.invoke('PARSE_CONTACT_LIST', {
-        event: serializeContactListEvent(latestContactListEvent.event),
-      })
+      let parsedContactList: ParseContactListResult
+      try {
+        parsedContactList = await ctx.eventsWorker.invoke('PARSE_CONTACT_LIST', {
+          event: serializeContactListEvent(latestContactListEvent.event),
+        })
+      } catch (error) {
+        console.warn(
+          'Contact list parsing failed during node expansion:',
+          error,
+        )
+        const cachedContactList = await getCachedContactList(pubkey)
+        if (cachedContactList) {
+          const cachePreviewMessage =
+            buildContactListPartialMessage({
+              discoveredFollowCount: cachedContactList.follows.length,
+              diagnostics: [],
+              rejectedPubkeyCount: 0,
+              loadedFromCache: true,
+            }) ??
+            buildDiscoveredMessage(cachedContactList.follows.length, true, true)
+          setLoadingState(
+            pubkey,
+            'merging',
+            4,
+            'Integrando evidencia estructural recuperada...',
+            startedAt,
+          )
+          const result = applyExpandedStructureEvidence(
+            pubkey,
+            cachedContactList.follows,
+            [],
+            {
+              relayUrls,
+              relayHints: cachedContactList.relayHints,
+              authoredHasPartialSignals: true,
+              inboundHasPartialSignals: false,
+              authoredDiagnostics: [],
+              authoredLoadedFromCache: true,
+              previewMessage:
+                cachedContactList.follows.length > 0
+                  ? cachePreviewMessage
+                  : `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
+            },
+          )
+          scheduleReciprocalInboundEnrichment(
+            pubkey,
+            cachedContactList.follows,
+            relayUrls,
+          )
+          scheduleDirectInboundEnrichment(pubkey, relayUrls)
+          return result
+        }
+
+        const inboundFollowerEvidence =
+          await loadDirectInboundFollowerEvidenceSafely({
+            adapter,
+            pubkey,
+          })
+        setLoadingState(
+          pubkey,
+          'merging',
+          4,
+          'Actualizando el grafo con la evidencia disponible...',
+          startedAt,
+        )
+        return applyExpandedStructureEvidence(
+          pubkey,
+          [],
+          inboundFollowerEvidence.followerPubkeys,
+          {
+            relayUrls,
+            authoredHasPartialSignals: true,
+            inboundHasPartialSignals: inboundFollowerEvidence.partial,
+            previewMessage: `Sin lista de follows confiable para ${pubkey.slice(0, 8)}...`,
+          },
+        )
+      }
 
       const cachedContactListBeforePersist =
         parsedContactList.followPubkeys.length === 0
-          ? await ctx.repositories.contactLists.get(pubkey)
+          ? await getCachedContactList(pubkey)
           : null
 
-      await collaborators.persistence.persistContactListEvent(
-        latestContactListEvent,
-        parsedContactList,
-      )
+      let persistFailed = false
+      try {
+        await collaborators.persistence.persistContactListEvent(
+          latestContactListEvent,
+          parsedContactList,
+        )
+      } catch (error) {
+        persistFailed = true
+        console.warn(
+          'Contact list persistence failed during node expansion:',
+          error,
+        )
+      }
 
       if (
         parsedContactList.followPubkeys.length === 0 &&
@@ -647,7 +811,10 @@ export function createNodeExpansionModule(
         {
           relayUrls,
           relayHints: parsedContactList.relayHints,
-          authoredHasPartialSignals: parsedContactList.diagnostics.length > 0,
+          authoredHasPartialSignals:
+            authoredRelayHadPartialSignals ||
+            persistFailed ||
+            parsedContactList.diagnostics.length > 0,
           inboundHasPartialSignals: false,
           authoredDiagnostics: parsedContactList.diagnostics,
         },
@@ -660,17 +827,17 @@ export function createNodeExpansionModule(
       )
       return result
     } catch (error) {
-      setTerminalState(
-        pubkey,
-        'error',
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : 'No se pudo expandir este nodo.',
-        startedAt,
-      )
-      throw error
+      console.warn('Node expansion degraded to partial after failure:', error)
+      const message = buildRecoverableExpansionMessage(pubkey, error)
+      setTerminalState(pubkey, 'partial', message, startedAt)
+      return {
+        status: 'partial',
+        discoveredFollowCount: 0,
+        rejectedPubkeys: [],
+        message,
+      }
     } finally {
-      adapter.close()
+      adapter?.close()
     }
   }
 
@@ -784,10 +951,10 @@ export function createNodeExpansionModule(
       options.inboundHasPartialSignals ||
       rejectedPubkeys.length > 0
     const status =
-      newLinks.length + discoveredFollowerCount === 0
-        ? 'empty'
-        : hasPartialSignals
-          ? 'partial'
+      hasPartialSignals
+        ? 'partial'
+        : newLinks.length + discoveredFollowerCount === 0
+          ? 'empty'
           : 'ready'
     const acceptedNodesCount =
       outboundNodeResult.acceptedPubkeys.length +

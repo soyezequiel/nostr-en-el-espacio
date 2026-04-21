@@ -188,6 +188,7 @@ export class LegacyStoreSnapshotAdapter {
     const snapshot: CanonicalGraphState = {
       ...scene,
       relayState: ui.relayState,
+      rootLoad: ui.rootLoad,
       discoveryState: {
         ...scene.discoveryState,
         rootLoad: ui.rootLoad,

@@ -30,6 +30,7 @@ import { GraphInteractionController } from '@/features/graph-v2/application/Inte
 import { LegacyKernelBridge } from '@/features/graph-v2/bridge/LegacyKernelBridge'
 import { GRAPH_V2_LAYERS } from '@/features/graph-v2/domain/invariants'
 import type {
+  CanonicalGraphSceneState,
   CanonicalGraphState,
   CanonicalGraphUiState,
   CanonicalNode,
@@ -243,7 +244,7 @@ const copyToClipboard = async (text: string) => {
   }
 }
 
-const createClientSceneSignature = (state: CanonicalGraphState) =>
+const createClientSceneSignature = (state: CanonicalGraphSceneState) =>
   [
     state.rootPubkey ?? 'no-root',
     state.activeLayer,
@@ -259,9 +260,9 @@ const createClientSceneSignature = (state: CanonicalGraphState) =>
     Array.from(state.pinnedNodePubkeys).sort().join(','),
   ].join('|')
 
-const withClientSceneSignature = (
-  state: CanonicalGraphState,
-): CanonicalGraphState => ({
+const withClientSceneSignature = <T extends CanonicalGraphSceneState>(
+  state: T,
+): T => ({
   ...state,
   sceneSignature: createClientSceneSignature(state),
 })

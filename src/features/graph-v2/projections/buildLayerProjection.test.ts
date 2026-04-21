@@ -83,6 +83,12 @@ const createState = (
     overrideStatus: 'idle',
     isGraphStale: false,
   },
+  rootLoad: {
+    status: 'ready',
+    message: null,
+    loadedFrom: 'live',
+    visibleLinkProgress: null,
+  },
   discoveryState: {
     rootLoad: {
       status: 'ready',

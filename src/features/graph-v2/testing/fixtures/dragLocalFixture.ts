@@ -160,6 +160,12 @@ export const createDragLocalFixture = (): FixtureScenario => {
         overrideStatus: 'idle',
         isGraphStale: false,
       },
+      rootLoad: {
+        status: 'ready',
+        message: 'Fixture drag-local cargado.',
+        loadedFrom: 'cache',
+        visibleLinkProgress: null,
+      },
       discoveryState: {
         rootLoad: {
           status: 'ready',

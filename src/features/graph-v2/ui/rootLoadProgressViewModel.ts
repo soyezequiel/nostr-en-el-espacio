@@ -304,7 +304,7 @@ export const buildRootLoadProgressViewModel = ({
       : tone === 'error'
         ? message || 'No llegaron datos live'
         : STEP_DEFINITIONS[activeStepIndex]?.label ?? 'Cargando grafo'
-  const steps = STEP_DEFINITIONS.map((step, index) => ({
+  const steps: RootLoadProgressStep[] = STEP_DEFINITIONS.map((step, index) => ({
     id: step.id,
     label: step.label,
     status:

@@ -14,7 +14,10 @@ import { SigmaRendererAdapter } from '@/features/graph-v2/renderer/SigmaRenderer
 import { hasRenderableSigmaContainer } from '@/features/graph-v2/renderer/containerDimensions'
 import type { DragNeighborhoodInfluenceTuning } from '@/features/graph-v2/renderer/dragInfluence'
 import type { ForceAtlasPhysicsTuning } from '@/features/graph-v2/renderer/forceAtlasRuntime'
-import type { SigmaLabDebugApi } from '@/features/graph-v2/testing/browserDebug'
+import type {
+  DebugPhysicsDiagnostics,
+  SigmaLabDebugApi,
+} from '@/features/graph-v2/testing/browserDebug'
 import { ZapElectronOverlay } from '@/features/graph-v2/zaps/zapElectronOverlay'
 import type { ParsedZap } from '@/features/graph-v2/zaps/zapParser'
 
@@ -53,6 +56,7 @@ export interface SigmaCanvasHostHandle {
   captureSocialGraph: (options?: SocialGraphCaptureOptions) => Promise<Blob>
   getVisibleNodePubkeys: () => string[]
   getAvatarRuntimeDebugSnapshot: () => AvatarRuntimeStateDebugSnapshot | null
+  getPhysicsDiagnostics: () => DebugPhysicsDiagnostics | null
 }
 
 const BACKDROP_GRID_WORLD_STEP = 80
@@ -223,6 +227,8 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
         adapterRef.current?.getVisibleNodePubkeys() ?? [],
       getAvatarRuntimeDebugSnapshot: () =>
         adapterRef.current?.getAvatarRuntimeDebugSnapshot() ?? null,
+      getPhysicsDiagnostics: () =>
+        adapterRef.current?.getPhysicsDiagnostics() ?? null,
     }),
     [],
   )

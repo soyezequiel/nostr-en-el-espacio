@@ -30,6 +30,16 @@ export function AtomIcon() {
   )
 }
 
+export function PulseIcon() {
+  return (
+    <svg {...COMMON}>
+      <path d="M3 12h4l2.2-4.5 4.3 9 2.2-4.5H21" />
+      <path d="M3 6h18" opacity="0.25" />
+      <path d="M3 18h18" opacity="0.25" />
+    </svg>
+  )
+}
+
 export function ZapIcon() {
   return (
     <svg {...COMMON}>

@@ -75,6 +75,7 @@ import {
   ExternalLinkIcon,
   GearIcon,
   PinIcon,
+  PulseIcon,
   SearchIcon,
   TargetIcon,
   ZapIcon,
@@ -94,6 +95,7 @@ import {
 import { SigmaRootInput } from '@/features/graph-v2/ui/SigmaRootInput'
 import { SigmaSavedRootsPanel } from '@/features/graph-v2/ui/SigmaSavedRootsPanel'
 import { SigmaToasts, type SigmaToast } from '@/features/graph-v2/ui/SigmaToasts'
+import { RuntimeInspectorDrawer } from '@/features/graph-v2/ui/runtime-inspector/RuntimeInspectorDrawer'
 import {
   buildAvatarRuntimeDebugFilename,
   buildAvatarRuntimeDebugPayload,
@@ -177,6 +179,23 @@ const selectSavedRootState = (state: AppStore) => ({
   upsertSavedRoot: state.upsertSavedRoot,
   removeSavedRoot: state.removeSavedRoot,
   setSavedRootProfile: state.setSavedRootProfile,
+})
+
+const selectRuntimeInspectorStoreState = (state: AppStore) => ({
+  nodeCount: Object.keys(state.nodes).length,
+  linkCount: state.links.length,
+  maxNodes: state.graphCaps.maxNodes,
+  capReached: state.graphCaps.capReached,
+  devicePerformanceProfile: state.devicePerformanceProfile,
+  effectiveGraphCaps: state.effectiveGraphCaps,
+  effectiveImageBudget: state.effectiveImageBudget,
+  zapStatus: state.zapLayer.status,
+  zapEdgeCount: state.zapLayer.edges.length,
+  zapSkippedReceipts: state.zapLayer.skippedReceipts,
+  zapLoadedFrom: state.zapLayer.loadedFrom,
+  zapMessage: state.zapLayer.message,
+  zapTargetCount: state.zapLayer.targetPubkeys.length,
+  zapLastUpdatedAt: state.zapLayer.lastUpdatedAt,
 })
 
 const HEX_PUBKEY_RE = /^[0-9a-f]{64}$/i
@@ -889,6 +908,7 @@ export default function GraphAppV2() {
   const [activeSettingsTab, setActiveSettingsTab] = useState<SigmaSettingsTab>('relays')
   const [isRootSheetOpen, setIsRootSheetOpen] = useState(!isFixtureMode)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isRuntimeInspectorOpen, setIsRuntimeInspectorOpen] = useState(false)
   const [isPersonSearchOpen, setIsPersonSearchOpen] = useState(false)
   const [personSearchQuery, setPersonSearchQuery] = useState('')
   const [isRootLoadScreenOpen, setIsRootLoadScreenOpen] = useState(false)
@@ -901,6 +921,9 @@ export default function GraphAppV2() {
   const visibleProfileWarmupDebugRef =
     useRef<VisibleProfileWarmupDebugSnapshot | null>(null)
   const [zapFeedback, setZapFeedback] = useState<string | null>(null)
+  const [liveZapFeedFeedback, setLiveZapFeedFeedback] = useState<string | null>(null)
+  const [visibleProfileWarmupSnapshot, setVisibleProfileWarmupSnapshot] =
+    useState<VisibleProfileWarmupDebugSnapshot | null>(null)
   const {
     savedRoots,
     savedRootsHydrated,
@@ -913,6 +936,50 @@ export default function GraphAppV2() {
       isConnected: state.isConnected,
       profile: state.profile,
     })),
+  )
+  const runtimeInspectorStoreSnapshot = useAppStore(
+    useShallow(selectRuntimeInspectorStoreState),
+  )
+  const runtimeInspectorStoreState = useMemo(
+    () => ({
+      graphSummary: {
+        nodeCount: runtimeInspectorStoreSnapshot.nodeCount,
+        linkCount: runtimeInspectorStoreSnapshot.linkCount,
+        maxNodes: runtimeInspectorStoreSnapshot.maxNodes,
+        capReached: runtimeInspectorStoreSnapshot.capReached,
+      },
+      deviceSummary: {
+        devicePerformanceProfile:
+          runtimeInspectorStoreSnapshot.devicePerformanceProfile,
+        effectiveGraphCaps: runtimeInspectorStoreSnapshot.effectiveGraphCaps,
+        effectiveImageBudget: runtimeInspectorStoreSnapshot.effectiveImageBudget,
+      },
+      zapSummary: {
+        status: runtimeInspectorStoreSnapshot.zapStatus,
+        edgeCount: runtimeInspectorStoreSnapshot.zapEdgeCount,
+        skippedReceipts: runtimeInspectorStoreSnapshot.zapSkippedReceipts,
+        loadedFrom: runtimeInspectorStoreSnapshot.zapLoadedFrom,
+        message: runtimeInspectorStoreSnapshot.zapMessage,
+        targetCount: runtimeInspectorStoreSnapshot.zapTargetCount,
+        lastUpdatedAt: runtimeInspectorStoreSnapshot.zapLastUpdatedAt,
+      },
+    }),
+    [
+      runtimeInspectorStoreSnapshot.capReached,
+      runtimeInspectorStoreSnapshot.devicePerformanceProfile,
+      runtimeInspectorStoreSnapshot.effectiveGraphCaps,
+      runtimeInspectorStoreSnapshot.effectiveImageBudget,
+      runtimeInspectorStoreSnapshot.linkCount,
+      runtimeInspectorStoreSnapshot.maxNodes,
+      runtimeInspectorStoreSnapshot.nodeCount,
+      runtimeInspectorStoreSnapshot.zapEdgeCount,
+      runtimeInspectorStoreSnapshot.zapLastUpdatedAt,
+      runtimeInspectorStoreSnapshot.zapLoadedFrom,
+      runtimeInspectorStoreSnapshot.zapMessage,
+      runtimeInspectorStoreSnapshot.zapSkippedReceipts,
+      runtimeInspectorStoreSnapshot.zapStatus,
+      runtimeInspectorStoreSnapshot.zapTargetCount,
+    ],
   )
 
   useEffect(() => {
@@ -944,12 +1011,29 @@ export default function GraphAppV2() {
     }
   }, [sceneState.rootPubkey, isFixtureMode])
 
+  const isDev = process.env.NODE_ENV === 'development'
+  const canUseRuntimeInspector = isDev
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         if (isPersonSearchOpen) { setIsPersonSearchOpen(false); return }
         if (isSettingsOpen) { setIsSettingsOpen(false); return }
+        if (isRuntimeInspectorOpen) { setIsRuntimeInspectorOpen(false); return }
         if (isRootSheetOpen && sceneState.rootPubkey) { setIsRootSheetOpen(false); return }
+        return
+      }
+      if (canUseRuntimeInspector && event.shiftKey && event.key.toLowerCase() === 'd') {
+        const target = event.target as HTMLElement | null
+        if (target) {
+          const tag = target.tagName
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return
+        }
+        event.preventDefault()
+        setIsPersonSearchOpen(false)
+        setIsSettingsOpen(false)
+        setIsRootSheetOpen(false)
+        setIsRuntimeInspectorOpen((current) => !current)
         return
       }
       if (event.key === '/') {
@@ -971,7 +1055,7 @@ export default function GraphAppV2() {
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [sceneState.rootPubkey, isPersonSearchOpen, isRootSheetOpen, isSettingsOpen])
+  }, [canUseRuntimeInspector, sceneState.rootPubkey, isPersonSearchOpen, isRootSheetOpen, isRuntimeInspectorOpen, isSettingsOpen])
 
   const callbacks = useMemo<GraphInteractionCallbacks>(
     () =>
@@ -1045,6 +1129,8 @@ export default function GraphAppV2() {
 
   useEffect(() => {
     if (isFixtureMode || !sceneState.rootPubkey || deferredScene.render.nodes.length === 0) {
+      visibleProfileWarmupDebugRef.current = null
+      setVisibleProfileWarmupSnapshot(null)
       return
     }
 
@@ -1083,6 +1169,7 @@ export default function GraphAppV2() {
           batchSize: VISIBLE_PROFILE_WARMUP_BATCH_SIZE,
           cooldownMs: VISIBLE_PROFILE_WARMUP_COOLDOWN_MS,
         })
+      setVisibleProfileWarmupSnapshot(visibleProfileWarmupDebugRef.current)
       const pubkeys = selection.pubkeys
 
       for (const pubkey of pubkeys) {
@@ -1373,15 +1460,24 @@ export default function GraphAppV2() {
     showZaps && !isFixtureMode && sceneState.activeLayer !== 'connections'
   const handleLiveZap = useCallback((zap: ParsedZap) => {
     handleZap(zap)
+    setLiveZapFeedFeedback(null)
   }, [handleZap])
   useLiveZapFeed({
     visiblePubkeys,
     enabled: shouldEnableLiveZapFeed,
     onZap: handleLiveZap,
-    onDropped: (msg: string) => setZapFeedback(msg),
+    onDropped: (msg: string) => {
+      setLiveZapFeedFeedback(msg)
+      setZapFeedback(msg)
+    },
   })
 
-  const isDev = process.env.NODE_ENV === 'development'
+  useEffect(() => {
+    if (!shouldEnableLiveZapFeed) {
+      setLiveZapFeedFeedback(null)
+    }
+  }, [shouldEnableLiveZapFeed])
+
   const settingsTabs = useMemo(
     () =>
       isDev || isFixtureMode
@@ -1389,6 +1485,13 @@ export default function GraphAppV2() {
         : PUBLIC_SIGMA_SETTINGS_TABS,
     [isDev, isFixtureMode],
   )
+
+  useEffect(() => {
+    if (!canUseRuntimeInspector && isRuntimeInspectorOpen) {
+      setIsRuntimeInspectorOpen(false)
+    }
+  }, [canUseRuntimeInspector, isRuntimeInspectorOpen])
+
   const findSimulationPair = useCallback((): { from: string; to: string } | null => {
     for (const edge of deferredScene.render.visibleEdges) {
       if (edge.hidden) continue
@@ -1454,6 +1557,7 @@ export default function GraphAppV2() {
     setActiveSettingsTab(tab)
     setIsRootSheetOpen(false)
     setIsPersonSearchOpen(false)
+    setIsRuntimeInspectorOpen(false)
     setIsSettingsOpen(true)
   }, [])
 
@@ -1470,6 +1574,7 @@ export default function GraphAppV2() {
       setLoadFeedback('Cargando root...')
       setIsRootSheetOpen(false)
       setIsRootLoadScreenOpen(true)
+      setIsRuntimeInspectorOpen(false)
       startTransition(() => {
         if (isFixtureMode) {
           setLoadFeedback('El fixture no admite cargar roots manuales.')
@@ -1671,6 +1776,7 @@ export default function GraphAppV2() {
   const handleOpenRootSheet = useCallback(() => {
     setIsPersonSearchOpen(false)
     setIsSettingsOpen(false)
+    setIsRuntimeInspectorOpen(false)
     setIsRootSheetOpen(true)
   }, [])
 
@@ -1681,6 +1787,7 @@ export default function GraphAppV2() {
     }
     setIsRootSheetOpen(false)
     setIsSettingsOpen(false)
+    setIsRuntimeInspectorOpen(false)
     setIsPersonSearchOpen(true)
   }, [sceneState.rootPubkey])
 
@@ -1704,6 +1811,16 @@ export default function GraphAppV2() {
     }
     openSettingsTab(activeSettingsTab)
   }, [activeSettingsTab, isSettingsOpen, openSettingsTab])
+
+  const handleToggleRuntimeInspector = useCallback(() => {
+    if (!canUseRuntimeInspector) {
+      return
+    }
+    setIsPersonSearchOpen(false)
+    setIsSettingsOpen(false)
+    setIsRootSheetOpen(false)
+    setIsRuntimeInspectorOpen((current) => !current)
+  }, [canUseRuntimeInspector])
 
   const handleTogglePhysics = useCallback(() => {
     setPhysicsEnabled((current) => {
@@ -1959,6 +2076,17 @@ export default function GraphAppV2() {
       active: isSettingsOpen,
       onClick: handleToggleSettings,
     },
+    ...(canUseRuntimeInspector
+      ? [{
+          id: 'runtime',
+          tip: isRuntimeInspectorOpen
+            ? 'Cerrar inspector de runtime'
+            : 'Inspector de runtime (Shift + D)',
+          icon: <PulseIcon />,
+          active: isRuntimeInspectorOpen,
+          onClick: handleToggleRuntimeInspector,
+        } satisfies RailButton]
+      : []),
     {
       id: 'physics',
       tip: physicsEnabled ? 'Pausar física' : 'Reanudar física',
@@ -1998,13 +2126,16 @@ export default function GraphAppV2() {
       onClick: handleOpenPersonSearch,
     },
   ], [
+    canUseRuntimeInspector,
     handleOpenPersonSearch,
     handleRecenter,
     handleStaleRelays,
     handleTogglePhysics,
+    handleToggleRuntimeInspector,
     handleToggleSettings,
     handleToggleZaps,
     isPersonSearchOpen,
+    isRuntimeInspectorOpen,
     isSettingsOpen,
     personSearchMatches.length,
     personSearchQuery,
@@ -2507,7 +2638,27 @@ export default function GraphAppV2() {
       )}
 
       {/* Side panel — search, detail, or settings (right), one at a time */}
-      {(isSettingsOpen || isPersonSearchPanelOpen || isIdentityPanelOpen) && (
+      {canUseRuntimeInspector && isRuntimeInspectorOpen && hasRoot ? (
+        <RuntimeInspectorDrawer
+          avatarPerfSnapshot={avatarPerfSnapshot}
+          deviceSummary={runtimeInspectorStoreState.deviceSummary}
+          graphSummary={runtimeInspectorStoreState.graphSummary}
+          liveZapFeedback={liveZapFeedFeedback}
+          onClose={() => setIsRuntimeInspectorOpen(false)}
+          open={isRuntimeInspectorOpen}
+          physicsEnabled={physicsEnabled}
+          scene={deferredScene}
+          sceneState={sceneState}
+          showZaps={showZaps}
+          sigmaHostRef={sigmaHostRef}
+          uiState={uiState}
+          visibleProfileWarmup={visibleProfileWarmupSnapshot}
+          zapSummary={runtimeInspectorStoreState.zapSummary}
+        />
+      ) : null}
+
+      {(isSettingsOpen || isPersonSearchPanelOpen || isIdentityPanelOpen) &&
+        !isRuntimeInspectorOpen && (
         <SigmaSidePanel
           closeOnOutsidePointerDown={isSettingsOpen || isPersonSearchPanelOpen}
           eyebrow={isSettingsOpen ? 'AJUSTES' : isPersonSearchPanelOpen ? 'BUSCAR PERSONA' : 'IDENTIDAD'}

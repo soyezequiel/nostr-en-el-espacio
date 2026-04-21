@@ -298,6 +298,152 @@ test('AvatarLoader.load falls back to the same-origin proxy when direct browser 
   }
 })
 
+test('AvatarLoader.load tries the same-origin proxy first for known problematic hosts', async () => {
+  const originalDocument = globalThis.document
+  const originalImageBitmap = globalThis.ImageBitmap
+  const fetchUrls: string[] = []
+
+  class MockImageBitmap {
+    close() {}
+  }
+
+  Object.defineProperty(globalThis, 'ImageBitmap', {
+    configurable: true,
+    value: MockImageBitmap,
+  })
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          save: () => undefined,
+          beginPath: () => undefined,
+          arc: () => undefined,
+          closePath: () => undefined,
+          clip: () => undefined,
+          drawImage: () => undefined,
+          restore: () => undefined,
+        }),
+      }),
+    },
+  })
+
+  try {
+    const loader = new AvatarLoader({
+      proxyOrigin: 'http://localhost:3000',
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        const url = String(input)
+        fetchUrls.push(url)
+        if (fetchUrls.length === 1) {
+          throw new Error('timeout')
+        }
+        return new Response(new Blob(['png'], { type: 'image/png' }), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        })
+      }) as unknown as typeof fetch,
+      createImageBitmapImpl: (async () =>
+        new MockImageBitmap()) as unknown as typeof createImageBitmap,
+    })
+
+    const loaded = await loader.load(
+      'https://cdn.nostr.build/i/avatar.jpg',
+      64,
+      new AbortController().signal,
+    )
+
+    assert.equal(loaded.bytes, 64 * 64 * 4)
+    assert.equal(fetchUrls.length, 2)
+    const firstUrl = new URL(fetchUrls[0]!)
+    assert.equal(firstUrl.origin, 'http://localhost:3000')
+    assert.equal(firstUrl.pathname, '/api/social-avatar')
+    assert.equal(firstUrl.searchParams.get('url'), 'https://cdn.nostr.build/i/avatar.jpg')
+    assert.equal(fetchUrls[1], 'https://cdn.nostr.build/i/avatar.jpg')
+  } finally {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: originalDocument,
+    })
+    Object.defineProperty(globalThis, 'ImageBitmap', {
+      configurable: true,
+      value: originalImageBitmap,
+    })
+  }
+})
+
+test('AvatarLoader.load stops after a proxy-first success without attempting direct recovery', async () => {
+  const originalDocument = globalThis.document
+  const originalImageBitmap = globalThis.ImageBitmap
+  const fetchUrls: string[] = []
+
+  class MockImageBitmap {
+    close() {}
+  }
+
+  Object.defineProperty(globalThis, 'ImageBitmap', {
+    configurable: true,
+    value: MockImageBitmap,
+  })
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          save: () => undefined,
+          beginPath: () => undefined,
+          arc: () => undefined,
+          closePath: () => undefined,
+          clip: () => undefined,
+          drawImage: () => undefined,
+          restore: () => undefined,
+        }),
+      }),
+    },
+  })
+
+  try {
+    const loader = new AvatarLoader({
+      proxyOrigin: 'http://localhost:3000',
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        const url = String(input)
+        fetchUrls.push(url)
+        return new Response(new Blob(['png'], { type: 'image/png' }), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        })
+      }) as unknown as typeof fetch,
+      createImageBitmapImpl: (async () =>
+        new MockImageBitmap()) as unknown as typeof createImageBitmap,
+    })
+
+    const loaded = await loader.load(
+      'https://nostr.build/i/avatar.jpg',
+      64,
+      new AbortController().signal,
+    )
+
+    assert.equal(loaded.bytes, 64 * 64 * 4)
+    assert.equal(fetchUrls.length, 1)
+    const firstUrl = new URL(fetchUrls[0]!)
+    assert.equal(firstUrl.origin, 'http://localhost:3000')
+    assert.equal(firstUrl.pathname, '/api/social-avatar')
+    assert.equal(firstUrl.searchParams.get('url'), 'https://nostr.build/i/avatar.jpg')
+  } finally {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: originalDocument,
+    })
+    Object.defineProperty(globalThis, 'ImageBitmap', {
+      configurable: true,
+      value: originalImageBitmap,
+    })
+  }
+})
+
 test('AvatarLoader.load fails fast on terminal direct fetch errors without trying proxy fallback', async () => {
   const originalDocument = globalThis.document
   const fetchUrls: string[] = []

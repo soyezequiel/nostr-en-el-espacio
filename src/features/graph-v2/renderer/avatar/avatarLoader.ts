@@ -18,6 +18,15 @@ import {
 import { buildSocialAvatarProxyUrl } from '@/features/graph-v2/renderer/socialAvatarProxy'
 
 const FETCH_TIMEOUT_MS = 8000
+const AVATAR_PROXY_FIRST_HOSTS = new Set([
+  'cdn.nostr.build',
+  'nostr.build',
+  'profilepics.nostur.com',
+])
+
+type AvatarFetchPolicy = 'direct-first' | 'proxy-first'
+type AvatarNetworkPath = 'direct' | 'proxy'
+type AvatarAttemptStage = 'primary' | 'fallback' | 'recovery'
 
 export interface LoadedAvatar {
   bitmap: AvatarBitmap
@@ -289,67 +298,109 @@ export class AvatarLoader {
 
     const allowFallback = options.useImageElementFallback !== false
     const allowProxyFallback = options.useProxyFallback !== false
-    let fetchError: unknown
-
-    try {
-      const loaded = await this.loadViaFetch(url, bucket, signal)
-      void this.writeDiskCache(url, bucket, loaded, 'direct')
-      return loaded
-    } catch (err) {
-      if (signal.aborted || isAbortError(err)) {
-        throw err
-      }
-      fetchError = err
-      traceAvatarFlow('renderer.avatarLoader.fetchFailed', () => ({
-        url: summarizeAvatarUrl(url),
-        bucket,
-        reason: extractAvatarLoadFailureReason(err),
-      }))
-    }
-
-    const directFailureReason = extractAvatarLoadFailureReason(fetchError)
-
     const proxyUrl = allowProxyFallback
       ? buildRuntimeAvatarProxyUrl(url, this.proxyOrigin)
       : null
-    if (proxyUrl && !shouldSkipProxyFallback(directFailureReason)) {
-      traceAvatarFlow('renderer.avatarLoader.proxyFallback.start', () => ({
-        sourceUrl: summarizeAvatarUrl(url),
-        proxyUrl: summarizeAvatarUrl(proxyUrl),
-        bucket,
-      }))
+    const fetchPolicy = resolveAvatarFetchPolicy(url, proxyUrl)
+    let fetchError: unknown
+
+    traceAvatarFlow('renderer.avatarLoader.fetchPolicy.selected', () => ({
+      sourceUrl: summarizeAvatarUrl(url),
+      proxyUrl: summarizeAvatarUrl(proxyUrl),
+      bucket,
+      policy: fetchPolicy,
+    }))
+
+    if (fetchPolicy === 'proxy-first' && proxyUrl) {
       try {
-        const loaded = await this.loadViaFetch(proxyUrl, bucket, signal)
-        void this.writeDiskCache(url, bucket, loaded, 'proxy')
-        traceAvatarFlow('renderer.avatarLoader.proxyFallback.ready', () => ({
-          sourceUrl: summarizeAvatarUrl(url),
-          proxyUrl: summarizeAvatarUrl(proxyUrl),
-          bucket,
-          bytes: loaded.bytes,
-        }))
-        return loaded
+        return await this.loadViaNetworkPath(url, proxyUrl, bucket, signal, {
+          path: 'proxy',
+          stage: 'primary',
+          policy: fetchPolicy,
+        })
       } catch (err) {
         if (signal.aborted || isAbortError(err)) {
           throw err
         }
         fetchError = err
-        traceAvatarFlow('renderer.avatarLoader.proxyFallback.failed', () => ({
-          sourceUrl: summarizeAvatarUrl(url),
-          proxyUrl: summarizeAvatarUrl(proxyUrl),
+      }
+
+      try {
+        return await this.loadViaNetworkPath(url, url, bucket, signal, {
+          path: 'direct',
+          stage: 'recovery',
+          policy: fetchPolicy,
+        })
+      } catch (err) {
+        if (signal.aborted || isAbortError(err)) {
+          throw err
+        }
+        fetchError = err
+      }
+    } else {
+      try {
+        return await this.loadViaNetworkPath(url, url, bucket, signal, {
+          path: 'direct',
+          stage: 'primary',
+          policy: fetchPolicy,
+        })
+      } catch (err) {
+        if (signal.aborted || isAbortError(err)) {
+          throw err
+        }
+        fetchError = err
+        traceAvatarFlow('renderer.avatarLoader.fetchFailed', () => ({
+          url: summarizeAvatarUrl(url),
           bucket,
           reason: extractAvatarLoadFailureReason(err),
         }))
       }
-    } else if (proxyUrl && shouldSkipProxyFallback(directFailureReason)) {
-      traceAvatarFlow('renderer.avatarLoader.proxyFallback.skipped', () => ({
-        sourceUrl: summarizeAvatarUrl(url),
-        proxyUrl: summarizeAvatarUrl(proxyUrl),
-        bucket,
-        reason: directFailureReason,
-      }))
+
+      const directFailureReason = extractAvatarLoadFailureReason(fetchError)
+
+      if (proxyUrl && !shouldSkipProxyFallback(directFailureReason)) {
+        traceAvatarFlow('renderer.avatarLoader.proxyFallback.start', () => ({
+          sourceUrl: summarizeAvatarUrl(url),
+          proxyUrl: summarizeAvatarUrl(proxyUrl),
+          bucket,
+        }))
+        try {
+          return await this.loadViaNetworkPath(url, proxyUrl, bucket, signal, {
+            path: 'proxy',
+            stage: 'fallback',
+            policy: fetchPolicy,
+          })
+        } catch (err) {
+          if (signal.aborted || isAbortError(err)) {
+            throw err
+          }
+          fetchError = err
+          traceAvatarFlow('renderer.avatarLoader.proxyFallback.failed', () => ({
+            sourceUrl: summarizeAvatarUrl(url),
+            proxyUrl: summarizeAvatarUrl(proxyUrl),
+            bucket,
+            reason: extractAvatarLoadFailureReason(err),
+          }))
+        }
+      } else if (proxyUrl && shouldSkipProxyFallback(directFailureReason)) {
+        traceAvatarFlow('renderer.avatarLoader.proxyFallback.skipped', () => ({
+          sourceUrl: summarizeAvatarUrl(url),
+          proxyUrl: summarizeAvatarUrl(proxyUrl),
+          bucket,
+          reason: directFailureReason,
+        }))
+      }
     }
 
     if (!allowFallback || !hasDocumentImageElement()) {
+      traceAvatarFlow('renderer.avatarLoader.terminalFailure', () => ({
+        url: summarizeAvatarUrl(url),
+        bucket,
+        policy: fetchPolicy,
+        reason: extractAvatarLoadFailureReason(fetchError),
+        allowFallback,
+        hasDocumentImageElement: hasDocumentImageElement(),
+      }))
       throw fetchError
     }
 
@@ -358,6 +409,13 @@ export class AvatarLoader {
       traceAvatarFlow('renderer.avatarLoader.imageElementFallback.skipped', () => ({
         url: summarizeAvatarUrl(url),
         bucket,
+        preservedReason: finalFailureReason,
+      }))
+      traceAvatarFlow('renderer.avatarLoader.terminalFailure', () => ({
+        url: summarizeAvatarUrl(url),
+        bucket,
+        policy: fetchPolicy,
+        reason: finalFailureReason,
         preservedReason: finalFailureReason,
       }))
       throw fetchError
@@ -389,7 +447,76 @@ export class AvatarLoader {
         fallbackReason: extractAvatarLoadFailureReason(fallbackErr),
         preservedReason: extractAvatarLoadFailureReason(fetchError),
       }))
+      traceAvatarFlow('renderer.avatarLoader.terminalFailure', () => ({
+        url: summarizeAvatarUrl(url),
+        bucket,
+        policy: fetchPolicy,
+        reason: extractAvatarLoadFailureReason(fetchError),
+        fallbackReason: extractAvatarLoadFailureReason(fallbackErr),
+      }))
       throw fetchError
+    }
+  }
+
+  private async loadViaNetworkPath(
+    sourceUrl: string,
+    requestUrl: string,
+    bucket: ImageLodBucket,
+    signal: AbortSignal,
+    {
+      path,
+      stage,
+      policy,
+    }: {
+      path: AvatarNetworkPath
+      stage: AvatarAttemptStage
+      policy: AvatarFetchPolicy
+    },
+  ): Promise<LoadedAvatar> {
+    traceAvatarFlow('renderer.avatarLoader.fetchAttempt.start', () => ({
+      sourceUrl: summarizeAvatarUrl(sourceUrl),
+      requestUrl: summarizeAvatarUrl(requestUrl),
+      bucket,
+      policy,
+      path,
+      stage,
+    }))
+
+    try {
+      const loaded = await this.loadViaFetch(requestUrl, bucket, signal)
+      void this.writeDiskCache(sourceUrl, bucket, loaded, path)
+      traceAvatarFlow('renderer.avatarLoader.fetchAttempt.ready', () => ({
+        sourceUrl: summarizeAvatarUrl(sourceUrl),
+        requestUrl: summarizeAvatarUrl(requestUrl),
+        bucket,
+        policy,
+        path,
+        stage,
+        bytes: loaded.bytes,
+      }))
+      if (path === 'proxy' && stage === 'fallback') {
+        traceAvatarFlow('renderer.avatarLoader.proxyFallback.ready', () => ({
+          sourceUrl: summarizeAvatarUrl(sourceUrl),
+          proxyUrl: summarizeAvatarUrl(requestUrl),
+          bucket,
+          bytes: loaded.bytes,
+        }))
+      }
+      return loaded
+    } catch (err) {
+      if (signal.aborted || isAbortError(err)) {
+        throw err
+      }
+      traceAvatarFlow('renderer.avatarLoader.fetchAttempt.failed', () => ({
+        sourceUrl: summarizeAvatarUrl(sourceUrl),
+        requestUrl: summarizeAvatarUrl(requestUrl),
+        bucket,
+        policy,
+        path,
+        stage,
+        reason: extractAvatarLoadFailureReason(err),
+      }))
+      throw err
     }
   }
 
@@ -667,6 +794,30 @@ const buildRuntimeAvatarProxyUrl = (
       return null
     }
     return buildSocialAvatarProxyUrl(sourceUrl, parsedOrigin.origin)
+  } catch {
+    return null
+  }
+}
+
+const resolveAvatarFetchPolicy = (
+  sourceUrl: string,
+  proxyUrl: string | null,
+): AvatarFetchPolicy => {
+  if (!proxyUrl) {
+    return 'direct-first'
+  }
+
+  const host = readAvatarHostname(sourceUrl)
+  if (host && AVATAR_PROXY_FIRST_HOSTS.has(host)) {
+    return 'proxy-first'
+  }
+
+  return 'direct-first'
+}
+
+const readAvatarHostname = (sourceUrl: string) => {
+  try {
+    return new URL(sourceUrl).hostname.toLowerCase()
   } catch {
     return null
   }

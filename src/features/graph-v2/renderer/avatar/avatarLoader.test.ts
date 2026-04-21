@@ -512,6 +512,7 @@ test('AvatarLoader.load stores successful fetched avatar blobs in IndexedDB disk
   const originalDocument = globalThis.document
   const originalImageBitmap = globalThis.ImageBitmap
   const puts: Array<{ sourceUrl: string; bucket: number; blob: Blob }> = []
+  let drawImageCount = 0
 
   class MockImageBitmap {
     close() {}
@@ -524,19 +525,41 @@ test('AvatarLoader.load stores successful fetched avatar blobs in IndexedDB disk
   Object.defineProperty(globalThis, 'document', {
     configurable: true,
     value: {
-      createElement: () => ({
-        width: 0,
-        height: 0,
-        getContext: () => ({
-          save: () => undefined,
-          beginPath: () => undefined,
-          arc: () => undefined,
-          closePath: () => undefined,
-          clip: () => undefined,
-          drawImage: () => undefined,
-          restore: () => undefined,
-        }),
-      }),
+      createElement: (tag: string) => {
+        if (tag === 'canvas') {
+          return {
+            width: 0,
+            height: 0,
+            getContext: () => ({
+              save: () => undefined,
+              beginPath: () => undefined,
+              arc: () => undefined,
+              closePath: () => undefined,
+              clip: () => undefined,
+              drawImage: () => {
+                drawImageCount += 1
+              },
+              restore: () => undefined,
+            }),
+            toBlob: (callback: (blob: Blob | null) => void) => {
+              callback(new Blob(['processed-avatar'], { type: 'image/png' }))
+            },
+          }
+        }
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({
+            save: () => undefined,
+            beginPath: () => undefined,
+            arc: () => undefined,
+            closePath: () => undefined,
+            clip: () => undefined,
+            drawImage: () => undefined,
+            restore: () => undefined,
+          }),
+        }
+      },
     },
   })
 
@@ -577,6 +600,8 @@ test('AvatarLoader.load stores successful fetched avatar blobs in IndexedDB disk
     assert.equal(puts[0]?.sourceUrl, 'https://images.example/avatar.png')
     assert.equal(puts[0]?.bucket, 64)
     assert.equal(puts[0]?.blob.type, 'image/png')
+    assert.equal(await puts[0]?.blob.text(), 'processed-avatar')
+    assert.ok(drawImageCount >= 2)
   } finally {
     Object.defineProperty(globalThis, 'document', {
       configurable: true,

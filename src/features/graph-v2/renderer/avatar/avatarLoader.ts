@@ -24,6 +24,8 @@ export interface LoadedAvatar {
   bytes: number
   blob?: Blob
   mimeType?: string | null
+  diskCacheBlob?: Blob
+  diskCacheMimeType?: string | null
 }
 
 export interface AvatarLoaderDeps {
@@ -97,6 +99,54 @@ const composeCircularBitmap = async (
   }
 
   return canvas as HTMLCanvasElement
+}
+
+const DISK_CACHE_VARIANT_MIME_TYPE = 'image/png'
+
+const serializeAvatarBitmapForDiskCache = async (
+  bitmap: AvatarBitmap,
+  bucket: ImageLodBucket,
+): Promise<Blob | null> => {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    try {
+      const canvas = new OffscreenCanvas(bucket, bucket)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        return null
+      }
+      ctx.drawImage(bitmap, 0, 0, bucket, bucket)
+      return await canvas.convertToBlob({
+        type: DISK_CACHE_VARIANT_MIME_TYPE,
+      })
+    } catch {
+      // fall back to HTML canvas when conversion is unavailable or blocked
+    }
+  }
+
+  if (
+    typeof document === 'undefined' ||
+    typeof document.createElement !== 'function'
+  ) {
+    return null
+  }
+
+  const canvas = createCanvasElement(bucket)
+  const ctx = canvas.getContext('2d')
+  if (!ctx || typeof canvas.toBlob !== 'function') {
+    return null
+  }
+  ctx.drawImage(bitmap, 0, 0, bucket, bucket)
+
+  return await new Promise((resolve) => {
+    try {
+      canvas.toBlob(
+        (blob) => resolve(blob ?? null),
+        DISK_CACHE_VARIANT_MIME_TYPE,
+      )
+    } catch {
+      resolve(null)
+    }
+  })
 }
 
 export class AvatarLoader {
@@ -320,6 +370,7 @@ export class AvatarLoader {
     }))
     try {
       const loaded = await this.loadViaImageElement(url, bucket, signal)
+      void this.writeDiskCache(url, bucket, loaded, 'image-element')
       traceAvatarFlow('renderer.avatarLoader.imageElementFallback.ready', () => ({
         url: summarizeAvatarUrl(url),
         bucket,
@@ -435,26 +486,39 @@ export class AvatarLoader {
     url: string,
     bucket: ImageLodBucket,
     loaded: LoadedAvatar,
-    source: 'direct' | 'proxy',
+    source: 'direct' | 'proxy' | 'image-element',
   ) {
-    if (!this.diskCache || !loaded.blob) {
+    if (!this.diskCache) {
       return
     }
 
     try {
+      const diskCacheBlob =
+        loaded.diskCacheBlob ??
+        (await serializeAvatarBitmapForDiskCache(loaded.bitmap, bucket)) ??
+        loaded.blob
+      if (!diskCacheBlob) {
+        return
+      }
+      const diskCacheMimeType =
+        loaded.diskCacheMimeType ??
+        diskCacheBlob.type ??
+        loaded.mimeType ??
+        loaded.blob?.type ??
+        DISK_CACHE_VARIANT_MIME_TYPE
       await this.diskCache.put({
         sourceUrl: url,
         bucket,
-        blob: loaded.blob,
-        mimeType: loaded.mimeType || loaded.blob.type || 'application/octet-stream',
+        blob: diskCacheBlob,
+        mimeType: diskCacheMimeType,
         now: this.now(),
       })
       traceAvatarFlow('renderer.avatarLoader.diskCache.stored', () => ({
         url: summarizeAvatarUrl(url),
         bucket,
         source,
-        byteSize: loaded.blob?.size ?? null,
-        mimeType: loaded.mimeType ?? loaded.blob?.type ?? null,
+        byteSize: diskCacheBlob.size,
+        mimeType: diskCacheMimeType,
       }))
     } catch (err) {
       traceAvatarFlow('renderer.avatarLoader.diskCache.storeFailed', () => ({

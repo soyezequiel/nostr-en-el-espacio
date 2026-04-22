@@ -17,6 +17,25 @@ export interface AvatarCacheEntryDebugSnapshot {
   reason: string | null
 }
 
+export interface AvatarCacheRecentEventDebugSnapshot {
+  at: number
+  type:
+    | 'mark_loading'
+    | 'mark_ready'
+    | 'mark_failed'
+    | 'delete'
+    | 'failed_expired'
+    | 'clear'
+  urlKey: AvatarUrlKey | null
+  previousState: 'loading' | 'ready' | 'failed' | null
+  nextState: 'loading' | 'ready' | 'failed' | null
+  previousBucket: ImageLodBucket | null
+  nextBucket: ImageLodBucket | null
+  reason: string | null
+  clearedEntries: number | null
+  clearedReadyEntries: number | null
+}
+
 export interface AvatarCacheDebugSnapshot {
   capacity: number
   size: number
@@ -24,6 +43,7 @@ export interface AvatarCacheDebugSnapshot {
   monogramCount: number
   byState: Record<'loading' | 'ready' | 'failed', number>
   entries: AvatarCacheEntryDebugSnapshot[]
+  recentEvents: AvatarCacheRecentEventDebugSnapshot[]
 }
 
 export interface AvatarLoaderBlockDebugEntry {

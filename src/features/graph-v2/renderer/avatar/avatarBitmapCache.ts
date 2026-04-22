@@ -8,6 +8,7 @@ import type { ImageLodBucket } from '@/features/graph-v2/renderer/avatar/avatarI
 import type {
   AvatarCacheDebugSnapshot,
   AvatarCacheEntryDebugSnapshot,
+  AvatarCacheRecentEventDebugSnapshot,
 } from '@/features/graph-v2/renderer/avatar/avatarDebug'
 
 import type {
@@ -21,6 +22,7 @@ import type {
 
 const MONOGRAM_SIZE = 64
 const FAILED_TTL_MS = 10 * 60 * 1000
+const MAX_RECENT_DEBUG_EVENTS = 200
 
 const closeBitmap = (bitmap: AvatarBitmap) => {
   if (typeof ImageBitmap !== 'undefined' && bitmap instanceof ImageBitmap) {
@@ -178,6 +180,7 @@ const renderMonogramCanvas = ({
 export class AvatarBitmapCache {
   private readonly entries = new Map<AvatarUrlKey, AvatarEntry>()
   private readonly monograms = new Map<string, MonogramCacheEntry>()
+  private readonly recentEvents: AvatarCacheRecentEventDebugSnapshot[] = []
   private totalBytes = 0
   private cap: number
   private monogramCap: number
@@ -225,6 +228,7 @@ export class AvatarBitmapCache {
     bucket: ImageLodBucket,
     monogram: HTMLCanvasElement,
   ): AvatarLoadingEntry {
+    const previous = this.entries.get(urlKey)
     const entry: AvatarLoadingEntry = {
       state: 'loading',
       bucket,
@@ -232,11 +236,25 @@ export class AvatarBitmapCache {
       startedAt: Date.now(),
     }
     this.entries.set(urlKey, entry)
+    this.recordEvent({
+      at: entry.startedAt,
+      type: 'mark_loading',
+      urlKey,
+      previousState: previous?.state ?? null,
+      nextState: entry.state,
+      previousBucket: 'bucket' in (previous ?? {}) ? previous.bucket : null,
+      nextBucket: entry.bucket,
+      reason: null,
+      clearedEntries: null,
+      clearedReadyEntries: null,
+    })
     traceAvatarVerboseFlow('renderer.avatarBitmapCache.markLoading', () => ({
       urlKey: summarizeAvatarUrlKey(urlKey),
       bucket,
       cacheSize: this.entries.size,
       capacity: this.cap,
+      previousState: previous?.state ?? null,
+      previousBucket: 'bucket' in (previous ?? {}) ? previous.bucket : null,
     }))
     return entry
   }
@@ -253,16 +271,29 @@ export class AvatarBitmapCache {
       this.totalBytes -= previous.bytes
       closeBitmap(previous.bitmap)
     }
+    const readyAt = Date.now()
     const entry: AvatarReadyEntry = {
       state: 'ready',
       bucket,
       bitmap,
       monogram,
       bytes,
-      readyAt: Date.now(),
+      readyAt,
     }
     this.entries.set(urlKey, entry)
     this.totalBytes += bytes
+    this.recordEvent({
+      at: readyAt,
+      type: 'mark_ready',
+      urlKey,
+      previousState: previous?.state ?? null,
+      nextState: entry.state,
+      previousBucket: 'bucket' in (previous ?? {}) ? previous.bucket : null,
+      nextBucket: entry.bucket,
+      reason: null,
+      clearedEntries: null,
+      clearedReadyEntries: null,
+    })
     traceAvatarFlow('renderer.avatarBitmapCache.markReady', () => ({
       urlKey: summarizeAvatarUrlKey(urlKey),
       bucket,
@@ -297,6 +328,18 @@ export class AvatarBitmapCache {
       reason,
     }
     this.entries.set(urlKey, entry)
+    this.recordEvent({
+      at: failedAt,
+      type: 'mark_failed',
+      urlKey,
+      previousState: previous?.state ?? null,
+      nextState: entry.state,
+      previousBucket: 'bucket' in (previous ?? {}) ? previous.bucket : null,
+      nextBucket: null,
+      reason,
+      clearedEntries: null,
+      clearedReadyEntries: null,
+    })
     traceAvatarFlow('renderer.avatarBitmapCache.markFailed', () => ({
       urlKey: summarizeAvatarUrlKey(urlKey),
       reason,
@@ -319,6 +362,18 @@ export class AvatarBitmapCache {
       closeBitmap(entry.bitmap)
     }
     this.entries.delete(urlKey)
+    this.recordEvent({
+      at: Date.now(),
+      type: 'delete',
+      urlKey,
+      previousState: entry.state,
+      nextState: null,
+      previousBucket: 'bucket' in entry ? entry.bucket : null,
+      nextBucket: null,
+      reason,
+      clearedEntries: null,
+      clearedReadyEntries: null,
+    })
     traceAvatarFlow('renderer.avatarBitmapCache.delete', () => ({
       urlKey: summarizeAvatarUrlKey(urlKey),
       reason,
@@ -334,6 +389,10 @@ export class AvatarBitmapCache {
     const beforeSize = this.entries.size
     const beforeMonograms = this.monograms.size
     const beforeBytes = this.totalBytes
+    const clearedReadyEntries = [...this.entries.values()].reduce(
+      (count, entry) => (entry.state === 'ready' ? count + 1 : count),
+      0,
+    )
     for (const entry of this.entries.values()) {
       if (entry.state === 'ready') {
         closeBitmap(entry.bitmap)
@@ -343,6 +402,18 @@ export class AvatarBitmapCache {
     this.monograms.clear()
     this.totalBytes = 0
     if (beforeSize > 0 || beforeMonograms > 0) {
+      this.recordEvent({
+        at: Date.now(),
+        type: 'clear',
+        urlKey: null,
+        previousState: null,
+        nextState: null,
+        previousBucket: null,
+        nextBucket: null,
+        reason: null,
+        clearedEntries: beforeSize,
+        clearedReadyEntries,
+      })
       traceAvatarFlow('renderer.avatarBitmapCache.clear', {
         clearedEntries: beforeSize,
         clearedMonograms: beforeMonograms,
@@ -390,6 +461,17 @@ export class AvatarBitmapCache {
       monogramCount: this.monograms.size,
       byState,
       entries,
+      recentEvents: [...this.recentEvents],
+    }
+  }
+
+  private recordEvent(event: AvatarCacheRecentEventDebugSnapshot) {
+    this.recentEvents.push(event)
+    if (this.recentEvents.length > MAX_RECENT_DEBUG_EVENTS) {
+      this.recentEvents.splice(
+        0,
+        this.recentEvents.length - MAX_RECENT_DEBUG_EVENTS,
+      )
     }
   }
 
@@ -409,6 +491,18 @@ export class AvatarBitmapCache {
       entry.expiresAt <= Date.now()
     ) {
       this.entries.delete(urlKey)
+      this.recordEvent({
+        at: Date.now(),
+        type: 'failed_expired',
+        urlKey,
+        previousState: entry.state,
+        nextState: null,
+        previousBucket: null,
+        nextBucket: null,
+        reason: entry.reason,
+        clearedEntries: null,
+        clearedReadyEntries: null,
+      })
       traceAvatarFlow('renderer.avatarBitmapCache.failedExpired', () => ({
         urlKey: summarizeAvatarUrlKey(urlKey),
         reason: entry.reason,
@@ -429,6 +523,18 @@ export class AvatarBitmapCache {
         entry.expiresAt <= now
       ) {
         this.entries.delete(urlKey)
+        this.recordEvent({
+          at: now,
+          type: 'failed_expired',
+          urlKey,
+          previousState: entry.state,
+          nextState: null,
+          previousBucket: null,
+          nextBucket: null,
+          reason: entry.reason,
+          clearedEntries: null,
+          clearedReadyEntries: null,
+        })
         traceAvatarFlow('renderer.avatarBitmapCache.failedExpired', () => ({
           urlKey: summarizeAvatarUrlKey(urlKey),
           reason: entry.reason,

@@ -44,6 +44,7 @@ export const buildAvatarRuntimeDebugPayload = ({
   const cache = state.cache
   const scheduler = state.scheduler
   const loader = state.loader
+  const cacheRecentEvents = cache?.recentEvents ?? []
   const failedReasons = Object.fromEntries(
     Object.entries(
       (cache?.entries ?? []).reduce<Record<string, number>>((acc, entry) => {
@@ -65,9 +66,24 @@ export const buildAvatarRuntimeDebugPayload = ({
       }, {}),
     ).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0])),
   )
+  const readyLossEvents = cacheRecentEvents.filter(
+    (event) => event.previousState === 'ready' && event.nextState !== 'ready',
+  )
+  const readyLossSummary = Object.fromEntries(
+    Object.entries(
+      readyLossEvents.reduce<Record<string, number>>((acc, event) => {
+        const key =
+          event.type === 'clear'
+            ? 'clear'
+            : `${event.type}:${event.reason ?? 'none'}`
+        acc[key] = (acc[key] ?? 0) + 1
+        return acc
+      }, {}),
+    ).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0])),
+  )
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     type: 'sigma-avatar-runtime-debug',
     generatedAt,
     environment: {
@@ -119,6 +135,11 @@ export const buildAvatarRuntimeDebugPayload = ({
       cacheState: sortCountMap(overlay?.byCacheState),
       cacheFailures: failedReasons,
       blockedReasons,
+    },
+    transitions: {
+      readyLossCount: readyLossEvents.length,
+      readyLossSummary,
+      recentReadyLosses: readyLossEvents.slice(-20),
     },
     profileWarmup: profileWarmup ?? null,
     runtime: {

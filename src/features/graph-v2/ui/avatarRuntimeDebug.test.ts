@@ -94,6 +94,56 @@ test('avatar runtime debug payload separates draw, cache, scheduler, and blocked
             reason: null,
           },
         ],
+        recentEvents: [
+          {
+            at: 9,
+            type: 'mark_ready',
+            urlKey: 'alice::https://example.com/alice.png',
+            previousState: null,
+            nextState: 'ready',
+            previousBucket: null,
+            nextBucket: 128,
+            reason: null,
+            clearedEntries: null,
+            clearedReadyEntries: null,
+          },
+          {
+            at: 10,
+            type: 'mark_loading',
+            urlKey: 'alice::https://example.com/alice.png',
+            previousState: 'ready',
+            nextState: 'loading',
+            previousBucket: 128,
+            nextBucket: 256,
+            reason: null,
+            clearedEntries: null,
+            clearedReadyEntries: null,
+          },
+          {
+            at: 11,
+            type: 'mark_failed',
+            urlKey: 'bob::https://example.com/bob.png',
+            previousState: 'loading',
+            nextState: 'failed',
+            previousBucket: 64,
+            nextBucket: null,
+            reason: 'http_404',
+            clearedEntries: null,
+            clearedReadyEntries: null,
+          },
+          {
+            at: 12,
+            type: 'clear',
+            urlKey: null,
+            previousState: null,
+            nextState: null,
+            previousBucket: null,
+            nextBucket: null,
+            reason: null,
+            clearedEntries: 3,
+            clearedReadyEntries: 1,
+          },
+        ],
       },
       loader: {
         blockedCount: 2,
@@ -189,6 +239,7 @@ test('avatar runtime debug payload separates draw, cache, scheduler, and blocked
   })
 
   assert.equal(payload.counts.visibleNodes, 12)
+  assert.equal(payload.schemaVersion, 2)
   assert.equal(payload.counts.drawnImages, 6)
   assert.equal(payload.counts.cacheFailed, 1)
   assert.equal(payload.counts.loaderBlocked, 2)
@@ -209,4 +260,10 @@ test('avatar runtime debug payload separates draw, cache, scheduler, and blocked
     http_404: 1,
     timeout: 1,
   })
+  assert.equal(payload.transitions.readyLossCount, 1)
+  assert.deepEqual(payload.transitions.readyLossSummary, {
+    'mark_loading:none': 1,
+  })
+  assert.equal(payload.transitions.recentReadyLosses[0]?.previousState, 'ready')
+  assert.equal(payload.transitions.recentReadyLosses[0]?.nextState, 'loading')
 })

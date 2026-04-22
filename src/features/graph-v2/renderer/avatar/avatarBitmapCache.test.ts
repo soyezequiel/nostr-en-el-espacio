@@ -193,6 +193,69 @@ test('AvatarBitmapCache stores failed reasons in its debug snapshot', () => {
     assert.equal(snapshot.byState.failed, 1)
     assert.equal(snapshot.entries[0]?.reason, 'http_404')
     assert.equal(snapshot.entries[0]?.state, 'failed')
+    assert.equal(snapshot.recentEvents.at(-1)?.type, 'mark_failed')
+    assert.equal(snapshot.recentEvents.at(-1)?.previousState, null)
+  } finally {
+    restoreDocument()
+  }
+})
+
+test('AvatarBitmapCache records transitions that replace a ready avatar', () => {
+  const restoreDocument = installDocumentStub()
+  try {
+    const cache = new AvatarBitmapCache(16)
+    const monogram = cache.getMonogram('alice', {
+      label: 'Alice',
+      color: '#7dd3a7',
+    })
+
+    cache.markReady(
+      'alice::https://example.com/alice.png',
+      64,
+      {} as ImageBitmap,
+      monogram,
+      64 * 64 * 4,
+    )
+    cache.markLoading('alice::https://example.com/alice.png', 128, monogram)
+    cache.delete('alice::https://example.com/alice.png', 'test_cleanup')
+
+    const snapshot = cache.getDebugSnapshot()
+    assert.deepEqual(
+      snapshot.recentEvents.slice(-3).map((event) => ({
+        type: event.type,
+        previousState: event.previousState,
+        nextState: event.nextState,
+        previousBucket: event.previousBucket,
+        nextBucket: event.nextBucket,
+        reason: event.reason,
+      })),
+      [
+        {
+          type: 'mark_ready',
+          previousState: null,
+          nextState: 'ready',
+          previousBucket: null,
+          nextBucket: 64,
+          reason: null,
+        },
+        {
+          type: 'mark_loading',
+          previousState: 'ready',
+          nextState: 'loading',
+          previousBucket: 64,
+          nextBucket: 128,
+          reason: null,
+        },
+        {
+          type: 'delete',
+          previousState: 'loading',
+          nextState: null,
+          previousBucket: 128,
+          nextBucket: null,
+          reason: 'test_cleanup',
+        },
+      ],
+    )
   } finally {
     restoreDocument()
   }

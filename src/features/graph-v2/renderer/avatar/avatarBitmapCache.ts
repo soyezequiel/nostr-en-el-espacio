@@ -34,6 +34,9 @@ const closeBitmap = (bitmap: AvatarBitmap) => {
   }
 }
 
+const getEntryBucket = (entry: AvatarEntry | undefined): ImageLodBucket | null =>
+  entry && 'bucket' in entry ? entry.bucket : null
+
 export interface MonogramInput {
   label: string
   color: string
@@ -242,7 +245,7 @@ export class AvatarBitmapCache {
       urlKey,
       previousState: previous?.state ?? null,
       nextState: entry.state,
-      previousBucket: 'bucket' in (previous ?? {}) ? previous.bucket : null,
+      previousBucket: getEntryBucket(previous),
       nextBucket: entry.bucket,
       reason: null,
       clearedEntries: null,
@@ -254,7 +257,7 @@ export class AvatarBitmapCache {
       cacheSize: this.entries.size,
       capacity: this.cap,
       previousState: previous?.state ?? null,
-      previousBucket: 'bucket' in (previous ?? {}) ? previous.bucket : null,
+      previousBucket: getEntryBucket(previous),
     }))
     return entry
   }
@@ -288,7 +291,7 @@ export class AvatarBitmapCache {
       urlKey,
       previousState: previous?.state ?? null,
       nextState: entry.state,
-      previousBucket: 'bucket' in (previous ?? {}) ? previous.bucket : null,
+      previousBucket: getEntryBucket(previous),
       nextBucket: entry.bucket,
       reason: null,
       clearedEntries: null,
@@ -334,7 +337,7 @@ export class AvatarBitmapCache {
       urlKey,
       previousState: previous?.state ?? null,
       nextState: entry.state,
-      previousBucket: 'bucket' in (previous ?? {}) ? previous.bucket : null,
+      previousBucket: getEntryBucket(previous),
       nextBucket: null,
       reason,
       clearedEntries: null,

@@ -5,6 +5,7 @@ import {
   DEFAULT_AVATAR_RUNTIME_OPTIONS,
 } from '@/features/graph-v2/renderer/avatar/types'
 import {
+  createAvatarUrlMetadataResolver,
   resolveAvatarCacheCap,
   resolveAvatarFrameDrawCap,
   resolveAvatarGlobalMotionActive,
@@ -21,6 +22,24 @@ import {
   shouldDisableAvatarImage,
   shouldHideAvatarImageForDragNeighbor,
 } from '@/features/graph-v2/renderer/avatar/avatarOverlayRenderer'
+
+test('avatar URL metadata resolver caches and caps parsed URL metadata', () => {
+  const resolver = createAvatarUrlMetadataResolver(2)
+  const first = resolver.resolve('alice', 'https://example.com/a.png')
+  const second = resolver.resolve('alice', 'https://example.com/a.png')
+
+  assert.equal(first, second)
+  assert.equal(first.hasPictureUrl, true)
+  assert.equal(first.hasSafePictureUrl, true)
+  assert.equal(first.host, 'example.com')
+  assert.equal(first.urlKey, 'alice::https://example.com/a.png')
+
+  resolver.resolve('bob', 'notaurl')
+  resolver.resolve('charlie', 'https://cdn.example.com/c.png')
+
+  assert.equal(resolver.size(), 2)
+  assert.equal(resolver.resolve('bob', 'notaurl').hasSafePictureUrl, false)
+})
 
 test('keeps the forced dragged avatar even when the frame cap is zero', () => {
   const items = [

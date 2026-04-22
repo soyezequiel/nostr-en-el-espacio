@@ -2095,7 +2095,7 @@ export default function GraphAppV2() {
       return
     }
 
-    const state = host.getAvatarRuntimeDebugSnapshot()
+    const state = host.getAvatarRuntimeDebugSnapshot({ includeOverlayNodes: true })
     if (!state) {
       setActionFeedback('No hay snapshot runtime de avatares disponible todavía.')
       return

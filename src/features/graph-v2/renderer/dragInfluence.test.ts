@@ -251,6 +251,7 @@ test('uses an Obsidian-like drag tuning preset by default', () => {
     DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.maxRepulsionTranslationPerFrame,
     7,
   )
+  assert.equal(DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.dragRepulsionCandidateCap, 160)
 })
 
 test('collects hop-connected nodes and builds spring edges between them', () => {
@@ -278,6 +279,9 @@ test('collects hop-connected nodes and builds spring edges between them', () => 
   assert.ok(edgePairs.includes('A::B'))
   assert.ok(edgePairs.includes('B::C'))
   assert.ok(edgePairs.includes('C::F'))
+  assert.ok(!state.repelledNodes.has('B'))
+  assert.ok(!state.repelledNodes.has('C'))
+  assert.ok(!state.repelledNodes.has('F'))
   // Rest lengths equal the initial geometric distance.
   const edgeAB = state.edges.find(
     (edge) =>
@@ -286,6 +290,39 @@ test('collects hop-connected nodes and builds spring edges between them', () => 
   )
   assert.ok(edgeAB)
   assert.equal(Math.round(edgeAB!.restLength), 10)
+})
+
+test('caps repelled candidates while preserving hop-connected neighbors', () => {
+  const store = createStore()
+  const graph = store.getGraph()
+  for (let index = 0; index < 8; index += 1) {
+    const pubkey = `R${index}`
+    graph.addNode(pubkey, {
+      x: 2 + index,
+      y: 0,
+      size: 10,
+      fixed: false,
+    })
+    store.setNodePosition(pubkey, 2 + index, 0)
+  }
+
+  const state = createDragNeighborhoodInfluenceState(
+    store,
+    'A',
+    new Map([
+      ['A', 0],
+      ['B', 1],
+    ]),
+    {
+      ...DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG,
+      dragRepulsionCandidateCap: 3,
+    },
+  )
+
+  assert.equal(state.repelledNodes.size, 3)
+  assert.ok(state.nodes.has('B'))
+  assert.ok(!state.repelledNodes.has('B'))
+  assert.deepEqual([...state.repelledNodes.keys()], ['R0', 'R1', 'R2'])
 })
 
 test('chain propagation moves the reachable neighborhood without unbounded jumps', () => {
@@ -308,8 +345,15 @@ test('chain propagation moves the reachable neighborhood without unbounded jumps
   // Pin A somewhere far.
   store.setNodePosition('A', 40, 0, true)
 
-  for (let index = 0; index < 8; index += 1) {
-    stepDragNeighborhoodInfluence(
+  let lastStep = stepDragNeighborhoodInfluence(
+    store,
+    'A',
+    state,
+    16,
+    DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG,
+  )
+  for (let index = 1; index < 8; index += 1) {
+    lastStep = stepDragNeighborhoodInfluence(
       store,
       'A',
       state,
@@ -329,6 +373,9 @@ test('chain propagation moves the reachable neighborhood without unbounded jumps
   assert.ok(bDisplacement > 0)
   assert.ok(cDisplacement > 0)
   assert.ok(fDisplacement > 0)
+  assert.ok(lastStep.dirtyPubkeys.includes('B'))
+  assert.ok(lastStep.dirtyPubkeys.includes('C'))
+  assert.ok(lastStep.dirtyPubkeys.includes('F'))
   assert.ok(bDisplacement <= DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.maxTranslationPerFrame * 8)
   assert.ok(cDisplacement <= DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.maxTranslationPerFrame * 8)
   assert.ok(fDisplacement <= DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG.maxTranslationPerFrame * 8)

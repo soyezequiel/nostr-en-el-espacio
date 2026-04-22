@@ -57,6 +57,7 @@ const EXPANSION_RING_PROGRESS_ALPHA = 0.96
 const EXPANSION_RING_COLOR = '#7dd3a7'
 const ALL_VISIBLE_AVATAR_LOAD_CONCURRENCY_FLOOR = 6
 const ALL_VISIBLE_AVATAR_LOAD_CONCURRENCY_CEILING = 8
+const AVATAR_URL_METADATA_CACHE_CAP = 4096
 const EMPTY_SET = new Set<string>()
 interface AvatarDrawSelectionItem {
   pubkey: string
@@ -102,6 +103,10 @@ interface AvatarDrawItem {
   y: number
   r: number
   url: string | null
+  urlKey: AvatarUrlKey | null
+  urlHost: string | null
+  hasPictureUrl: boolean
+  hasSafePictureUrl: boolean
   fastMoving: boolean
   monogramOnly: boolean
   isPersistentAvatar: boolean
@@ -109,6 +114,60 @@ interface AvatarDrawItem {
   priority: number
   monogramInput: MonogramInput
   monogramCanvas: HTMLCanvasElement
+}
+
+interface AvatarUrlMetadata {
+  hasPictureUrl: boolean
+  hasSafePictureUrl: boolean
+  urlKey: AvatarUrlKey | null
+  host: string | null
+}
+
+export const createAvatarUrlMetadataResolver = (
+  capacity = AVATAR_URL_METADATA_CACHE_CAP,
+) => {
+  const cache = new Map<string, AvatarUrlMetadata>()
+  const normalizedCapacity = Math.max(1, Math.floor(capacity))
+
+  return {
+    resolve(pubkey: string, url: string | null): AvatarUrlMetadata {
+      if (url === null) {
+        return {
+          hasPictureUrl: false,
+          hasSafePictureUrl: false,
+          urlKey: null,
+          host: null,
+        }
+      }
+
+      const key = `${pubkey}\0${url}`
+      const existing = cache.get(key)
+      if (existing) {
+        cache.delete(key)
+        cache.set(key, existing)
+        return existing
+      }
+
+      const metadata = {
+        hasPictureUrl: true,
+        hasSafePictureUrl: isSafeAvatarUrl(url),
+        urlKey: buildAvatarUrlKey(pubkey, url),
+        host: readAvatarDebugHost(url),
+      }
+      cache.set(key, metadata)
+      while (cache.size > normalizedCapacity) {
+        const oldestKey = cache.keys().next().value
+        if (oldestKey === undefined) {
+          break
+        }
+        cache.delete(oldestKey)
+      }
+      return metadata
+    },
+    size() {
+      return cache.size
+    },
+  }
 }
 
 interface AvatarDrawResult {
@@ -497,6 +556,7 @@ export class AvatarOverlayRenderer {
   private readonly getAvatarRevealPointer: () => AvatarRevealPointer | null
   private readonly getRuntimeOptions: () => AvatarRuntimeOptions | null
   private readonly getBlockedAvatar: (urlKey: AvatarUrlKey) => AvatarLoaderBlockDebugEntry | null
+  private readonly avatarUrlMetadata = createAvatarUrlMetadataResolver()
   private readonly lastBucketByUrl = new Map<string, ImageLodBucket>()
   private readonly lastMotionByNode = new Map<string, AvatarNodeMotionSample>()
   private lastFrameTs = 0
@@ -506,6 +566,7 @@ export class AvatarOverlayRenderer {
   private lastAvatarTraceSignature: string | null = null
   private lastAvatarTraceAtMs = 0
   private readonly boundAfterRender: () => void
+  private debugDetailsEnabled = false
   private disposed = false
 
   constructor(deps: AvatarOverlayRendererDeps) {
@@ -534,6 +595,10 @@ export class AvatarOverlayRenderer {
 
   public getDebugSnapshot(): AvatarOverlayDebugSnapshot | null {
     return this.lastDebugSnapshot
+  }
+
+  public setDebugDetailsEnabled(enabled: boolean) {
+    this.debugDetailsEnabled = enabled
   }
 
   public getVisibleNodePubkeys(): string[] {
@@ -719,12 +784,17 @@ export class AvatarOverlayRenderer {
         showText: budget.showMonogramText,
       }
       const priority = resolvePriority(nodeAttrs, viewport, this.sigma)
+      const urlMetadata = this.avatarUrlMetadata.resolve(pubkey, nodeAttrs.pictureUrl)
       drawItems.push({
         pubkey,
         x: viewport.x,
         y: viewport.y,
         r: drawRadiusPx,
         url: nodeAttrs.pictureUrl,
+        urlKey: urlMetadata.urlKey,
+        urlHost: urlMetadata.host,
+        hasPictureUrl: urlMetadata.hasPictureUrl,
+        hasSafePictureUrl: urlMetadata.hasSafePictureUrl,
         fastMoving,
         monogramOnly:
           !isPersistentAvatar &&
@@ -799,6 +869,7 @@ export class AvatarOverlayRenderer {
       forcedAvatarPubkeys.add(pubkey)
     }
 
+    const includeDebugNodes = this.debugDetailsEnabled || isAvatarTraceEnabled()
     const candidates: AvatarCandidate[] = []
     const debugNodes: AvatarVisibleNodeDebugSnapshot[] = []
     const byDisableReason: Record<string, number> = {}
@@ -834,9 +905,12 @@ export class AvatarOverlayRenderer {
           item.isPersistentAvatar ||
           !item.zoomedOutMonogram,
       )
-    const visiblePhotoCount = resolvedDrawItems.filter(
-      (item) => item.url && isSafeAvatarUrl(item.url),
-    ).length
+    let visiblePhotoCount = 0
+    for (const item of resolvedDrawItems) {
+      if (item.hasSafePictureUrl) {
+        visiblePhotoCount += 1
+      }
+    }
     const effectiveLoadConcurrency = resolveAvatarLoadConcurrency({
       baseConcurrency: budget.concurrency,
       visiblePhotoCount,
@@ -896,6 +970,12 @@ export class AvatarOverlayRenderer {
       visibleCount: visiblePhotoCount,
       showAllVisibleImages: budget.showAllVisibleImages,
     })
+    let nodesWithPictureUrlCount = 0
+    let selectedForImageCount = 0
+    let pendingCacheMissCount = 0
+    let pendingCandidateCount = 0
+    let blockedCandidateCount = 0
+    let inflightCandidateCount = 0
 
     for (const item of orderedDrawItems) {
       const isPersistentAvatar = item.isPersistentAvatar
@@ -903,12 +983,12 @@ export class AvatarOverlayRenderer {
       const hasVisibleMonogramPart =
         item.monogramInput.showBackground !== false ||
         item.monogramInput.showText !== false
-      const hasPictureUrl = Boolean(item.url)
-      const hasSafePictureUrl = Boolean(item.url && isSafeAvatarUrl(item.url))
-      const urlKey =
-        item.url !== null ? buildAvatarUrlKey(item.pubkey, item.url) : null
+      const hasPictureUrl = item.hasPictureUrl
+      const hasSafePictureUrl = item.hasSafePictureUrl
+      const urlKey = item.urlKey
       const blockEntry =
         urlKey !== null ? this.getBlockedAvatar(urlKey) : null
+      const inflight = urlKey !== null && this.scheduler.hasInflight(urlKey)
       const itemGlobalMotionActive = resolveAvatarItemGlobalMotionActive({
         globalMotionActive,
       })
@@ -1001,54 +1081,64 @@ export class AvatarOverlayRenderer {
       incrementCountMap(byLoadSkipReason, loadSkipReason)
       incrementCountMap(byDrawFallbackReason, drawResult.fallbackReason)
 
-      debugNodes.push({
-        pubkey: item.pubkey,
-        label: item.monogramInput.label,
-        url: item.url,
-        host: readAvatarDebugHost(item.url),
-        urlKey,
-        radiusPx: item.r,
-        priority: item.priority,
-        selectedForImage,
-        isPersistentAvatar,
-        zoomedOutMonogram: item.zoomedOutMonogram,
-        monogramOnly: item.monogramOnly,
-        fastMoving: item.fastMoving,
-        globalMotionActive: itemGlobalMotionActive,
-        disableImageReason,
-        drawResult: drawResult.kind,
-        drawFallbackReason: drawResult.fallbackReason,
-        loadDecision: !hasPictureUrl
-          ? 'not_applicable'
-          : loadSkipReason === null
-            ? 'candidate'
-            : 'skipped',
-        loadSkipReason,
-        cacheState,
-        cacheFailureReason: drawResult.cacheFailureReason,
-        blocked: blockEntry !== null,
-        blockReason: blockEntry?.reason ?? null,
-        inflight: urlKey !== null && this.scheduler.hasInflight(urlKey),
-        requestedBucket,
-        hasPictureUrl,
-        hasSafePictureUrl,
-      })
-    }
+      const loadDecision = !hasPictureUrl
+        ? 'not_applicable'
+        : loadSkipReason === null
+          ? 'candidate'
+          : 'skipped'
+      if (hasPictureUrl) {
+        nodesWithPictureUrlCount += 1
+      }
+      if (selectedForImage) {
+        selectedForImageCount += 1
+      }
+      if (hasSafePictureUrl && cacheState === 'missing') {
+        pendingCacheMissCount += 1
+      }
+      if (
+        loadDecision === 'candidate' &&
+        (cacheState === 'missing' || cacheState === 'loading')
+      ) {
+        pendingCandidateCount += 1
+      }
+      if (loadDecision === 'candidate' && blockEntry !== null) {
+        blockedCandidateCount += 1
+      }
+      if (loadDecision === 'candidate' && inflight) {
+        inflightCandidateCount += 1
+      }
 
-    const pendingCacheMissCount = debugNodes.filter(
-      (item) => item.hasSafePictureUrl && item.cacheState === 'missing',
-    ).length
-    const pendingCandidateCount = debugNodes.filter(
-      (item) =>
-        item.loadDecision === 'candidate' &&
-        (item.cacheState === 'missing' || item.cacheState === 'loading'),
-    ).length
-    const blockedCandidateCount = debugNodes.filter(
-      (item) => item.loadDecision === 'candidate' && item.blocked,
-    ).length
-    const inflightCandidateCount = debugNodes.filter(
-      (item) => item.loadDecision === 'candidate' && item.inflight,
-    ).length
+      if (includeDebugNodes) {
+        debugNodes.push({
+          pubkey: item.pubkey,
+          label: item.monogramInput.label,
+          url: item.url,
+          host: item.urlHost,
+          urlKey,
+          radiusPx: item.r,
+          priority: item.priority,
+          selectedForImage,
+          isPersistentAvatar,
+          zoomedOutMonogram: item.zoomedOutMonogram,
+          monogramOnly: item.monogramOnly,
+          fastMoving: item.fastMoving,
+          globalMotionActive: itemGlobalMotionActive,
+          disableImageReason,
+          drawResult: drawResult.kind,
+          drawFallbackReason: drawResult.fallbackReason,
+          loadDecision,
+          loadSkipReason,
+          cacheState,
+          cacheFailureReason: drawResult.cacheFailureReason,
+          blocked: blockEntry !== null,
+          blockReason: blockEntry?.reason ?? null,
+          inflight,
+          requestedBucket,
+          hasPictureUrl,
+          hasSafePictureUrl,
+        })
+      }
+    }
 
     this.drawExpansionRings(ctx, expansionRingItems)
 
@@ -1076,9 +1166,9 @@ export class AvatarOverlayRenderer {
       },
       counts: {
         visibleNodes: orderedDrawItems.length,
-        nodesWithPictureUrl: orderedDrawItems.filter((item) => Boolean(item.url)).length,
+        nodesWithPictureUrl: nodesWithPictureUrlCount,
         nodesWithSafePictureUrl: visiblePhotoCount,
-        selectedForImage: debugNodes.filter((item) => item.selectedForImage).length,
+        selectedForImage: selectedForImageCount,
         loadCandidates: candidates.length,
         pendingCacheMiss: pendingCacheMissCount,
         pendingCandidates: pendingCandidateCount,

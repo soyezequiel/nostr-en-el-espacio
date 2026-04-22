@@ -133,6 +133,7 @@ const createCallbacks = (
 
 type DragHarness = {
   sigma: { refresh: () => void }
+  positionLedger: NodePositionLedger
   renderStore: RenderGraphStore
   physicsStore: PhysicsGraphStore
   callbacks: GraphInteractionCallbacks
@@ -140,6 +141,7 @@ type DragHarness = {
   lastDragGraphPosition: { x: number; y: number } | null
   pendingGraphPosition: { x: number; y: number } | null
   dragInfluenceState: ReturnType<typeof createDragNeighborhoodInfluenceState> | null
+  syncPhysicsPositionsToRender: () => boolean
   flushPendingDragFrame: () => void
 }
 
@@ -209,6 +211,7 @@ test('continues local drag influence even when pointer movement pauses', async (
     const adapter = new SigmaRendererAdapter() as unknown as DragHarness
 
     adapter.sigma = { refresh: () => {} }
+    adapter.positionLedger = ledger
     adapter.renderStore = renderStore
     adapter.physicsStore = physicsStore
     adapter.callbacks = createCallbacks((_pubkey, position) => {
@@ -222,20 +225,29 @@ test('continues local drag influence even when pointer movement pauses', async (
       'A',
       new Map([['A', 0]]),
     )
+    adapter.syncPhysicsPositionsToRender = () => {
+      throw new Error('full physics sync should not run during drag frames')
+    }
 
     const beforeFirstFrame = physicsStore.getNodePosition('D')!
     adapter.flushPendingDragFrame()
     const afterFirstFrame = physicsStore.getNodePosition('D')!
+    const afterFirstRenderFrame = renderStore.getNodePosition('D')!
 
     assert.ok(afterFirstFrame.x > beforeFirstFrame.x)
+    assert.equal(afterFirstRenderFrame.x, afterFirstFrame.x)
+    assert.equal(afterFirstRenderFrame.y, afterFirstFrame.y)
     assert.equal(dragMoves.length, 1)
     assert.equal(queuedFrames.length, 1)
 
     const beforeSecondFrame = physicsStore.getNodePosition('D')!
     queuedFrames.shift()?.(performance.now())
     const afterSecondFrame = physicsStore.getNodePosition('D')!
+    const afterSecondRenderFrame = renderStore.getNodePosition('D')!
 
     assert.ok(afterSecondFrame.x > beforeSecondFrame.x)
+    assert.equal(afterSecondRenderFrame.x, afterSecondFrame.x)
+    assert.equal(afterSecondRenderFrame.y, afterSecondFrame.y)
     assert.equal(
       dragMoves.length,
       1,

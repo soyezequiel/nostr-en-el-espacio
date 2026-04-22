@@ -33,6 +33,7 @@ export interface DragNeighborhoodInfluenceState {
 export interface DragNeighborhoodInfluenceStepResult {
   active: boolean
   translated: boolean
+  dirtyPubkeys: string[]
 }
 
 export interface DragNeighborhoodInfluenceConfig {
@@ -49,6 +50,7 @@ export interface DragNeighborhoodInfluenceConfig {
   dragRepulsionPadding: number
   dragRepulsionAnchorStiffness: number
   maxRepulsionTranslationPerFrame: number
+  dragRepulsionCandidateCap: number
   stopSpeedThreshold: number
   stopDistanceThreshold: number
 }
@@ -82,6 +84,7 @@ export const DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG: DragNeighborhoodInfluen
   dragRepulsionPadding: 8,
   dragRepulsionAnchorStiffness: 0.006,
   maxRepulsionTranslationPerFrame: 7,
+  dragRepulsionCandidateCap: 160,
   stopSpeedThreshold: 0.035,
   stopDistanceThreshold: 0.12,
 }
@@ -143,6 +146,9 @@ export const createDragNeighborhoodInfluenceState = (
     return { nodes, repelledNodes, edges }
   }
 
+  const draggedPosition = projectionStore.getNodePosition(draggedNodePubkey)
+  const draggedAttributes = graph.getNodeAttributes(draggedNodePubkey)
+
   for (const [pubkey, hopDistance] of hopDistances) {
     if (pubkey === draggedNodePubkey) {
       continue
@@ -165,26 +171,66 @@ export const createDragNeighborhoodInfluenceState = (
     })
   }
 
-  for (const pubkey of graph.nodes()) {
-    if (pubkey === draggedNodePubkey || nodes.has(pubkey)) {
-      continue
+  if (draggedPosition) {
+    const repulsionCandidates: Array<{ pubkey: string; distanceSquared: number }> = []
+    for (const pubkey of graph.nodes()) {
+      if (
+        pubkey === draggedNodePubkey ||
+        nodes.has(pubkey) ||
+        projectionStore.isNodeFixed(pubkey)
+      ) {
+        continue
+      }
+
+      const position = projectionStore.getNodePosition(pubkey)
+
+      if (!position) {
+        continue
+      }
+
+      const attributes = graph.getNodeAttributes(pubkey)
+      const collisionDistance =
+        (draggedAttributes.size + attributes.size) * 0.5 +
+        config.dragRepulsionPadding
+      const repulsionRadius = Math.max(
+        config.dragRepulsionRadius,
+        collisionDistance,
+      )
+      const dx = position.x - draggedPosition.x
+      const dy = position.y - draggedPosition.y
+      const distanceSquared = dx * dx + dy * dy
+
+      if (distanceSquared > repulsionRadius * repulsionRadius) {
+        continue
+      }
+
+      repulsionCandidates.push({ pubkey, distanceSquared })
     }
 
-    const position = projectionStore.getNodePosition(pubkey)
+    repulsionCandidates
+      .sort(
+        (left, right) =>
+          left.distanceSquared - right.distanceSquared ||
+          left.pubkey.localeCompare(right.pubkey),
+      )
+      .slice(0, config.dragRepulsionCandidateCap)
+      .forEach(({ pubkey }) => {
+        const position = projectionStore.getNodePosition(pubkey)
 
-    if (!position) {
-      continue
-    }
+        if (!position) {
+          return
+        }
 
-    const previousNodeState = previousState?.repelledNodes.get(pubkey)
-    repelledNodes.set(pubkey, {
-      initialX: previousNodeState?.initialX ?? position.x,
-      initialY: previousNodeState?.initialY ?? position.y,
-      velocityX: previousNodeState?.velocityX ?? 0,
-      velocityY: previousNodeState?.velocityY ?? 0,
-      hopDistance: Number.POSITIVE_INFINITY,
-      anchorStiffness: config.dragRepulsionAnchorStiffness,
-    })
+        const previousNodeState = previousState?.repelledNodes.get(pubkey)
+        repelledNodes.set(pubkey, {
+          initialX: previousNodeState?.initialX ?? position.x,
+          initialY: previousNodeState?.initialY ?? position.y,
+          velocityX: previousNodeState?.velocityX ?? 0,
+          velocityY: previousNodeState?.velocityY ?? 0,
+          hopDistance: Number.POSITIVE_INFINITY,
+          anchorStiffness: config.dragRepulsionAnchorStiffness,
+        })
+      })
   }
 
   // Collect spring edges between the dragged node and its influence set.
@@ -273,6 +319,7 @@ const resolveFallbackDirection = (pubkey: string) => {
 const applyDraggedNodeRepulsion = (
   projectionStore: PhysicsGraphStore,
   draggedNodePubkey: string,
+  repelledPubkeys: Iterable<string>,
   forces: Map<string, ForceAccumulator>,
   config: DragNeighborhoodInfluenceConfig,
 ) => {
@@ -286,9 +333,10 @@ const applyDraggedNodeRepulsion = (
   const draggedAttributes = graph.getNodeAttributes(draggedNodePubkey)
   let appliedForce = false
 
-  for (const pubkey of graph.nodes()) {
+  for (const pubkey of repelledPubkeys) {
     if (
       pubkey === draggedNodePubkey ||
+      !graph.hasNode(pubkey) ||
       projectionStore.isNodeFixed(pubkey)
     ) {
       continue
@@ -346,6 +394,13 @@ const applyDraggedNodeRepulsion = (
   }
 
   return appliedForce
+}
+
+function* iterateRepulsionPubkeys(
+  influenceState: DragNeighborhoodInfluenceState,
+) {
+  yield* influenceState.nodes.keys()
+  yield* influenceState.repelledNodes.keys()
 }
 
 const stepInfluencedNode = (
@@ -426,16 +481,17 @@ export const stepDragNeighborhoodInfluence = (
   config: DragNeighborhoodInfluenceConfig = DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_CONFIG,
 ): DragNeighborhoodInfluenceStepResult => {
   if (!projectionStore.getNodePosition(draggedNodePubkey)) {
-    return { active: false, translated: false }
+    return { active: false, translated: false, dirtyPubkeys: [] }
   }
 
   const frameScale = toFrameScale(deltaMs, config)
 
   if (frameScale === 0) {
-    return { active: false, translated: false }
+    return { active: false, translated: false, dirtyPubkeys: [] }
   }
 
   const forces = new Map<string, ForceAccumulator>()
+  const dirtyPubkeys = new Set<string>()
 
   // Spring forces from live graph edges.
   for (const edge of influenceState.edges) {
@@ -471,6 +527,7 @@ export const stepDragNeighborhoodInfluence = (
   const hasRepulsionForce = applyDraggedNodeRepulsion(
     projectionStore,
     draggedNodePubkey,
+    iterateRepulsionPubkeys(influenceState),
     forces,
     config,
   )
@@ -487,6 +544,9 @@ export const stepDragNeighborhoodInfluence = (
     )
     active ||= result.active
     translated ||= result.translated
+    if (result.translated) {
+      dirtyPubkeys.add(pubkey)
+    }
   }
 
   for (const [pubkey, nodeState] of influenceState.repelledNodes) {
@@ -500,9 +560,12 @@ export const stepDragNeighborhoodInfluence = (
     )
     active ||= result.active
     translated ||= result.translated
+    if (result.translated) {
+      dirtyPubkeys.add(pubkey)
+    }
   }
 
-  return { active, translated }
+  return { active, translated, dirtyPubkeys: [...dirtyPubkeys] }
 }
 
 export const releaseDraggedNode = (

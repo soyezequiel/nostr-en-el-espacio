@@ -55,7 +55,10 @@ export interface SigmaCanvasHostHandle {
   subscribeToRenderTicks: (listener: () => void) => () => void
   captureSocialGraph: (options?: SocialGraphCaptureOptions) => Promise<Blob>
   getVisibleNodePubkeys: () => string[]
-  getAvatarRuntimeDebugSnapshot: () => AvatarRuntimeStateDebugSnapshot | null
+  setAvatarDebugDetailsEnabled: (enabled: boolean) => void
+  getAvatarRuntimeDebugSnapshot: (options?: {
+    includeOverlayNodes?: boolean
+  }) => AvatarRuntimeStateDebugSnapshot | null
   getPhysicsDiagnostics: () => DebugPhysicsDiagnostics | null
 }
 
@@ -225,8 +228,10 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       },
       getVisibleNodePubkeys: () =>
         adapterRef.current?.getVisibleNodePubkeys() ?? [],
-      getAvatarRuntimeDebugSnapshot: () =>
-        adapterRef.current?.getAvatarRuntimeDebugSnapshot() ?? null,
+      setAvatarDebugDetailsEnabled: (enabled) =>
+        adapterRef.current?.setAvatarDebugDetailsEnabled(enabled),
+      getAvatarRuntimeDebugSnapshot: (options) =>
+        adapterRef.current?.getAvatarRuntimeDebugSnapshot(options) ?? null,
       getPhysicsDiagnostics: () =>
         adapterRef.current?.getPhysicsDiagnostics() ?? null,
     }),

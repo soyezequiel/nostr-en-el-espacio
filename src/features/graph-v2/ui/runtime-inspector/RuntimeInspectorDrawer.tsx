@@ -195,6 +195,14 @@ export function RuntimeInspectorDrawer({
   const uiUpdatesPerMinute = useChangeCadence(uiSignal)
 
   useEffect(() => {
+    const host = sigmaHostRef.current
+    host?.setAvatarDebugDetailsEnabled(open)
+    return () => {
+      host?.setAvatarDebugDetailsEnabled(false)
+    }
+  }, [open, sigmaHostRef])
+
+  useEffect(() => {
     if (!open) {
       return
     }

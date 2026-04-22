@@ -386,6 +386,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private avatarOverlay: AvatarOverlayRenderer | null = null
 
+  private avatarDebugDetailsEnabled = false
+
   private avatarBudget: PerfBudget | null = null
 
   private motionActive = false
@@ -900,14 +902,36 @@ export class SigmaRendererAdapter implements RendererAdapter {
     return this.avatarBudget?.snapshot() ?? null
   }
 
-  public getAvatarRuntimeDebugSnapshot(): AvatarRuntimeStateDebugSnapshot | null {
+  public setAvatarDebugDetailsEnabled(enabled: boolean) {
+    if (this.avatarDebugDetailsEnabled === enabled) {
+      return
+    }
+    this.avatarDebugDetailsEnabled = enabled
+    this.avatarOverlay?.setDebugDetailsEnabled(enabled)
+    if (enabled) {
+      this.safeRefresh()
+    }
+  }
+
+  public getAvatarRuntimeDebugSnapshot(options?: {
+    includeOverlayNodes?: boolean
+  }): AvatarRuntimeStateDebugSnapshot | null {
     if (!this.sigma) {
       return null
     }
 
+    const restoreDebugDetails = options?.includeOverlayNodes
+      ? !this.avatarDebugDetailsEnabled
+      : false
+    if (options?.includeOverlayNodes) {
+      this.avatarDebugDetailsEnabled = true
+      this.avatarOverlay?.setDebugDetailsEnabled(true)
+      this.safeRefresh()
+    }
+
     const container = this.container
     const cameraState = this.sigma.getCamera().getState()
-    return {
+    const snapshot = {
       rootPubkey: this.scene?.render.cameraHint.rootPubkey ?? null,
       selectedNodePubkey: this.scene?.render.selection.selectedNodePubkey ?? null,
       viewport:
@@ -933,6 +957,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
       scheduler: this.avatarScheduler?.getDebugSnapshot() ?? null,
       overlay: this.avatarOverlay?.getDebugSnapshot() ?? null,
     }
+    if (restoreDebugDetails) {
+      this.avatarDebugDetailsEnabled = false
+      this.avatarOverlay?.setDebugDetailsEnabled(false)
+    }
+    return snapshot
   }
 
   public getVisibleNodePubkeys(): string[] {
@@ -1053,18 +1082,18 @@ export class SigmaRendererAdapter implements RendererAdapter {
     const deltaMs =
       previousTimestamp === null ? 16 : Math.max(now - previousTimestamp, 1)
 
-    this.renderStore.setNodePosition(
+    const draggedRenderChanged = this.renderStore.setNodePosition(
       draggedNodePubkey,
       graphPosition.x,
       graphPosition.y,
     )
-    this.physicsStore.setNodePosition(
+    const physicsChanged = this.physicsStore.setNodePosition(
       draggedNodePubkey,
       graphPosition.x,
       graphPosition.y,
       true,
     )
-    this.nodeHitTester?.markDirty()
+    const dirtyPubkeys = new Set<string>([draggedNodePubkey])
     this.lastDragGraphPosition = graphPosition
     this.lastFlushedGraphPosition = graphPosition
     let dragInfluenceActive = false
@@ -1077,8 +1106,14 @@ export class SigmaRendererAdapter implements RendererAdapter {
         this.dragInfluenceConfig,
       )
       dragInfluenceActive = dragStep.active
+      for (const pubkey of dragStep.dirtyPubkeys) {
+        dirtyPubkeys.add(pubkey)
+      }
     }
-    this.syncPhysicsPositionsToRender()
+    const syncedInfluence = this.syncPhysicsPositionsToRenderForPubkeys(dirtyPubkeys)
+    if (draggedRenderChanged || physicsChanged || syncedInfluence) {
+      this.nodeHitTester?.markDirty()
+    }
     this.lastDragFlushTimestamp = now
     this.safeRefresh()
     if (shouldEmitDragMove) {
@@ -1450,6 +1485,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
         getAvatarRevealPointer: () => this.avatarRevealPointer,
         getRuntimeOptions: () => this.avatarRuntimeOptions,
       })
+      this.avatarOverlay.setDebugDetailsEnabled(this.avatarDebugDetailsEnabled)
 
       sigma.getCamera().on('updated', () => {
         this.markMotion()
@@ -2123,6 +2159,43 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
     if (changed) {
       this.nodeHitTester?.markDirty()
+    }
+
+    return changed
+  }
+
+  private readonly syncPhysicsPositionsToRenderForPubkeys = (
+    pubkeys: Iterable<string>,
+  ) => {
+    if (!this.positionLedger || !this.renderStore || !this.physicsStore) {
+      return false
+    }
+
+    const physicsStore = this.physicsStore
+    const positionLedger = this.positionLedger
+    const renderStore = this.renderStore
+    let changed = false
+    const seenPubkeys = new Set<string>()
+
+    for (const pubkey of pubkeys) {
+      if (seenPubkeys.has(pubkey)) {
+        continue
+      }
+      seenPubkeys.add(pubkey)
+      const position = physicsStore.getNodePosition(pubkey)
+
+      if (!position) {
+        continue
+      }
+
+      if (renderStore.hasNode(pubkey)) {
+        changed =
+          renderStore.setNodePosition(pubkey, position.x, position.y) ||
+          changed
+      } else {
+        changed =
+          positionLedger.set(pubkey, position.x, position.y) || changed
+      }
     }
 
     return changed

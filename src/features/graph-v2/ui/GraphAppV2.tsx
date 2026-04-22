@@ -1284,11 +1284,20 @@ export default function GraphAppV2() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [canUseRuntimeInspector, sceneState.rootPubkey, isNotificationsOpen, isPersonSearchOpen, isRootSheetOpen, isRuntimeInspectorOpen, isSettingsOpen])
 
+  const closeCompetingSidePanels = useCallback(() => {
+    setIsRootSheetOpen(false)
+    setIsPersonSearchOpen(false)
+    setIsSettingsOpen(false)
+    setIsNotificationsOpen(false)
+    setIsRuntimeInspectorOpen(false)
+  }, [])
+
   const callbacks = useMemo<GraphInteractionCallbacks>(
     () =>
       isFixtureMode
         ? {
             onNodeClick: (pubkey: string) => {
+              closeCompetingSidePanels()
               setFixtureState((current) =>
                 current ? { ...current, selectedNodePubkey: pubkey } : current,
               )
@@ -1314,8 +1323,14 @@ export default function GraphAppV2() {
               setLastViewportRatio(viewport.ratio)
             },
           }
-        : controller.callbacks,
-    [controller, isFixtureMode],
+        : {
+            ...controller.callbacks,
+            onNodeClick: (pubkey: string) => {
+              closeCompetingSidePanels()
+              controller.callbacks.onNodeClick(pubkey)
+            },
+          },
+    [closeCompetingSidePanels, controller, isFixtureMode],
   )
 
   const prevSignatureRef = useRef<string | null>(null)
@@ -1506,6 +1521,14 @@ export default function GraphAppV2() {
   const updateFixtureState = useCallback((updater: (current: CanonicalGraphState) => CanonicalGraphState) => {
     setFixtureState((current) => current ? withClientSceneSignature(updater(current)) : current)
   }, [])
+
+  const clearSelectedNode = useCallback(() => {
+    if (isFixtureMode) {
+      updateFixtureState((current) => ({ ...current, selectedNodePubkey: null }))
+      return
+    }
+    bridge.selectNode(null)
+  }, [bridge, isFixtureMode, updateFixtureState])
 
   const dismissIdentityHelp = useCallback(() => {
     setIsIdentityHelpDismissed(true)
@@ -1987,7 +2010,7 @@ export default function GraphAppV2() {
   ])
 
   // Rail buttons — every entry is a DIRECT action or toggle.
-  // Panel entries are open-only; close stays on the panel X.
+  // Panel entries toggle themselves and replace each other; outside clicks stay inert.
   // Layer controls below remain direct toggles.
   const handleOpenRootSheet = useCallback(() => {
     setIsPersonSearchOpen(false)
@@ -2002,12 +2025,17 @@ export default function GraphAppV2() {
       setIsRootSheetOpen(true)
       return
     }
+    if (isPersonSearchOpen) {
+      setIsPersonSearchOpen(false)
+      clearSelectedNode()
+      return
+    }
     setIsRootSheetOpen(false)
     setIsSettingsOpen(false)
     setIsNotificationsOpen(false)
     setIsRuntimeInspectorOpen(false)
     setIsPersonSearchOpen(true)
-  }, [sceneState.rootPubkey])
+  }, [clearSelectedNode, isPersonSearchOpen, sceneState.rootPubkey])
 
   const handleClearPersonSearch = useCallback(() => {
     setPersonSearchQuery('')
@@ -2023,19 +2051,34 @@ export default function GraphAppV2() {
   }, [bridge, isFixtureMode, updateFixtureState])
 
   const handleOpenSettings = useCallback(() => {
+    if (isSettingsOpen) {
+      setIsSettingsOpen(false)
+      clearSelectedNode()
+      return
+    }
     openSettingsTab(activeSettingsTab)
-  }, [activeSettingsTab, openSettingsTab])
+  }, [activeSettingsTab, clearSelectedNode, isSettingsOpen, openSettingsTab])
 
   const handleOpenNotifications = useCallback(() => {
+    if (isNotificationsOpen) {
+      setIsNotificationsOpen(false)
+      clearSelectedNode()
+      return
+    }
     setIsPersonSearchOpen(false)
     setIsSettingsOpen(false)
     setIsRuntimeInspectorOpen(false)
     setIsRootSheetOpen(false)
     setIsNotificationsOpen(true)
-  }, [])
+  }, [clearSelectedNode, isNotificationsOpen])
 
   const handleOpenRuntimeInspector = useCallback(() => {
     if (!canUseRuntimeInspector) {
+      return
+    }
+    if (isRuntimeInspectorOpen) {
+      setIsRuntimeInspectorOpen(false)
+      clearSelectedNode()
       return
     }
     setIsPersonSearchOpen(false)
@@ -2043,7 +2086,7 @@ export default function GraphAppV2() {
     setIsNotificationsOpen(false)
     setIsRootSheetOpen(false)
     setIsRuntimeInspectorOpen(true)
-  }, [canUseRuntimeInspector])
+  }, [canUseRuntimeInspector, clearSelectedNode, isRuntimeInspectorOpen])
 
   const handleTogglePhysics = useCallback(() => {
     setPhysicsEnabled((current) => {
@@ -2294,14 +2337,16 @@ export default function GraphAppV2() {
   const railButtons: RailButton[] = useMemo(() => [
     {
       id: 'settings',
-      tip: 'Ajustes',
+      tip: isSettingsOpen ? 'Cerrar ajustes' : 'Ajustes',
       icon: <GearIcon />,
       active: isSettingsOpen,
       onClick: handleOpenSettings,
     },
     {
       id: 'notifications',
-      tip: `Notificaciones (${notificationHistory.length})`,
+      tip: isNotificationsOpen
+        ? 'Cerrar notificaciones'
+        : `Notificaciones (${notificationHistory.length})`,
       icon: <BellIcon />,
       active: isNotificationsOpen,
       badge: notificationHistory.length,
@@ -2310,7 +2355,9 @@ export default function GraphAppV2() {
     ...(canUseRuntimeInspector
       ? [{
           id: 'runtime',
-          tip: 'Inspector de runtime (Shift + D)',
+          tip: isRuntimeInspectorOpen
+            ? 'Cerrar inspector de runtime'
+            : 'Inspector de runtime (Shift + D)',
           icon: <PulseIcon />,
           active: isRuntimeInspectorOpen,
           onClick: handleOpenRuntimeInspector,
@@ -2347,9 +2394,11 @@ export default function GraphAppV2() {
     },
     {
       id: 'search',
-      tip: personSearchQuery.trim()
-        ? `Buscar persona: ${personSearchMatches.length} coincidencia${personSearchMatches.length === 1 ? '' : 's'}`
-        : 'Buscar persona (/)',
+      tip: isPersonSearchOpen
+        ? 'Cerrar busqueda'
+        : personSearchQuery.trim()
+          ? `Buscar persona: ${personSearchMatches.length} coincidencia${personSearchMatches.length === 1 ? '' : 's'}`
+          : 'Buscar persona (/)',
       icon: <SearchIcon />,
       active: isPersonSearchOpen || personSearchQuery.trim().length > 0,
       onClick: handleOpenPersonSearch,
@@ -2871,24 +2920,20 @@ export default function GraphAppV2() {
   const handleCloseSidePanel = useCallback(() => {
     if (isSettingsOpen) {
       setIsSettingsOpen(false)
-      return
     }
     if (isNotificationsOpen) {
       setIsNotificationsOpen(false)
-      return
     }
     if (isPersonSearchPanelOpen) {
       setIsPersonSearchOpen(false)
-      return
     }
     if (isIdentityPanelOpen && !isIdentityHelpDismissed) {
       dismissIdentityHelp()
     }
-    if (!isFixtureMode) bridge.selectNode(null)
+    clearSelectedNode()
   }, [
-    bridge,
+    clearSelectedNode,
     dismissIdentityHelp,
-    isFixtureMode,
     isIdentityHelpDismissed,
     isIdentityPanelOpen,
     isNotificationsOpen,

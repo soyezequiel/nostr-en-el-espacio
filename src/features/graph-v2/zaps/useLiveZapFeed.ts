@@ -75,11 +75,11 @@ export function useLiveZapFeed({
         visiblePubkeyCount,
         maxZapFilterPubkeys: MAX_ZAP_FILTER_PUBKEYS,
       })
-      onDroppedRef.current?.(
-        reason === 'visible-pubkey-limit'
-          ? `Zaps live pausados: ${visiblePubkeyCount} nodos visibles supera el limite ${MAX_ZAP_FILTER_PUBKEYS}.`
-          : 'Zaps live pausados: no hay nodos visibles para filtrar.',
-      )
+      if (reason === 'visible-pubkey-limit') {
+        onDroppedRef.current?.(
+          `Zaps live pausados: ${visiblePubkeyCount} nodos visibles supera el limite ${MAX_ZAP_FILTER_PUBKEYS}.`,
+        )
+      }
       return
     }
     let disposed = false

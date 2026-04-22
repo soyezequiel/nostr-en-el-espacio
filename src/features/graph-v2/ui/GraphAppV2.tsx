@@ -1722,7 +1722,8 @@ export default function GraphAppV2() {
     }
     if (!pauseLiveZapsWhenSceneIsLarge) {
       setZapFeedback((current) =>
-        current?.includes(`supera el limite ${MAX_ZAP_FILTER_PUBKEYS}`)
+        current?.includes(`supera el limite ${MAX_ZAP_FILTER_PUBKEYS}`) ||
+        current === 'Zaps live pausados: no hay nodos visibles para filtrar.'
           ? null
           : current,
       )

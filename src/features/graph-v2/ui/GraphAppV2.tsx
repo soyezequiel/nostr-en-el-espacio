@@ -2587,6 +2587,59 @@ export default function GraphAppV2() {
 
   // ── Detail panel content ───────────────────────────────────────────────────
 
+  const renderNotificationsContent = () => (
+    <div className="sg-notifications">
+      <div className="sg-notifications__head">
+        <div className="sg-notifications__summary">
+          <span className="sg-section-label">Historial de sesion</span>
+          <strong>{notificationHistory.length} notificacion{notificationHistory.length === 1 ? '' : 'es'}</strong>
+        </div>
+        {notificationHistory.length > 0 ? (
+          <button
+            className="sg-mini-action sg-mini-action--danger"
+            onClick={handleClearNotifications}
+            type="button"
+          >
+            Borrar todo
+          </button>
+        ) : null}
+      </div>
+      {notificationHistory.length > 0 ? (
+        <div className="sg-notifications__list">
+          {notificationHistory.map((entry) => (
+            <article
+              className={`sg-notification sg-notification--${entry.tone}`}
+              key={entry.id}
+            >
+              <div className="sg-notification__content">
+                <div className="sg-notification__meta">
+                  <span>{entry.source === 'zap' ? 'Zap' : 'Sistema'}</span>
+                  <time dateTime={new Date(entry.createdAt).toISOString()}>
+                    {NOTIFICATION_TIME_FORMATTER.format(entry.createdAt)}
+                  </time>
+                </div>
+                <p>{entry.msg}</p>
+              </div>
+              <button
+                aria-label="Borrar notificacion"
+                className="sg-notification__delete"
+                onClick={() => handleDeleteNotification(entry.id)}
+                title="Borrar"
+                type="button"
+              >
+                <CloseIcon />
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="sg-notifications__empty">
+          Todavia no hay notificaciones en esta sesion.
+        </p>
+      )}
+    </div>
+  )
+
   const renderDetailContent = () => {
     if (!detail.node) return null
 
@@ -2820,10 +2873,15 @@ export default function GraphAppV2() {
     detail.node !== null &&
     !isRootSheetOpen &&
     !isSettingsOpen &&
+    !isNotificationsOpen &&
     !isPersonSearchPanelOpen
   const handleCloseSidePanel = useCallback(() => {
     if (isSettingsOpen) {
       setIsSettingsOpen(false)
+      return
+    }
+    if (isNotificationsOpen) {
+      setIsNotificationsOpen(false)
       return
     }
     if (isPersonSearchPanelOpen) {
@@ -2840,6 +2898,7 @@ export default function GraphAppV2() {
     isFixtureMode,
     isIdentityHelpDismissed,
     isIdentityPanelOpen,
+    isNotificationsOpen,
     isPersonSearchPanelOpen,
     isSettingsOpen,
   ])
@@ -2907,7 +2966,7 @@ export default function GraphAppV2() {
               rootLoad={uiState.rootLoad}
             />
           )}
-          {!isIdentityPanelOpen && !isPersonSearchPanelOpen && (
+          {!isIdentityPanelOpen && !isPersonSearchPanelOpen && !isNotificationsOpen && (
             <SigmaMinimap
               getSnapshot={getMinimapSnapshot}
               getViewport={getMinimapViewport}
@@ -2943,11 +3002,19 @@ export default function GraphAppV2() {
         />
       ) : null}
 
-      {(isSettingsOpen || isPersonSearchPanelOpen || isIdentityPanelOpen) &&
+      {(isSettingsOpen || isNotificationsOpen || isPersonSearchPanelOpen || isIdentityPanelOpen) &&
         !isRuntimeInspectorOpen && (
         <SigmaSidePanel
-          closeOnOutsidePointerDown={isSettingsOpen || isPersonSearchPanelOpen}
-          eyebrow={isSettingsOpen ? 'AJUSTES' : isPersonSearchPanelOpen ? 'BUSCAR PERSONA' : 'IDENTIDAD'}
+          closeOnOutsidePointerDown={isSettingsOpen || isNotificationsOpen || isPersonSearchPanelOpen}
+          eyebrow={
+            isSettingsOpen
+              ? 'AJUSTES'
+              : isNotificationsOpen
+                ? 'NOTIFICACIONES'
+                : isPersonSearchPanelOpen
+                  ? 'BUSCAR PERSONA'
+                  : 'IDENTIDAD'
+          }
           onClose={handleCloseSidePanel}
           tabs={
             isSettingsOpen && settingsTabs.length > 1 ? (
@@ -2968,6 +3035,8 @@ export default function GraphAppV2() {
         >
           {isSettingsOpen ? (
             renderSettingsContent()
+          ) : isNotificationsOpen ? (
+            renderNotificationsContent()
           ) : isPersonSearchPanelOpen ? (
             <PersonSearchPanel
               matches={personSearchMatches}

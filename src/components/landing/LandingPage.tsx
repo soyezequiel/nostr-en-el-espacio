@@ -40,10 +40,56 @@ const ecosystem = [
   { name: 'Nostr', href: 'https://github.com/nostr-protocol/nips' },
 ]
 
-const quietRoutes = [
-  { name: 'Profile', href: '/profile' },
-  { name: 'Badges', href: '/badges' },
-]
+const protocolKinds = [
+  {
+    kind: '0',
+    name: 'Metadata de perfil',
+    purpose:
+      'Hidrata nombre, bio, avatar, nip05 y datos base para Sigma y la vista clasica del perfil.',
+    surfaces: 'Sigma y datos base de identidad',
+    spec: 'NIP-01',
+  },
+  {
+    kind: '1',
+    name: 'Notas publicas',
+    purpose:
+      'Arma la timeline conectada y tambien alimenta la extraccion de texto para keywords y contexto social.',
+    surfaces: 'Timeline conectada y analisis de Sigma',
+    spec: 'NIP-01',
+  },
+  {
+    kind: '3',
+    name: 'Contact list',
+    purpose:
+      'Resuelve follows del root, followers inbound, mutuals, expansion de nodos y paneles de estructura.',
+    surfaces: 'Sigma y estructura de identidad',
+    spec: 'NIP-02',
+  },
+  {
+    kind: '10002',
+    name: 'Relay list',
+    purpose:
+      'Lee los relays preferidos del usuario para discovery relay-aware, mejor cobertura y export mas fiel.',
+    surfaces: 'Sigma, identidad conectada y export',
+    spec: 'NIP-65',
+  },
+  {
+    kind: '9735',
+    name: 'Zap receipts',
+    purpose:
+      'Escucha y parsea recibos de zap para la capa live y el contexto economico sobre nodos visibles.',
+    surfaces: '/labs/sigma',
+    spec: 'NIP-57',
+  },
+  {
+    kind: '10000119',
+    name: 'Primal user info cache',
+    purpose:
+      'Lee media fallbacks y variantes de imagen desde cache2.primal.net para mejorar fotos de perfil.',
+    surfaces: 'Fallback de avatares en Sigma',
+    spec: 'No estandar',
+  },
+] as const
 
 export default function LandingPage() {
   return (
@@ -167,7 +213,7 @@ export default function LandingPage() {
                     <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-[#8f877f]">
                       Signal mode
                     </p>
-                    <p className="mt-2 text-sm text-[#cbc2b7]">stale, badges y contexto social</p>
+                    <p className="mt-2 text-sm text-[#cbc2b7]">stale y contexto social</p>
                   </div>
                 </div>
               </div>
@@ -232,6 +278,60 @@ export default function LandingPage() {
           </div>
         </section>
 
+        <section className="border-b border-[#ffffff14] bg-[#070707] px-5 py-16 sm:px-8 lg:px-12 lg:py-20">
+          <div className="mx-auto max-w-6xl">
+            <Reveal className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-3xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#ff6675]">
+                  Kinds en uso
+                </p>
+                <h2 className="mt-4 text-4xl font-black leading-tight text-[#f6f1e8] sm:text-5xl">
+                  Que kinds usa hoy el proyecto
+                </h2>
+              </div>
+              <p className="max-w-xl text-sm leading-6 text-[#a9a197] sm:text-base">
+                Estos son los kinds que el producto consulta o interpreta hoy. Salen del codigo actual de
+                {' '}
+                Sigma y la identidad conectada.
+              </p>
+            </Reveal>
+
+            <div className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {protocolKinds.map((entry, index) => (
+                <Reveal
+                  className="rounded-[1.4rem] border border-[#ffffff14] bg-[#0c0c0c] p-5 shadow-[0_22px_60px_rgba(0,0,0,0.24)]"
+                  delay={0.04 + index * 0.04}
+                  key={entry.kind}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="inline-flex rounded-full border border-[#ff4b5d]/30 bg-[#ff4b5d]/12 px-3 py-1 font-mono text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-[#ff8a95]">
+                      kind:{entry.kind}
+                    </span>
+                    <span className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-[#7f776f]">
+                      {entry.spec}
+                    </span>
+                  </div>
+                  <p className="mt-5 text-2xl font-black tracking-[-0.04em] text-[#f6f1e8]">
+                    {entry.name}
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-[#c5bcb1]">
+                    {entry.purpose}
+                  </p>
+                  <div className="mt-5 border-t border-[#ffffff12] pt-3">
+                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#8f877f]">
+                      Donde entra
+                    </p>
+                    <p className="mt-2 text-sm text-[#a9a197]">
+                      {entry.surfaces}
+                    </p>
+                  </div>
+                </Reveal>
+              ))}
+            </div>
+
+          </div>
+        </section>
+
         <section className="relative overflow-hidden px-5 py-18 sm:px-8 lg:px-12 lg:py-24">
           <div className="absolute inset-y-0 right-0 w-[46vw] bg-[radial-gradient(circle_at_center,rgba(255,75,93,0.16),transparent_58%)] opacity-70" />
           <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
@@ -292,17 +392,6 @@ export default function LandingPage() {
                     target="_blank"
                   >
                     {item.name}
-                  </Link>
-                ))}
-              </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.62rem] uppercase tracking-[0.22em] text-[#6f6861] opacity-55 lg:justify-end">
-                {quietRoutes.map((route) => (
-                  <Link
-                    className="transition hover:text-[#b9b0a5]"
-                    href={route.href}
-                    key={route.name}
-                  >
-                    {route.name}
                   </Link>
                 ))}
               </div>

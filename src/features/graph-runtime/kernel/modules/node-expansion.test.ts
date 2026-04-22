@@ -463,6 +463,54 @@ test('expandNode reports partial when the foreground relay adapter cannot be cre
   assert.equal(store.getState().selectedNodePubkey, 'target')
 })
 
+test('expandNode explains how to raise the graph cap when expansion is blocked by the limit', async () => {
+  const store = createExpandableStore()
+  store.getState().setGraphMaxNodes(2)
+
+  const ctx = {
+    store,
+    repositories: {
+      contactLists: {
+        get: async () => null,
+      },
+    },
+    eventsWorker: {
+      invoke: async () => {
+        throw new Error('events worker should not be used in this test')
+      },
+    },
+    graphWorker: {
+      invoke: async () => {
+        throw new Error('graph worker should not be used in this test')
+      },
+      dispose: () => {},
+    },
+    createRelayAdapter: () => {
+      throw new Error('relay adapter should not be created when cap is reached')
+    },
+    defaultRelayUrls: ['wss://relay.example'],
+    now: (() => {
+      let now = 1_000
+      return () => ++now
+    })(),
+    emitter: createKernelEventEmitter(),
+  }
+
+  const expansion = createNodeExpansionModule(ctx, createBaseCollaborators())
+
+  const result = await expansion.expandNode('target')
+
+  assert.equal(result.status, 'error')
+  assert.equal(
+    result.message,
+    'Cap de 2 nodos alcanzado. No se puede expandir. Podés aumentar el límite en Ajustes > Render.',
+  )
+  assert.equal(
+    store.getState().nodeExpansionStates.target.message,
+    result.message,
+  )
+})
+
 test('expandNode does not let background enrichment adapter failures overwrite success', async () => {
   const store = createExpandableStore()
   let createRelayAdapterCallCount = 0

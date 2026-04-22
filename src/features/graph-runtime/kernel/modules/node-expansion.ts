@@ -466,16 +466,17 @@ export function createNodeExpansionModule(
     }
 
     if (state.graphCaps.capReached) {
+      const capReachedMessage = `Cap de ${state.graphCaps.maxNodes} nodos alcanzado. No se puede expandir. Podés aumentar el límite en Ajustes > Render.`
       setTerminalState(
         pubkey,
         'error',
-        `Cap de ${state.graphCaps.maxNodes} nodos alcanzado. No se puede expandir.`,
+        capReachedMessage,
       )
       return {
         status: 'error',
         discoveredFollowCount: 0,
         rejectedPubkeys: [],
-        message: `Cap de ${state.graphCaps.maxNodes} nodos alcanzado. No se puede expandir.`,
+        message: capReachedMessage,
       }
     }
 

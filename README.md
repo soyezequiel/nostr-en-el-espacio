@@ -74,8 +74,13 @@ La propuesta no se limita a "ver un perfil". El foco esta en **identidad como re
 ```bash
 npm install
 npm run dev
-npm run build
+```
+
+## Validacion
+
+```bash
 npm run lint
+npm run build
 ```
 
 ## Arquitectura rapida

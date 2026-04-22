@@ -18,6 +18,7 @@ import { useShallow } from 'zustand/react/shallow'
 import AvatarFallback from '@/components/AvatarFallback'
 import { useAuthStore } from '@/store/auth'
 import { useAppStore } from '@/features/graph-runtime/app/store'
+import { DEFAULT_MAX_GRAPH_NODES } from '@/features/graph-runtime/app/store/slices/graphSlice'
 import type {
   AppStore,
   SavedRootEntry,
@@ -128,6 +129,11 @@ import type { NostrProfile } from '@/lib/nostr'
 
 type SigmaSettingsTab = 'renderer' | 'relays' | 'dev'
 
+const INTEGER_FORMATTER = new Intl.NumberFormat('es-AR')
+const GRAPH_MAX_NODES_SLIDER_MIN = 250
+const GRAPH_MAX_NODES_SLIDER_MAX = 12000
+const GRAPH_MAX_NODES_SLIDER_STEP = 250
+
 const SOCIAL_CAPTURE_FORMAT_LABELS: Record<SocialGraphCaptureFormat, string> = {
   wide: 'Wide 3840x2160',
   square: 'Square 2160',
@@ -151,6 +157,15 @@ const NODE_EXPANSION_STATUS_LABELS: Record<
   partial: 'parcial',
   empty: 'sin conexiones nuevas',
   error: 'error',
+}
+
+const DEVICE_PROFILE_LABELS: Record<
+  AppStore['devicePerformanceProfile'],
+  string
+> = {
+  desktop: 'desktop',
+  mobile: 'movil',
+  'low-end-mobile': 'movil liviano',
 }
 
 type ValidRootIdentity = Extract<RootIdentityResolution, { status: 'valid' }>
@@ -206,6 +221,8 @@ const selectRuntimeInspectorStoreState = (state: AppStore) => ({
 })
 
 const HEX_PUBKEY_RE = /^[0-9a-f]{64}$/i
+
+const formatInteger = (value: number) => INTEGER_FORMATTER.format(value)
 
 const getInitials = (value: string | null) => {
   if (!value) return 'N'
@@ -379,6 +396,123 @@ function RelayEditor({
         </button>
       </div>
       {message ? <p style={{ marginTop: 8, fontSize: 12, color: 'var(--sg-fg-muted)' }}>{message}</p> : null}
+    </div>
+  )
+}
+
+function GraphCapacityPanel({
+  maxNodes,
+  nodeCount,
+  capReached,
+  recommendedMaxNodes,
+  devicePerformanceProfile,
+  onChange,
+}: {
+  maxNodes: number
+  nodeCount: number
+  capReached: boolean
+  recommendedMaxNodes: number
+  devicePerformanceProfile: AppStore['devicePerformanceProfile']
+  onChange: (maxNodes: number) => void
+}) {
+  const sliderValue = Math.min(
+    GRAPH_MAX_NODES_SLIDER_MAX,
+    Math.max(GRAPH_MAX_NODES_SLIDER_MIN, maxNodes),
+  )
+  const remainingCapacity = Math.max(0, maxNodes - nodeCount)
+  const isAtProjectDefault = maxNodes === DEFAULT_MAX_GRAPH_NODES
+  const isAtRecommended = maxNodes === recommendedMaxNodes
+
+  return (
+    <div className="sg-settings-section">
+      <h4>Tamaño del grafo</h4>
+      <div className="sg-slider-row">
+        <div className="sg-slider-row__head">
+          <span className="sg-slider-row__lbl">Máximo de nodos</span>
+          <span className="sg-slider-row__val">
+            {formatInteger(maxNodes)} nodos
+          </span>
+        </div>
+        <p
+          style={{
+            fontSize: 10.5,
+            color: 'var(--sg-fg-faint)',
+            margin: '2px 0 8px',
+          }}
+        >
+          Subilo para dejar entrar más conexiones. Bajalo si querés menos
+          carga de layout, memoria y avatares.
+        </p>
+        <input
+          className="sg-slider"
+          max={GRAPH_MAX_NODES_SLIDER_MAX}
+          min={GRAPH_MAX_NODES_SLIDER_MIN}
+          onChange={(event) => {
+            onChange(Number.parseInt(event.target.value, 10))
+          }}
+          step={GRAPH_MAX_NODES_SLIDER_STEP}
+          type="range"
+          value={sliderValue}
+        />
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+        <button
+          className="sg-btn"
+          disabled={isAtProjectDefault}
+          onClick={() => onChange(DEFAULT_MAX_GRAPH_NODES)}
+          style={{ flex: 'none', padding: '4px 10px', fontSize: 11 }}
+          type="button"
+        >
+          Proyecto {formatInteger(DEFAULT_MAX_GRAPH_NODES)}
+        </button>
+        <button
+          className="sg-btn"
+          disabled={isAtRecommended}
+          onClick={() => onChange(recommendedMaxNodes)}
+          style={{ flex: 'none', padding: '4px 10px', fontSize: 11 }}
+          type="button"
+        >
+          Sugerido {formatInteger(recommendedMaxNodes)}
+        </button>
+      </div>
+
+      <div
+        style={{
+          marginTop: 12,
+          border: '1px solid var(--sg-stroke)',
+          borderRadius: 8,
+          padding: '10px 12px',
+        }}
+      >
+        {[
+          ['Nodos cargados', formatInteger(nodeCount)],
+          ['Margen restante', formatInteger(remainingCapacity)],
+          [
+            `Sugerido para ${DEVICE_PROFILE_LABELS[devicePerformanceProfile]}`,
+            formatInteger(recommendedMaxNodes),
+          ],
+        ].map(([label, value]) => (
+          <div className="sg-diag-row" key={label}>
+            <span className="sg-diag-row__k">{label}</span>
+            <span className="sg-diag-row__v">{value}</span>
+          </div>
+        ))}
+      </div>
+
+      {capReached ? (
+        <p
+          style={{
+            marginTop: 10,
+            fontSize: 11,
+            color: 'var(--sg-warn)',
+            lineHeight: 1.45,
+          }}
+        >
+          El grafo tocó el tope actual. Si querés seguir expandiendo, subí este
+          límite y volvé a probar.
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -947,6 +1081,7 @@ export default function GraphAppV2() {
   const runtimeInspectorStoreSnapshot = useAppStore(
     useShallow(selectRuntimeInspectorStoreState),
   )
+  const setGraphMaxNodes = useAppStore((state) => state.setGraphMaxNodes)
   const runtimeInspectorStoreState = useMemo(
     () => ({
       graphSummary: {
@@ -2197,11 +2332,25 @@ export default function GraphAppV2() {
     switch (activeSettingsTab) {
       case 'renderer':
         return (
-          <RenderOptionsPanel
-            avatarPerfSnapshot={avatarPerfSnapshot}
-            avatarRuntimeOptions={avatarRuntimeOptions}
-            onAvatarRuntimeOptionsChange={setAvatarRuntimeOptions}
-          />
+          <div>
+            <GraphCapacityPanel
+              capReached={runtimeInspectorStoreSnapshot.capReached}
+              devicePerformanceProfile={
+                runtimeInspectorStoreSnapshot.devicePerformanceProfile
+              }
+              maxNodes={runtimeInspectorStoreSnapshot.maxNodes}
+              nodeCount={runtimeInspectorStoreSnapshot.nodeCount}
+              onChange={setGraphMaxNodes}
+              recommendedMaxNodes={
+                runtimeInspectorStoreSnapshot.effectiveGraphCaps.maxNodes
+              }
+            />
+            <RenderOptionsPanel
+              avatarPerfSnapshot={avatarPerfSnapshot}
+              avatarRuntimeOptions={avatarRuntimeOptions}
+              onAvatarRuntimeOptionsChange={setAvatarRuntimeOptions}
+            />
+          </div>
         )
       case 'relays':
         return (

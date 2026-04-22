@@ -19,6 +19,20 @@ test('selects and clears nodes through the bridge', () => {
   assert.deepEqual(selections, ['alice', null])
 })
 
+test('selects a node on double click through the bridge', () => {
+  const selections: Array<string | null> = []
+  const bridge = {
+    selectNode: (pubkey: string | null) => {
+      selections.push(pubkey)
+    },
+  } as unknown as LegacyKernelBridge
+  const controller = new GraphInteractionController(bridge)
+
+  controller.callbacks.onNodeDoubleClick('alice')
+
+  assert.deepEqual(selections, ['alice'])
+})
+
 test('pins a node when drag release requests it', () => {
   const pinned: string[] = []
   const bridge = {

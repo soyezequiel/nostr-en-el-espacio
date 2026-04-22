@@ -11,6 +11,7 @@ import type {
 import type { EventsWorkerActionMap } from '@/features/graph-runtime/workers/events/contracts'
 import type { WorkerClient } from '@/features/graph-runtime/workers/shared/runtime'
 import {
+  collectRelayEvents,
   collectAdditionalPaginatedInboundFollowerEvents,
   collectTargetedReciprocalFollowerEvidence,
   mapProfileRecordToNodeProfile,
@@ -119,6 +120,46 @@ test('collectTargetedReciprocalFollowerEvidence consulta follows por author y va
       },
     ],
   ])
+})
+
+test('collectRelayEvents cancela la suscripcion activa cuando se aborta la corrida', async () => {
+  const abortController = new AbortController()
+  let cancelCalled = false
+  let subscribed = false
+
+  const adapter: RelayAdapterInstance = {
+    subscribe() {
+      return {
+        subscribe() {
+          subscribed = true
+          return () => {
+            cancelCalled = true
+          }
+        },
+      }
+    },
+    count: async () => [],
+    getRelayHealth: () => ({}),
+    subscribeToRelayHealth: () => () => {},
+    close: () => {},
+  }
+
+  const resultPromise = collectRelayEvents(
+    adapter,
+    [{ authors: ['alice'], kinds: [3], limit: 1 }],
+    { signal: abortController.signal },
+  )
+
+  assert.equal(subscribed, true)
+  abortController.abort()
+
+  const result = await resultPromise
+
+  assert.equal(cancelCalled, true)
+  assert.equal(result.events.length, 0)
+  assert.equal(result.summary, null)
+  assert.equal(result.error?.name, 'AbortError')
+  assert.match(result.error?.message ?? '', /cancelled/i)
 })
 
 test('collectAdditionalPaginatedInboundFollowerEvents pagina por relay con cursor until', async () => {

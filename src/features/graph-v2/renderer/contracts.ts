@@ -130,6 +130,7 @@ export interface NodeDetailProjection {
 
 export interface GraphInteractionCallbacks {
   onNodeClick: (pubkey: string) => void
+  onNodeDoubleClick: (pubkey: string) => void
   onClearSelection: () => void
   onNodeHover: (pubkey: string | null) => void
   onNodeDragStart: (pubkey: string) => void

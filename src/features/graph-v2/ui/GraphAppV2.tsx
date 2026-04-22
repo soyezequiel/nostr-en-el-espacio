@@ -113,6 +113,7 @@ import {
   selectVisibleProfileWarmupPubkeys,
   type VisibleProfileWarmupDebugSnapshot,
 } from '@/features/graph-v2/ui/visibleProfileWarmup'
+import { buildExpansionVisibilityHint } from '@/features/graph-v2/ui/expansionVisibilityHint'
 import {
   buildSocialCaptureDebugFilename,
   buildSocialCaptureDebugPayload,
@@ -1439,6 +1440,38 @@ export default function GraphAppV2() {
     setIsRuntimeInspectorOpen(false)
   }, [])
 
+  const dismissIdentityHelp = useCallback(() => {
+    setIsIdentityHelpDismissed(true)
+    if (typeof window === 'undefined') return
+    window.sessionStorage.setItem(IDENTITY_FIRST_RUN_HELP_KEY, '1')
+  }, [])
+
+  const handleExploreConnections = useCallback((pubkey: string, isExpanded: boolean) => {
+    dismissIdentityHelp()
+    if (isExpanded) return
+
+    startTransition(() => {
+      if (isFixtureMode) {
+        setActionFeedback('El fixture no trae conexiones por relay.')
+        return
+      }
+      void bridge.expandNode(pubkey)
+        .then((result) => {
+          setActionFeedback(result.message)
+        })
+        .catch((error) => {
+          setActionFeedback(
+            error instanceof Error
+              ? `No se pudo expandir: ${error.message}`
+              : 'No se pudo expandir el nodo seleccionado.',
+          )
+        })
+    })
+  }, [bridge, dismissIdentityHelp, isFixtureMode])
+
+  const latestNodesByPubkeyRef = useRef(sceneState.nodesByPubkey)
+  latestNodesByPubkeyRef.current = sceneState.nodesByPubkey
+
   const callbacks = useMemo<GraphInteractionCallbacks>(
     () =>
       isFixtureMode
@@ -1447,6 +1480,16 @@ export default function GraphAppV2() {
               closeCompetingSidePanels()
               setFixtureState((current) =>
                 current ? { ...current, selectedNodePubkey: pubkey } : current,
+              )
+            },
+            onNodeDoubleClick: (pubkey: string) => {
+              closeCompetingSidePanels()
+              setFixtureState((current) =>
+                current ? { ...current, selectedNodePubkey: pubkey } : current,
+              )
+              handleExploreConnections(
+                pubkey,
+                latestNodesByPubkeyRef.current[pubkey]?.isExpanded ?? false,
               )
             },
             onClearSelection: () => {
@@ -1476,8 +1519,16 @@ export default function GraphAppV2() {
               closeCompetingSidePanels()
               controller.callbacks.onNodeClick(pubkey)
             },
+            onNodeDoubleClick: (pubkey: string) => {
+              closeCompetingSidePanels()
+              controller.callbacks.onNodeDoubleClick(pubkey)
+              handleExploreConnections(
+                pubkey,
+                latestNodesByPubkeyRef.current[pubkey]?.isExpanded ?? false,
+              )
+            },
           },
-    [closeCompetingSidePanels, controller, isFixtureMode],
+    [closeCompetingSidePanels, controller, handleExploreConnections, isFixtureMode],
   )
 
   const prevSignatureRef = useRef<string | null>(null)
@@ -1701,12 +1752,6 @@ export default function GraphAppV2() {
     bridge.selectNode(null)
   }, [bridge, isFixtureMode, updateFixtureState])
 
-  const dismissIdentityHelp = useCallback(() => {
-    setIsIdentityHelpDismissed(true)
-    if (typeof window === 'undefined') return
-    window.sessionStorage.setItem(IDENTITY_FIRST_RUN_HELP_KEY, '1')
-  }, [])
-
   useEffect(() => {
     if (!sceneState.rootPubkey || !currentRootNode) return
     if (!currentRootNode.label && !currentRootNode.picture && !currentRootNode.nip05 && !currentRootNode.about && !currentRootNode.lud16) return
@@ -1734,29 +1779,6 @@ export default function GraphAppV2() {
     dismissIdentityHelp()
     togglePinnedNode(pubkey)
   }, [dismissIdentityHelp, togglePinnedNode])
-
-  const handleExploreConnections = useCallback((pubkey: string, isExpanded: boolean) => {
-    dismissIdentityHelp()
-    if (isExpanded) return
-
-    startTransition(() => {
-      if (isFixtureMode) {
-        setActionFeedback('El fixture no trae conexiones por relay.')
-        return
-      }
-      void bridge.expandNode(pubkey)
-        .then((result) => {
-          setActionFeedback(result.message)
-        })
-        .catch((error) => {
-          setActionFeedback(
-            error instanceof Error
-              ? `No se pudo expandir: ${error.message}`
-              : 'No se pudo expandir el nodo seleccionado.',
-          )
-        })
-    })
-  }, [bridge, dismissIdentityHelp, isFixtureMode])
 
   const toggleLayer = useCallback((layer: (typeof GRAPH_V2_LAYERS)[number]) => {
     if (!isFixtureMode) { bridge.toggleLayer(layer); return }
@@ -3086,6 +3108,14 @@ export default function GraphAppV2() {
       ? NODE_EXPANSION_STATUS_LABELS[expansionState.status]
       : NODE_EXPANSION_STATUS_LABELS.idle
     const expansionMessage = expansionState?.message?.trim() || null
+    const expansionVisibilityHint = buildExpansionVisibilityHint({
+      activeLayer: sceneState.activeLayer,
+      totalGraphNodeCount: runtimeInspectorStoreSnapshot.nodeCount,
+      visibleNodeCount: deferredScene.render.diagnostics.nodeCount,
+      maxGraphNodes: runtimeInspectorStoreSnapshot.maxNodes,
+      capReached: runtimeInspectorStoreSnapshot.capReached,
+      expansionMessage,
+    })
     const shouldShowIdentityHelp = !isIdentityHelpDismissed
     const isProfileLoading = detail.node.profileState === 'loading'
     const hasProfileName = Boolean(detail.node.label?.trim())
@@ -3261,6 +3291,11 @@ export default function GraphAppV2() {
             {expansionMessage ? (
               <span className="sg-field__detail">
                 {expansionMessage}
+              </span>
+            ) : null}
+            {expansionVisibilityHint ? (
+              <span className="sg-field__detail">
+                {expansionVisibilityHint}
               </span>
             ) : null}
           </span>

@@ -123,6 +123,7 @@ const createCallbacks = (
   onNodeDragMove: GraphInteractionCallbacks['onNodeDragMove'],
 ): GraphInteractionCallbacks => ({
   onNodeClick: () => {},
+  onNodeDoubleClick: () => {},
   onClearSelection: () => {},
   onNodeHover: () => {},
   onNodeDragStart: () => {},
@@ -626,6 +627,68 @@ test('node hover focus cancels when the pointer leaves before dwell', async () =
     assert.deepEqual(hoverEvents, [])
   } finally {
     restoreAnimationFrame()
+  }
+})
+
+test('double click on a node prevents Sigma zoom and forwards the interaction', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const originalWindow = globalThis.window
+  const listeners = new Map<string, (event: unknown) => void>()
+  const doubleClicks: string[] = []
+  let prevented = 0
+
+  const adapter = new SigmaRendererAdapter() as unknown as {
+    sigma: {
+      on: (eventName: string, listener: (event: unknown) => void) => void
+      getCamera: () => {
+        on: (eventName: string, listener: (event: unknown) => void) => void
+      }
+    } | null
+    renderStore: Record<string, never> | null
+    physicsStore: Record<string, never> | null
+    callbacks: GraphInteractionCallbacks | null
+    bindEvents: () => void
+  }
+
+  globalThis.window = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as Window & typeof globalThis
+
+  try {
+    adapter.sigma = {
+      on: (eventName, listener) => {
+        listeners.set(eventName, listener)
+      },
+      getCamera: () => ({
+        on: () => {},
+      }),
+    }
+    adapter.renderStore = {}
+    adapter.physicsStore = {}
+    adapter.callbacks = {
+      ...createCallbacks(() => {}),
+      onNodeDoubleClick: (pubkey) => {
+        doubleClicks.push(pubkey)
+      },
+    }
+
+    adapter.bindEvents()
+
+    listeners.get('doubleClickNode')?.({
+      node: 'alice',
+      preventSigmaDefault: () => {
+        prevented += 1
+      },
+    })
+
+    assert.equal(prevented, 1)
+    assert.deepEqual(doubleClicks, ['alice'])
+  } finally {
+    globalThis.window = originalWindow
   }
 })
 

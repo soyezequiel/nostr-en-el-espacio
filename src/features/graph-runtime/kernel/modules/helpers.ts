@@ -69,6 +69,13 @@ export interface RelayCollectionProgress {
 export type RelayCollectionOptions = RelaySubscribeOptions & {
   onProgress?: (progress: RelayCollectionProgress) => void
   hardTimeoutMs?: number
+  signal?: AbortSignal
+}
+
+const createRelayCollectionCancelledError = () => {
+  const error = new Error('Relay collection cancelled.')
+  error.name = 'AbortError'
+  return error
 }
 
 export interface InboundFollowerEvidence {
@@ -330,9 +337,10 @@ export async function collectRelayEvents(
 ): Promise<RelayCollectionResult> {
   return new Promise<RelayCollectionResult>((resolve) => {
     const events: RelayEventEnvelope[] = []
-    const { hardTimeoutMs, onProgress, ...subscribeOptions } = options ?? {}
+    const { hardTimeoutMs, onProgress, signal, ...subscribeOptions } = options ?? {}
     let settled = false
     let cancel = () => {}
+    let detachAbortListener = () => {}
     let hardTimeout: ReturnType<typeof setTimeout> | null =
       typeof hardTimeoutMs === 'number' && hardTimeoutMs > 0
         ? setTimeout(() => {
@@ -364,12 +372,36 @@ export async function collectRelayEvents(
       }
 
       settled = true
+      detachAbortListener()
       if (hardTimeout !== null) {
         clearTimeout(hardTimeout)
         hardTimeout = null
       }
       cancel()
       resolve(result)
+    }
+
+    if (signal?.aborted) {
+      finalize({
+        events,
+        summary: null,
+        error: createRelayCollectionCancelledError(),
+      })
+      return
+    }
+
+    if (signal) {
+      const handleAbort = () => {
+        finalize({
+          events,
+          summary: null,
+          error: createRelayCollectionCancelledError(),
+        })
+      }
+      signal.addEventListener('abort', handleAbort, { once: true })
+      detachAbortListener = () => {
+        signal.removeEventListener('abort', handleAbort)
+      }
     }
 
     cancel = adapter.subscribe(filters, subscribeOptions).subscribe({

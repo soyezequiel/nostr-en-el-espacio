@@ -116,6 +116,7 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
   let connectionsDerivationInFlight = false
   let connectionsDerivationQueued = false
   let connectionsDerivationTimer: ReturnType<typeof setTimeout> | null = null
+  let activeConnectionsDerivationController: AbortController | null = null
 
   /**
    * Derives directed follow edges between current graph nodes.
@@ -126,7 +127,7 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
    * Results are stored in `connectionsLinks` which is used exclusively by
    * the connections layer renderer.
    */
-  async function deriveConnectionsLinks(): Promise<void> {
+  async function deriveConnectionsLinks(signal: AbortSignal): Promise<void> {
     const state = ctx.store.getState()
     const rootPubkey = state.rootNodePubkey
     const graphNodePubkeys = new Set(Object.keys(state.nodes))
@@ -148,13 +149,15 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
     let lastPublishedAt = 0
     let unpublishedContactListUpdates = 0
 
-    const isStaleDerivation = () =>
+    const isCancelledDerivation = () =>
+      signal.aborted ||
+      ctx.store.getState().activeLayer !== 'connections' ||
       ctx.store.getState().rootNodePubkey !== expectedRootPubkey ||
       ctx.store.getState().graphRevision !== expectedGraphRevision ||
       ctx.store.getState().inboundGraphRevision !== expectedInboundGraphRevision
 
     const publishDerivedLinks = (force = false) => {
-      if (isStaleDerivation()) {
+      if (isCancelledDerivation()) {
         return
       }
 
@@ -204,6 +207,9 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
       trackedGraphPubkeys,
       CONNECTIONS_CACHE_LOOKUP_CONCURRENCY,
       async (pubkey) => {
+        if (isCancelledDerivation()) {
+          return
+        }
         try {
           cachedContactListsByPubkey.set(
             pubkey,
@@ -214,6 +220,10 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
         }
       },
     )
+
+    if (isCancelledDerivation()) {
+      return
+    }
 
     for (const pubkey of trackedGraphPubkeys) {
       const cachedContactList = cachedContactListsByPubkey.get(pubkey) ?? null
@@ -238,12 +248,16 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
             chunkIntoBatches(missingPubkeys, CONNECTIONS_FETCH_BATCH_SIZE),
             CONNECTIONS_FETCH_CONCURRENCY,
             async (batch) => {
+              if (isCancelledDerivation()) {
+                return
+              }
+
               const scheduleBatchIngest = (
                 envelopes: readonly RelayEventEnvelope[],
               ) => {
                 progressivePersistChain = progressivePersistChain
                   .then(async () => {
-                    if (isStaleDerivation()) {
+                    if (isCancelledDerivation()) {
                       return
                     }
 
@@ -264,10 +278,18 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
                       latestByPubkey,
                       CONNECTIONS_PARSE_CONCURRENCY,
                       async (envelope) => {
+                        if (isCancelledDerivation()) {
+                          return
+                        }
+
                         const parsed = await ctx.eventsWorker.invoke(
                           'PARSE_CONTACT_LIST',
                           { event: serializeContactListEvent(envelope.event) },
                         )
+
+                        if (isCancelledDerivation()) {
+                          return
+                        }
 
                         await persistence.persistContactListEvent(envelope, parsed)
                         contactListsByPubkey.set(envelope.event.pubkey, {
@@ -298,6 +320,7 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
                 adapter,
                 [{ authors: batch, kinds: [3], limit: batch.length }],
                 {
+                  signal,
                   onProgress: (progress) => {
                     void scheduleBatchIngest(progress.latestBatchEnvelopes)
                   },
@@ -326,10 +349,15 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
     }
 
     connectionsDerivationInFlight = true
+    const controller = new AbortController()
+    activeConnectionsDerivationController = controller
 
     try {
-      await deriveConnectionsLinks()
+      await deriveConnectionsLinks(controller.signal)
     } finally {
+      if (activeConnectionsDerivationController === controller) {
+        activeConnectionsDerivationController = null
+      }
       connectionsDerivationInFlight = false
 
       if (
@@ -342,6 +370,16 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
         connectionsDerivationQueued = false
       }
     }
+  }
+
+  const abortActiveConnectionsDerivation = () => {
+    if (connectionsDerivationTimer !== null) {
+      clearTimeout(connectionsDerivationTimer)
+      connectionsDerivationTimer = null
+    }
+
+    activeConnectionsDerivationController?.abort()
+    activeConnectionsDerivationController = null
   }
 
   const scheduleConnectionsDerivation = () => {
@@ -371,17 +409,19 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
           nextState.rootNodePubkey !== previousState.rootNodePubkey)
 
       if (enteredConnections || graphChangedWhileViewingConnections) {
+        if (graphChangedWhileViewingConnections) {
+          abortActiveConnectionsDerivation()
+        }
         scheduleConnectionsDerivation()
         return
       }
 
       if (
         nextState.activeLayer !== 'connections' &&
-        previousState.activeLayer === 'connections' &&
-        connectionsDerivationTimer !== null
+        previousState.activeLayer === 'connections'
       ) {
-        clearTimeout(connectionsDerivationTimer)
-        connectionsDerivationTimer = null
+        connectionsDerivationQueued = false
+        abortActiveConnectionsDerivation()
       }
     },
   )
@@ -432,10 +472,8 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
 
   function dispose(): void {
     unsubscribeConnectionsRefresh()
-    if (connectionsDerivationTimer !== null) {
-      clearTimeout(connectionsDerivationTimer)
-      connectionsDerivationTimer = null
-    }
+    connectionsDerivationQueued = false
+    abortActiveConnectionsDerivation()
     relaySession.flushPendingRelayHealth()
     rootLoader.cancelActiveLoad()
     zapLayer.cancelActiveZapLoad()

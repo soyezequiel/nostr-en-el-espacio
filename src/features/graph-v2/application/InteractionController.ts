@@ -14,6 +14,9 @@ export class GraphInteractionController {
       onNodeClick: (pubkey) => {
         this.bridge.selectNode(pubkey)
       },
+      onNodeDoubleClick: (pubkey) => {
+        this.bridge.selectNode(pubkey)
+      },
       onClearSelection: () => {
         this.bridge.selectNode(null)
       },

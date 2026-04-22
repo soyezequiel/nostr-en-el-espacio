@@ -1719,18 +1719,34 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
     const sigma = this.sigma
     const callbacks = this.callbacks
-
-    sigma.on('clickNode', ({ node }) => {
+    const shouldIgnoreNodeInteraction = (node: string) => {
       if (shouldSuppressNodeClick(this.suppressedClick, node)) {
         this.suppressedClick = null
-        return
+        return true
       }
 
       if (this.suppressedClick && Date.now() > this.suppressedClick.expiresAt) {
         this.suppressedClick = null
       }
 
+      return false
+    }
+
+    sigma.on('clickNode', ({ node }) => {
+      if (shouldIgnoreNodeInteraction(node)) {
+        return
+      }
+
       callbacks.onNodeClick(node)
+    })
+
+    sigma.on('doubleClickNode', (event) => {
+      if (shouldIgnoreNodeInteraction(event.node)) {
+        return
+      }
+
+      event.preventSigmaDefault?.()
+      callbacks.onNodeDoubleClick(event.node)
     })
 
     sigma.on('clickStage', () => {

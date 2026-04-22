@@ -1754,6 +1754,26 @@ export default function GraphAppV2() {
     const hasVisibleFrom = visibleNodeSet.has(zap.fromPubkey)
     const hasVisibleTo = visibleNodeSet.has(zap.toPubkey)
     if (!hasVisibleFrom || !hasVisibleTo) {
+      if (hasVisibleTo && !hasVisibleFrom) {
+        const played = sigmaHostRef.current?.playZapArrival({
+          toPubkey: zap.toPubkey,
+          sats: zap.sats,
+        }) ?? false
+        if (shouldTrace) {
+          traceZapFlow(played ? 'uiZapGate.played' : 'uiZapGate.dropped', {
+            reason: played ? 'arrival-only' : 'arrival-overlay-rejected',
+            fromPubkey: zap.fromPubkey,
+            toPubkey: zap.toPubkey,
+            sats: zap.sats,
+            hasVisibleFrom,
+            hasVisibleTo,
+            activeLayer: sceneState.activeLayer,
+            visibleNodeCount: visibleNodeSet.size,
+          })
+        }
+        return played
+      }
+
       if (shouldTrace) {
         traceZapFlow('uiZapGate.dropped', {
           reason: 'endpoint-not-visible',
@@ -1762,6 +1782,7 @@ export default function GraphAppV2() {
           sats: zap.sats,
           hasVisibleFrom,
           hasVisibleTo,
+          activeLayer: sceneState.activeLayer,
           visibleNodeCount: visibleNodeSet.size,
         })
       }
@@ -1813,7 +1834,7 @@ export default function GraphAppV2() {
     }
 
     return played
-  }, [sceneState.edgesById, showZaps, visibleNodeSet])
+  }, [sceneState.activeLayer, sceneState.edgesById, showZaps, visibleNodeSet])
 
   // Propagate physics pause/resume to the Sigma runtime when toggled.
   useEffect(() => {

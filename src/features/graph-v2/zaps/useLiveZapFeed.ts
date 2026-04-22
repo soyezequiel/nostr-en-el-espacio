@@ -16,6 +16,18 @@ const MAX_RECEIPT_AGE_MS = 60_000
 export const MAX_ZAP_FILTER_PUBKEYS = 256
 const SEEN_CACHE_LIMIT = 200
 
+export function buildLiveZapTargetBatches(
+  signature: string,
+  batchSize = MAX_ZAP_FILTER_PUBKEYS,
+): string[][] {
+  const pubkeys = signature ? signature.split(',').filter(Boolean) : []
+  const batches: string[][] = []
+  for (let index = 0; index < pubkeys.length; index += batchSize) {
+    batches.push(pubkeys.slice(index, index + batchSize))
+  }
+  return batches
+}
+
 export function useLiveZapFeed({
   visiblePubkeys,
   enabled,
@@ -64,8 +76,9 @@ export function useLiveZapFeed({
       return
     }
     
-    const pubkeys = signature ? signature.split(',') : []
-    if (pubkeys.length === 0) {
+    const targetBatches = buildLiveZapTargetBatches(signature)
+    const targetCount = targetBatches.reduce((count, batch) => count + batch.length, 0)
+    if (targetCount === 0) {
       const reason =
         enforceVisiblePubkeyLimit && visiblePubkeyCount > MAX_ZAP_FILTER_PUBKEYS
           ? 'visible-pubkey-limit'
@@ -83,7 +96,7 @@ export function useLiveZapFeed({
       return
     }
     let disposed = false
-    let subscription: NDKSubscription | null = null
+    let subscriptions: NDKSubscription[] = []
     const seen = new Set<string>()
     const seenOrder: string[] = []
     const startedAtMs = Date.now()
@@ -109,8 +122,9 @@ export function useLiveZapFeed({
       }
       if (disposed) return
       
-      const pubkeys = signature ? signature.split(',') : []
-      if (pubkeys.length === 0) {
+      const targetBatches = buildLiveZapTargetBatches(signature)
+      const targetCount = targetBatches.reduce((count, batch) => count + batch.length, 0)
+      if (targetCount === 0) {
         traceZapFlow('liveFeed.skippedAfterConnect', {
           enabled,
           visiblePubkeyCount,
@@ -120,14 +134,11 @@ export function useLiveZapFeed({
       
       traceZapFlow('liveFeed.subscribed', {
         filterKind: 9735,
-        targetPubkeyCount: pubkeys.length,
-        targetPubkeySample: pubkeys.slice(0, 12),
+        targetPubkeyCount: targetCount,
+        subscriptionCount: targetBatches.length,
+        targetPubkeySample: targetBatches.flat().slice(0, 12),
       })
-      subscription = ndk.subscribe(
-        { kinds: [9735], '#p': pubkeys },
-        { closeOnEose: false },
-      )
-      subscription.on('event', (event: NDKEvent) => {
+      const handleEvent = (event: NDKEvent) => {
         if (disposed) return
         if (!remember(event.id)) return
 
@@ -192,13 +203,24 @@ export function useLiveZapFeed({
           })
         }
         onZapRef.current(parsed)
+      }
+
+      subscriptions = targetBatches.map((pubkeys) => {
+        const subscription = ndk.subscribe(
+          { kinds: [9735], '#p': pubkeys },
+          { closeOnEose: false },
+        )
+        subscription.on('event', handleEvent)
+        return subscription
       })
     })()
 
     return () => {
       disposed = true
-      subscription?.stop()
-      subscription = null
+      for (const subscription of subscriptions) {
+        subscription.stop()
+      }
+      subscriptions = []
     }
   }, [enabled, enforceVisiblePubkeyLimit, signature, visiblePubkeyCount])
 }

@@ -43,6 +43,7 @@ export type MinimapViewport = MinimapSnapshot['viewport']
 
 export interface SigmaCanvasHostHandle {
   playZap: (zap: Pick<ParsedZap, 'fromPubkey' | 'toPubkey' | 'sats'>) => boolean
+  playZapArrival: (zap: Pick<ParsedZap, 'toPubkey' | 'sats'>) => boolean
   recenterCamera: () => void
   zoomIn: () => void
   zoomOut: () => void
@@ -207,6 +208,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
     ref,
     () => ({
       playZap: (zap) => overlayRef.current?.play(zap) ?? false,
+      playZapArrival: (zap) => overlayRef.current?.playArrival(zap) ?? false,
       recenterCamera: () => adapterRef.current?.recenterCamera(),
       zoomIn: () => adapterRef.current?.zoomIn(),
       zoomOut: () => adapterRef.current?.zoomOut(),

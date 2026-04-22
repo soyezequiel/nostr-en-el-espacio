@@ -22,7 +22,7 @@ export interface ViewportPositionResolver {
 }
 
 interface ActiveElectron {
-  fromPubkey: string
+  fromPubkey: string | null
   toPubkey: string
   radiusPx: number
   label: string
@@ -99,6 +99,25 @@ export class ZapElectronOverlay {
     return true
   }
 
+  public playArrival(zap: Pick<ParsedZap, 'toPubkey' | 'sats'>): boolean {
+    if (this.disposed) return false
+
+    const toPos = this.getCssViewportPosition(zap.toPubkey)
+    if (!toPos) return false
+
+    this.animations.push({
+      fromPubkey: null,
+      toPubkey: zap.toPubkey,
+      radiusPx: satsToRadiusPx(zap.sats),
+      label: formatSatsLabel(zap.sats),
+      startMs: performance.now(),
+      durationMs: DEFAULT_DURATION_MS,
+      flickerSeed: Math.random() * Math.PI * 2,
+    })
+    this.ensureTicking()
+    return true
+  }
+
   public dispose(): void {
     this.disposed = true
     this.animations = []
@@ -140,11 +159,20 @@ export class ZapElectronOverlay {
       const elapsed = timestamp - anim.startMs
       if (elapsed >= anim.durationMs) continue
 
-      const from = this.getCssViewportPosition(anim.fromPubkey)
       const to = this.getCssViewportPosition(anim.toPubkey)
+      if (!to) continue
+
+      if (anim.fromPubkey === null) {
+        const progress = Math.min(1, Math.max(0, elapsed / anim.durationMs))
+        this.drawArrivalZap(ctx, to, progress, anim)
+        next.push(anim)
+        continue
+      }
+
+      const from = this.getCssViewportPosition(anim.fromPubkey)
       // If a node left the viewport/graph mid-flight, drop the animation so we
       // never paint on stale or offscreen positions.
-      if (!from || !to) continue
+      if (!from) continue
 
       const progress = Math.min(1, Math.max(0, elapsed / anim.durationMs))
       this.drawElectron(ctx, from, to, progress, anim)
@@ -190,6 +218,26 @@ export class ZapElectronOverlay {
     ctx.restore()
 
     this.drawAmountLabel(ctx, anim.label, x, y, nx, ny, progress, lifeAlpha)
+  }
+
+  private drawArrivalZap(
+    ctx: CanvasRenderingContext2D,
+    to: { x: number; y: number },
+    progress: number,
+    anim: ActiveElectron,
+  ): void {
+    const fadeIn = smoothstep(0, 0.12, progress)
+    const fadeOut = 1 - smoothstep(0.84, 1, progress)
+    const lifeAlpha = fadeIn * fadeOut
+    const flicker = 0.86 + Math.sin(progress * Math.PI * 18 + anim.flickerSeed) * 0.14
+
+    ctx.save()
+    ctx.globalCompositeOperation = 'lighter'
+    this.drawArrivalPulse(ctx, to, progress, anim.radiusPx)
+    this.drawEnergyCore(ctx, to.x, to.y, anim.radiusPx, lifeAlpha, flicker)
+    ctx.restore()
+
+    this.drawAmountLabel(ctx, anim.label, to.x, to.y, 0, -1, progress, lifeAlpha)
   }
 
   private drawEnergyRoute(

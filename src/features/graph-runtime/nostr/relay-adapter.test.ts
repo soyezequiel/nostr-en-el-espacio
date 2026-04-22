@@ -160,6 +160,11 @@ test('COUNT unsupported notices do not circuit-break later subscriptions', async
   const countResults = await adapterA.count([{ authors: ['a'], kinds: [3] }])
   assert.equal(countResults[0]?.supported, false)
   assert.match(countResults[0]?.errorMessage ?? '', /COUNT/i)
+  assert.equal(adapterA.getRelayHealth()[relayUrl]?.status, 'idle')
+  assert.equal(
+    adapterA.getRelayHealth()[relayUrl]?.lastNotice,
+    'COUNT no soportado por este relay',
+  )
 
   const adapterB = createRelayPoolAdapter({
     relayUrls: [relayUrl],

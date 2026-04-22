@@ -271,8 +271,13 @@ export class RelayPoolAdapter {
         if (countUnsupported) {
           return {
             ...current,
-            status: current.status === 'connecting' ? 'idle' : current.status,
+            status:
+              current.activeSubscriptions > 0 || current.lastEventMs
+                ? 'healthy'
+                : 'idle',
+            lastNotice: 'COUNT no soportado por este relay',
             lastCloseReason: message,
+            lastErrorCode: undefined,
           }
         }
 

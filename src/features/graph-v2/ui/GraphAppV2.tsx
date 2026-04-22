@@ -1987,8 +1987,8 @@ export default function GraphAppV2() {
   ])
 
   // Rail buttons — every entry is a DIRECT action or toggle.
-  // Settings panel keeps the detailed controls; rail gives quick toggles
-  // without duplicating what the panel does.
+  // Panel entries are open-only; close stays on the panel X.
+  // Layer controls below remain direct toggles.
   const handleOpenRootSheet = useCallback(() => {
     setIsPersonSearchOpen(false)
     setIsSettingsOpen(false)
@@ -2022,23 +2022,19 @@ export default function GraphAppV2() {
     setIsPersonSearchOpen(false)
   }, [bridge, isFixtureMode, updateFixtureState])
 
-  const handleToggleSettings = useCallback(() => {
-    if (isSettingsOpen) {
-      setIsSettingsOpen(false)
-      return
-    }
+  const handleOpenSettings = useCallback(() => {
     openSettingsTab(activeSettingsTab)
-  }, [activeSettingsTab, isSettingsOpen, openSettingsTab])
+  }, [activeSettingsTab, openSettingsTab])
 
-  const handleToggleNotifications = useCallback(() => {
+  const handleOpenNotifications = useCallback(() => {
     setIsPersonSearchOpen(false)
     setIsSettingsOpen(false)
     setIsRuntimeInspectorOpen(false)
     setIsRootSheetOpen(false)
-    setIsNotificationsOpen((current) => !current)
+    setIsNotificationsOpen(true)
   }, [])
 
-  const handleToggleRuntimeInspector = useCallback(() => {
+  const handleOpenRuntimeInspector = useCallback(() => {
     if (!canUseRuntimeInspector) {
       return
     }
@@ -2046,7 +2042,7 @@ export default function GraphAppV2() {
     setIsSettingsOpen(false)
     setIsNotificationsOpen(false)
     setIsRootSheetOpen(false)
-    setIsRuntimeInspectorOpen((current) => !current)
+    setIsRuntimeInspectorOpen(true)
   }, [canUseRuntimeInspector])
 
   const handleTogglePhysics = useCallback(() => {
@@ -2298,30 +2294,26 @@ export default function GraphAppV2() {
   const railButtons: RailButton[] = useMemo(() => [
     {
       id: 'settings',
-      tip: isSettingsOpen ? 'Cerrar ajustes' : 'Ajustes',
+      tip: 'Ajustes',
       icon: <GearIcon />,
       active: isSettingsOpen,
-      onClick: handleToggleSettings,
+      onClick: handleOpenSettings,
     },
     {
       id: 'notifications',
-      tip: isNotificationsOpen
-        ? 'Cerrar notificaciones'
-        : `Notificaciones (${notificationHistory.length})`,
+      tip: `Notificaciones (${notificationHistory.length})`,
       icon: <BellIcon />,
       active: isNotificationsOpen,
       badge: notificationHistory.length,
-      onClick: handleToggleNotifications,
+      onClick: handleOpenNotifications,
     },
     ...(canUseRuntimeInspector
       ? [{
           id: 'runtime',
-          tip: isRuntimeInspectorOpen
-            ? 'Cerrar inspector de runtime'
-            : 'Inspector de runtime (Shift + D)',
+          tip: 'Inspector de runtime (Shift + D)',
           icon: <PulseIcon />,
           active: isRuntimeInspectorOpen,
-          onClick: handleToggleRuntimeInspector,
+          onClick: handleOpenRuntimeInspector,
         } satisfies RailButton]
       : []),
     {
@@ -2365,11 +2357,12 @@ export default function GraphAppV2() {
   ], [
     canUseRuntimeInspector,
     handleOpenPersonSearch,
+    handleOpenNotifications,
+    handleOpenRuntimeInspector,
+    handleOpenSettings,
     handleRecenter,
     handleStaleRelays,
     handleTogglePhysics,
-    handleToggleRuntimeInspector,
-    handleToggleSettings,
     handleToggleZaps,
     isPersonSearchOpen,
     isNotificationsOpen,
@@ -2381,7 +2374,6 @@ export default function GraphAppV2() {
     physicsEnabled,
     showZaps,
     uiState.relayState.isGraphStale,
-    handleToggleNotifications,
   ])
 
   // Toasts — combine feedback sources
@@ -3006,7 +2998,6 @@ export default function GraphAppV2() {
       {(isSettingsOpen || isNotificationsOpen || isPersonSearchPanelOpen || isIdentityPanelOpen) &&
         !isRuntimeInspectorOpen && (
         <SigmaSidePanel
-          closeOnOutsidePointerDown={isSettingsOpen || isNotificationsOpen || isPersonSearchPanelOpen}
           eyebrow={
             isSettingsOpen
               ? 'AJUSTES'

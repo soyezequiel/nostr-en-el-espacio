@@ -242,6 +242,43 @@ const translateRelayStatus = (status: RelayHealthStatus) => {
   }
 }
 
+const COUNT_UNSUPPORTED_RELAY_NOTICE = 'COUNT no soportado por este relay'
+const COUNT_UNSUPPORTED_NOTICE_PATTERNS = [
+  'unknown cmd',
+  'does not support nip-45',
+  'count unsupported',
+  'count not supported',
+  'count no soportado',
+]
+
+const translateRelayNotice = (notice: string | null | undefined) => {
+  const trimmed = notice?.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const normalized = trimmed.toLowerCase()
+  if (
+    COUNT_UNSUPPORTED_NOTICE_PATTERNS.some((pattern) =>
+      normalized.includes(pattern),
+    )
+  ) {
+    return COUNT_UNSUPPORTED_RELAY_NOTICE
+  }
+
+  return trimmed
+}
+
+const formatRelayEndpointDetail = (
+  endpoint:
+    | CanonicalGraphUiState['relayState']['endpoints'][string]
+    | undefined,
+) =>
+  translateRelayNotice(endpoint?.lastNotice) ||
+  (endpoint?.lastCheckedAt
+    ? `Ultima revision ${new Date(endpoint.lastCheckedAt).toLocaleTimeString('es-AR')}`
+    : 'Sin aviso reciente')
+
 const formatToneLabel = (tone: RuntimeInspectorTone) => {
   switch (tone) {
     case 'ok':
@@ -353,6 +390,23 @@ const toneForAvatarReason = (label: string): RuntimeInspectorTone => {
   return 'warn'
 }
 
+const isExternalAvatarFailureReason = (reason: string | null | undefined) => {
+  if (!reason) {
+    return false
+  }
+
+  const normalized = reason.toLowerCase()
+  return (
+    normalized === 'unresolved_host' ||
+    normalized.startsWith('http_') ||
+    normalized.includes('safe') ||
+    normalized.includes('403') ||
+    normalized.includes('404') ||
+    normalized.includes('410') ||
+    normalized.includes('451')
+  )
+}
+
 const classifyProfileState = (
   pubkey: string,
   nodesByPubkey: CanonicalGraphSceneState['nodesByPubkey'],
@@ -451,6 +505,9 @@ const isVisibleAvatarNodeAffected = (node: RuntimeAvatarNodeSnapshot) =>
     node.cacheState === 'failed' ||
     selectProblematicAvatarReason(node) !== null)
 
+const visibleAvatarFailureLooksExternal = (node: RuntimeAvatarNodeSnapshot) =>
+  isExternalAvatarFailureReason(selectProblematicAvatarReason(node))
+
 const toneRank = (tone: RuntimeInspectorTone) => {
   switch (tone) {
     case 'bad':
@@ -480,11 +537,7 @@ const buildCoverageSection = (
     return {
       relay: compactRelay(relayUrl),
       estado: translateRelayStatus(endpoint?.status ?? 'unknown'),
-      detalle:
-        endpoint?.lastNotice?.trim() ||
-        (endpoint?.lastCheckedAt
-          ? `Ultima revision ${new Date(endpoint.lastCheckedAt).toLocaleTimeString('es-AR')}`
-          : 'Sin aviso reciente'),
+      detalle: formatRelayEndpointDetail(endpoint),
     }
   })
 
@@ -739,13 +792,26 @@ const buildAvatarSection = (
   const failedCount = cache?.byState.failed ?? 0
   const blockedCount = loader?.blockedCount ?? 0
   const withPictureMonograms = overlay?.counts.withPictureMonogramDraws ?? 0
-  const visibleFailedCount =
-    overlay?.nodes.filter((node) => node.hasPictureUrl && node.cacheState === 'failed')
-      .length ?? 0
+  const visibleFailedNodes =
+    overlay?.nodes.filter(
+      (node) => node.hasPictureUrl && node.cacheState === 'failed',
+    ) ?? []
+  const visibleFailedCount = visibleFailedNodes.length
   const visibleBlockedCount =
     overlay?.nodes.filter((node) => node.hasPictureUrl && node.blocked).length ?? 0
-  const visibleAffectedCount =
-    overlay?.nodes.filter(isVisibleAvatarNodeAffected).length ?? 0
+  const visibleAffectedNodes =
+    overlay?.nodes.filter(isVisibleAvatarNodeAffected) ?? []
+  const visibleAffectedCount = visibleAffectedNodes.length
+  const visibleExternalFailureCount = visibleAffectedNodes.filter(
+    visibleAvatarFailureLooksExternal,
+  ).length
+  const visiblePipelineAffectedCount =
+    visibleAffectedCount - visibleExternalFailureCount
+  const visibleExternalFailedCount = visibleFailedNodes.filter(
+    visibleAvatarFailureLooksExternal,
+  ).length
+  const visiblePipelineFailedCount =
+    visibleFailedCount - visibleExternalFailedCount
   const cacheEntryCount =
     (cache?.byState.ready ?? 0) +
     (cache?.byState.loading ?? 0) +
@@ -767,13 +833,24 @@ const buildAvatarSection = (
       'El host de Sigma todavia no expuso un snapshot de runtime para avatares.'
     queLeerAhora =
       'Espera a que el grafo termine de montar y vuelve a abrir Avatares.'
-  } else if (visibleAffectedCount >= 5) {
+  } else if (
+    visiblePipelineAffectedCount >= 5 ||
+    visibleBlockedCount >= 5 ||
+    withPictureMonograms >= 5
+  ) {
     tone = 'bad'
-    resumen = 'Hay fotos visibles fallidas'
+    resumen = 'Hay fallas visibles de avatares'
     quePasaAhora =
-      'Hay varias cuentas visibles con foto disponible que terminan fallando, bloqueadas o en monograma.'
+      'Hay varias cuentas visibles con foto disponible afectadas por bloqueo, cache fallida interna o degradacion a monograma.'
     queLeerAhora =
-      'Abre Avatares y revisa las razones dominantes y los nodos de muestra.'
+      'Abre Avatares y revisa si el loader, cache o renderer estan degradando fotos que deberian dibujarse.'
+  } else if (visibleAffectedCount >= 5) {
+    tone = 'warn'
+    resumen = 'Fotos externas fallidas'
+    quePasaAhora =
+      'Las fotos visibles fallidas apuntan a URLs externas rotas, bloqueadas o inseguras. El loader y el renderer no aparecen como cuello principal.'
+    queLeerAhora =
+      'Abre Avatares para ver que cuentas tienen 404, 403, host caido o URL bloqueada por seguridad.'
   } else if (visibleAffectedCount > 0) {
     tone = 'warn'
     resumen = 'Algunas fotos visibles necesitan atencion'
@@ -844,9 +921,9 @@ const buildAvatarSection = (
       { label: 'Fotos dibujadas', value: formatInteger(overlay?.counts.drawnImages ?? 0), tone: 'ok' },
       { label: 'Monogramas con foto', value: formatInteger(withPictureMonograms), tone: withPictureMonograms > 0 ? 'warn' : 'ok' },
       { label: 'Cache ready', value: formatInteger(cache?.byState.ready ?? 0), tone: 'ok' },
-      { label: 'Cache failed', value: formatInteger(failedCount), tone: visibleFailedCount > 0 ? 'bad' : failedCount > 0 ? 'warn' : 'ok' },
+      { label: 'Cache failed', value: formatInteger(failedCount), tone: visiblePipelineFailedCount > 0 ? 'bad' : failedCount > 0 ? 'warn' : 'ok' },
       { label: 'Loader blocked', value: formatInteger(blockedCount), tone: visibleBlockedCount > 0 ? 'bad' : blockedCount > 0 ? 'warn' : 'ok' },
-      { label: 'Visibles afectadas', value: formatInteger(visibleAffectedCount), tone: visibleAffectedCount >= 5 ? 'bad' : visibleAffectedCount > 0 ? 'warn' : 'ok' },
+      { label: 'Visibles afectadas', value: formatInteger(visibleAffectedCount), tone: visiblePipelineAffectedCount >= 5 ? 'bad' : visibleAffectedCount > 0 ? 'warn' : 'ok' },
       {
         label: 'Frame EMA',
         value: input.avatarPerfSnapshot ? `${formatDecimal(input.avatarPerfSnapshot.emaFrameMs)} ms` : 'sin dato',
@@ -1133,11 +1210,7 @@ const buildRelaysSection = (
     filas: endpoints.map(({ relay, endpoint }) => ({
       relay,
       estado: translateRelayStatus(endpoint?.status ?? 'unknown'),
-      detalle:
-        endpoint?.lastNotice?.trim() ||
-        (endpoint?.lastCheckedAt
-          ? `Ultima revision ${new Date(endpoint.lastCheckedAt).toLocaleTimeString('es-AR')}`
-          : 'Sin aviso reciente'),
+      detalle: formatRelayEndpointDetail(endpoint),
     })),
   }
 }

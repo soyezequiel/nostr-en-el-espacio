@@ -349,3 +349,130 @@ test('runtime inspector counts failed and blocked visible avatars once', () => {
 
   assert.equal(snapshot.avatars.estado, '1 visibles afectadas / 1 fallas cache')
 })
+
+test('runtime inspector treats external avatar URL failures as warning', () => {
+  const runtimeSnapshot = createAvatarRuntimeSnapshot()
+  const template = runtimeSnapshot.overlay?.nodes.find(
+    (node) => node.pubkey === 'broken',
+  )
+  assert.ok(template)
+  assert.ok(runtimeSnapshot.overlay)
+  assert.ok(runtimeSnapshot.cache)
+
+  const failedNodes = Array.from({ length: 6 }, (_, index) => ({
+    ...template,
+    pubkey: `external-${index}`,
+    label: `External ${index}`,
+    url: `https://example.com/missing-${index}.png`,
+    urlKey: `external-${index}::https://example.com/missing-${index}.png`,
+    cacheFailureReason: index % 2 === 0 ? 'http_404' : 'unresolved_host',
+  }))
+
+  runtimeSnapshot.overlay.nodes = failedNodes
+  runtimeSnapshot.overlay.counts.visibleNodes = failedNodes.length
+  runtimeSnapshot.overlay.counts.nodesWithPictureUrl = failedNodes.length
+  runtimeSnapshot.overlay.counts.nodesWithSafePictureUrl = failedNodes.length
+  runtimeSnapshot.overlay.counts.selectedForImage = failedNodes.length
+  runtimeSnapshot.overlay.byDrawFallbackReason = {
+    http_404: 3,
+    unresolved_host: 3,
+  }
+  runtimeSnapshot.cache.byState.failed = failedNodes.length
+  runtimeSnapshot.cache.entries = failedNodes.map((node, index) => ({
+    urlKey: node.urlKey,
+    state: 'failed',
+    bucket: null,
+    startedAt: null,
+    readyAt: null,
+    failedAt: index,
+    expiresAt: null,
+    bytes: null,
+    reason: node.cacheFailureReason,
+  }))
+
+  const snapshot = buildRuntimeInspectorSnapshot(createBaseInput(runtimeSnapshot))
+  const avatarSummary = snapshot.summary.find((item) => item.id === 'avatars')
+  const cacheFailedMetric = snapshot.avatars.metricas.find(
+    (metric) => metric.label === 'Cache failed',
+  )
+  const visibleAffectedMetric = snapshot.avatars.metricas.find(
+    (metric) => metric.label === 'Visibles afectadas',
+  )
+
+  assert.equal(snapshot.avatars.tone, 'warn')
+  assert.equal(snapshot.avatars.resumen, 'Fotos externas fallidas')
+  assert.equal(avatarSummary?.estado, 'Amarillo')
+  assert.equal(cacheFailedMetric?.tone, 'warn')
+  assert.equal(visibleAffectedMetric?.tone, 'warn')
+})
+
+test('runtime inspector keeps internal avatar failures red', () => {
+  const runtimeSnapshot = createAvatarRuntimeSnapshot()
+  const template = runtimeSnapshot.overlay?.nodes.find(
+    (node) => node.pubkey === 'broken',
+  )
+  assert.ok(template)
+  assert.ok(runtimeSnapshot.overlay)
+  assert.ok(runtimeSnapshot.cache)
+
+  const failedNodes = Array.from({ length: 6 }, (_, index) => ({
+    ...template,
+    pubkey: `internal-${index}`,
+    label: `Internal ${index}`,
+    urlKey: `internal-${index}::https://example.com/broken-${index}.png`,
+    cacheFailureReason: null,
+  }))
+
+  runtimeSnapshot.overlay.nodes = failedNodes
+  runtimeSnapshot.overlay.counts.visibleNodes = failedNodes.length
+  runtimeSnapshot.overlay.counts.nodesWithPictureUrl = failedNodes.length
+  runtimeSnapshot.overlay.counts.nodesWithSafePictureUrl = failedNodes.length
+  runtimeSnapshot.overlay.counts.selectedForImage = failedNodes.length
+  runtimeSnapshot.overlay.byDrawFallbackReason = {
+    cache_failed: failedNodes.length,
+  }
+  runtimeSnapshot.cache.byState.failed = failedNodes.length
+  runtimeSnapshot.cache.entries = failedNodes.map((node, index) => ({
+    urlKey: node.urlKey,
+    state: 'failed',
+    bucket: null,
+    startedAt: null,
+    readyAt: null,
+    failedAt: index,
+    expiresAt: null,
+    bytes: null,
+    reason: null,
+  }))
+
+  const snapshot = buildRuntimeInspectorSnapshot(createBaseInput(runtimeSnapshot))
+
+  assert.equal(snapshot.avatars.tone, 'bad')
+  assert.equal(snapshot.avatars.resumen, 'Hay fallas visibles de avatares')
+})
+
+test('runtime inspector translates unsupported COUNT relay notices', () => {
+  const input = createBaseInput(createAvatarRuntimeSnapshot())
+  input.uiState.relayState = {
+    urls: ['wss://relay.damus.io'],
+    endpoints: {
+      'wss://relay.damus.io': {
+        status: 'connected',
+        lastCheckedAt: 1,
+        lastNotice: 'ERROR: bad msg: unknown cmd',
+      },
+    },
+    overrideStatus: 'idle',
+    isGraphStale: false,
+  }
+
+  const snapshot = buildRuntimeInspectorSnapshot(input)
+
+  assert.equal(
+    snapshot.coverage.relays[0]?.detalle,
+    'COUNT no soportado por este relay',
+  )
+  assert.equal(
+    snapshot.relays.filas[0]?.detalle,
+    'COUNT no soportado por este relay',
+  )
+})

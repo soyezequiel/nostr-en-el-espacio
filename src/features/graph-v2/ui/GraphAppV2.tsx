@@ -125,6 +125,7 @@ import {
   MAX_ZAP_FILTER_PUBKEYS,
   useLiveZapFeed,
 } from '@/features/graph-v2/zaps/useLiveZapFeed'
+import { useRecentZapReplay } from '@/features/graph-v2/zaps/useRecentZapReplay'
 import type { ParsedZap } from '@/features/graph-v2/zaps/zapParser'
 import {
   shouldTraceZapPair,
@@ -135,6 +136,7 @@ import type { NostrProfile } from '@/lib/nostr'
 
 type SigmaSettingsTab = 'renderer' | 'relays' | 'dev'
 type NotificationSource = 'action' | 'zap'
+type ZapFeedMode = 'live' | 'recent-hour'
 
 interface SigmaNotificationLogEntry {
   id: string
@@ -1084,6 +1086,8 @@ export default function GraphAppV2() {
   // Rail toggles — direct controls, decoupled from the settings panel
   const [physicsEnabled, setPhysicsEnabled] = useState(true)
   const [showZaps, setShowZaps] = useState(true)
+  const [zapFeedMode, setZapFeedMode] = useState<ZapFeedMode>('live')
+  const [recentZapReplayRequest, setRecentZapReplayRequest] = useState(0)
   const [pauseLiveZapsWhenSceneIsLarge, setPauseLiveZapsWhenSceneIsLarge] =
     useState(false)
   const sigmaHostRef = useRef<SigmaCanvasHostHandle | null>(null)
@@ -1699,12 +1703,16 @@ export default function GraphAppV2() {
     sigmaHostRef.current?.setPhysicsSuspended(!physicsEnabled)
   }, [physicsEnabled])
 
-  const shouldEnableLiveZapFeed =
+  const canRunZapFeed =
     showZaps && !isFixtureMode && sceneState.activeLayer !== 'connections'
+  const shouldEnableLiveZapFeed = canRunZapFeed && zapFeedMode === 'live'
+  const shouldEnableRecentZapReplay =
+    canRunZapFeed && zapFeedMode === 'recent-hour'
   const handleLiveZap = useCallback((zap: ParsedZap) => {
     handleZap(zap)
     setLiveZapFeedFeedback(null)
   }, [handleZap])
+  const handleRecentZapReplay = useCallback((zap: ParsedZap) => handleZap(zap), [handleZap])
   useLiveZapFeed({
     visiblePubkeys,
     enabled: shouldEnableLiveZapFeed,
@@ -1715,12 +1723,18 @@ export default function GraphAppV2() {
       setZapFeedback(msg)
     },
   })
+  const recentZapReplay = useRecentZapReplay({
+    visiblePubkeys,
+    enabled: shouldEnableRecentZapReplay,
+    replayKey: recentZapReplayRequest,
+    onZap: handleRecentZapReplay,
+  })
 
   useEffect(() => {
     if (!shouldEnableLiveZapFeed || !pauseLiveZapsWhenSceneIsLarge) {
       setLiveZapFeedFeedback(null)
     }
-    if (!pauseLiveZapsWhenSceneIsLarge) {
+    if (zapFeedMode !== 'live' || !pauseLiveZapsWhenSceneIsLarge) {
       setZapFeedback((current) =>
         current?.includes(`supera el limite ${MAX_ZAP_FILTER_PUBKEYS}`) ||
         current === 'Zaps live pausados: no hay nodos visibles para filtrar.'
@@ -1728,7 +1742,7 @@ export default function GraphAppV2() {
           : current,
       )
     }
-  }, [pauseLiveZapsWhenSceneIsLarge, shouldEnableLiveZapFeed])
+  }, [pauseLiveZapsWhenSceneIsLarge, shouldEnableLiveZapFeed, zapFeedMode])
 
   const settingsTabs = useMemo(
     () =>
@@ -2545,7 +2559,55 @@ export default function GraphAppV2() {
               relayUrls={uiState.relayState.urls}
             />
             <div className="sg-settings-section">
-              <h4>Zaps live</h4>
+              <h4>Zaps</h4>
+              <div className="sg-setting-block">
+                <div>
+                  <div className="sg-setting-row__lbl">Modo</div>
+                  <div className="sg-setting-row__desc">
+                    Live escucha eventos nuevos; ultima hora consulta y reproduce recibos recientes.
+                  </div>
+                </div>
+                <div className="sg-segmented-control" role="group" aria-label="Modo de zaps">
+                  <button
+                    aria-pressed={zapFeedMode === 'live'}
+                    className={`sg-segmented-control__btn${zapFeedMode === 'live' ? ' sg-segmented-control__btn--active' : ''}`}
+                    onClick={() => setZapFeedMode('live')}
+                    type="button"
+                  >
+                    Live
+                  </button>
+                  <button
+                    aria-pressed={zapFeedMode === 'recent-hour'}
+                    className={`sg-segmented-control__btn${zapFeedMode === 'recent-hour' ? ' sg-segmented-control__btn--active' : ''}`}
+                    onClick={() => setZapFeedMode('recent-hour')}
+                    type="button"
+                  >
+                    Ultima hora
+                  </button>
+                </div>
+              </div>
+              {zapFeedMode === 'recent-hour' ? (
+                <div className="sg-setting-block">
+                  <div className="sg-setting-row__desc">
+                    {recentZapReplay.message ??
+                      'Reproduce los zaps de la ultima hora para los nodos visibles.'}
+                    {recentZapReplay.truncatedTargetCount > 0
+                      ? ` Se omitieron ${formatInteger(recentZapReplay.truncatedTargetCount)} nodos por limite operativo.`
+                      : ''}
+                  </div>
+                  <button
+                    className="sg-mini-action"
+                    disabled={
+                      recentZapReplay.phase === 'loading' ||
+                      recentZapReplay.phase === 'playing'
+                    }
+                    onClick={() => setRecentZapReplayRequest((current) => current + 1)}
+                    type="button"
+                  >
+                    Reproducir otra vez
+                  </button>
+                </div>
+              ) : null}
               <div className="sg-setting-row">
                 <div>
                   <div className="sg-setting-row__lbl">

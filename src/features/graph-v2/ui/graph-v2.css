@@ -1345,12 +1345,53 @@
   gap: 10px;
 }
 
+[data-graph-v2] .sg-setting-block {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+}
+
 [data-graph-v2] .sg-setting-row__lbl { color: var(--sg-fg); }
 
 [data-graph-v2] .sg-setting-row__desc {
   color: var(--sg-fg-faint);
   font-size: 11px;
   margin-top: 2px;
+}
+
+[data-graph-v2] .sg-segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--sg-stroke);
+  border-radius: 8px;
+  background: oklch(100% 0 0 / 0.03);
+}
+
+[data-graph-v2] .sg-segmented-control__btn {
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sg-fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+[data-graph-v2] .sg-segmented-control__btn:hover {
+  color: var(--sg-fg);
+  background: oklch(100% 0 0 / 0.05);
+}
+
+[data-graph-v2] .sg-segmented-control__btn--active {
+  background: var(--sg-fg);
+  color: var(--sg-bg-deep);
+}
+
+[data-graph-v2] .sg-segmented-control__btn--active:hover {
+  color: var(--sg-bg-deep);
+  background: oklch(100% 0 0 / 0.92);
 }
 
 [data-graph-v2] .sg-slider-row {

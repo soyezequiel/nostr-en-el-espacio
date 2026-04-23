@@ -327,6 +327,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private shouldPinDraggedNodeOnRelease = false
 
+  private resumePhysicsAfterDrag = true
+
   private pendingDragFrame: number | null = null
 
   private pendingPhysicsBridgeFrame: number | null = null
@@ -631,6 +633,9 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   public setPhysicsSuspended(suspended: boolean) {
     if (!this.forceRuntime) return
+    if (this.draggedNodePubkey) {
+      this.resumePhysicsAfterDrag = !suspended
+    }
     if (suspended) {
       this.forceRuntime.suspend()
       this.cancelPhysicsPositionBridge()
@@ -1162,6 +1167,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       return
     }
 
+    this.resumePhysicsAfterDrag = !(this.forceRuntime?.isSuspended() ?? false)
     this.draggedNodePubkey = pubkey
     this.shouldPinDraggedNodeOnRelease = false
     this.markMotion()
@@ -1238,8 +1244,13 @@ export class SigmaRendererAdapter implements RendererAdapter {
     // Dragging edits graph coordinates while FA2 is suspended, so the last
     // convergence signal is no longer valid even if topology/settings stayed
     // the same. Resume from the current coordinates and let FA2 settle again.
-    this.forceRuntime?.resume({ invalidateConvergence: true })
-    this.ensurePhysicsPositionBridge()
+    if (this.resumePhysicsAfterDrag) {
+      this.forceRuntime?.resume({ invalidateConvergence: true })
+      this.ensurePhysicsPositionBridge()
+    } else {
+      this.cancelPhysicsPositionBridge()
+    }
+    this.resumePhysicsAfterDrag = true
     this.setCameraLocked(false)
     this.setGraphBoundsLocked(false)
     this.safeRefresh()

@@ -262,6 +262,106 @@ test('continues local drag influence even when pointer movement pauses', async (
   }
 })
 
+test('releaseDrag keeps physics paused when drag started from a suspended runtime', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  let resumeCalls = 0
+  let bridgeEnsures = 0
+  let bridgeCancels = 0
+  let refreshCalls = 0
+  const dragEnds: Array<{ x: number; y: number }> = []
+
+  const adapter = new SigmaRendererAdapter() as unknown as {
+    draggedNodePubkey: string | null
+    shouldPinDraggedNodeOnRelease: boolean
+    lastDragFlushTimestamp: number | null
+    dragInfluenceState: null
+    lastDragGraphPosition: null
+    resumePhysicsAfterDrag: boolean
+    suppressedClick: unknown
+    suppressedStageClickUntil: number
+    renderStore: { getNodePosition: (_pubkey: string) => { x: number; y: number } | null }
+    physicsStore: { setNodeFixed: (_pubkey: string, _pinned: boolean) => void }
+    callbacks: GraphInteractionCallbacks
+    forceRuntime: {
+      resume: (_options?: { invalidateConvergence?: boolean }) => void
+    } | null
+    scene: { render: { pins: { pubkeys: string[] } } } | null
+    flushPendingDragFrame: () => void
+    cancelPendingDragFrame: () => void
+    cancelPhysicsPositionBridge: () => void
+    ensurePhysicsPositionBridge: () => void
+    setCameraLocked: (_locked: boolean) => void
+    setGraphBoundsLocked: (_locked: boolean) => void
+    safeRefresh: () => void
+    recalculateHoverAfterDrag: () => void
+    releaseDrag: (options?: { pinOnRelease?: boolean }) => void
+  }
+
+  adapter.draggedNodePubkey = 'alice'
+  adapter.shouldPinDraggedNodeOnRelease = false
+  adapter.lastDragFlushTimestamp = null
+  adapter.dragInfluenceState = null
+  adapter.lastDragGraphPosition = null
+  adapter.resumePhysicsAfterDrag = false
+  adapter.suppressedClick = null
+  adapter.suppressedStageClickUntil = 0
+  adapter.renderStore = {
+    getNodePosition: () => ({ x: 10, y: 20 }),
+  }
+  adapter.physicsStore = {
+    setNodeFixed: () => {},
+  }
+  adapter.callbacks = {
+    onNodeClick: () => {},
+    onNodeDoubleClick: () => {},
+    onClearSelection: () => {},
+    onNodeHover: () => {},
+    onNodeDragStart: () => {},
+    onNodeDragMove: () => {},
+    onNodeDragEnd: (_pubkey, position) => {
+      dragEnds.push(position)
+    },
+    onViewportChange: () => {},
+  }
+  adapter.forceRuntime = {
+    resume: () => {
+      resumeCalls += 1
+    },
+  }
+  adapter.scene = {
+    render: {
+      pins: { pubkeys: [] },
+    },
+  }
+  adapter.flushPendingDragFrame = () => {}
+  adapter.cancelPendingDragFrame = () => {}
+  adapter.cancelPhysicsPositionBridge = () => {
+    bridgeCancels += 1
+  }
+  adapter.ensurePhysicsPositionBridge = () => {
+    bridgeEnsures += 1
+  }
+  adapter.setCameraLocked = () => {}
+  adapter.setGraphBoundsLocked = () => {}
+  adapter.safeRefresh = () => {
+    refreshCalls += 1
+  }
+  adapter.recalculateHoverAfterDrag = () => {}
+
+  adapter.releaseDrag()
+
+  assert.equal(resumeCalls, 0)
+  assert.equal(bridgeEnsures, 0)
+  assert.equal(bridgeCancels, 1)
+  assert.equal(refreshCalls, 1)
+  assert.equal(adapter.draggedNodePubkey, null)
+  assert.equal(adapter.resumePhysicsAfterDrag, true)
+  assert.deepEqual(dragEnds, [{ x: 10, y: 20 }])
+})
+
 test('keeps hovered neighbors on their base color while marking them highlighted', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'

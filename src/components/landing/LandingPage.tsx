@@ -109,6 +109,7 @@ export default function LandingPage() {
                 className="block"
                 imageClassName="h-14 w-auto object-contain sm:h-16"
                 priority
+                sizes="(max-width: 640px) 128px, 150px"
               />
             </Link>
             <span className="hidden text-[#b8b0a6] sm:block">

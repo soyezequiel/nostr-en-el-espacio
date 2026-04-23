@@ -4,6 +4,8 @@ import { memo } from 'react'
 import Link from 'next/link'
 import AvatarFallback from '@/components/AvatarFallback'
 import BrandLogo from '@/components/BrandLogo'
+import { isSafeAvatarUrl } from '@/features/graph-runtime/avatar'
+import { resolveAvatarFetchUrl } from '@/features/graph-runtime/avatarProxyUrl'
 import type { SocialGraphCaptureFormat } from '@/features/graph-v2/renderer/socialGraphCapture'
 import { ImageShareIcon } from '@/features/graph-v2/ui/SigmaIcons'
 
@@ -47,14 +49,27 @@ export const SigmaTopBar = memo(function SigmaTopBar({
     ? rootNpub.slice(0, 10) + '…' + rootNpub.slice(-6)
     : null
 
+  const rootPictureSrc =
+    rootPictureUrl && isSafeAvatarUrl(rootPictureUrl)
+      ? resolveAvatarFetchUrl(rootPictureUrl, undefined, 64)
+      : null
+
   return (
     <div className="sg-topbar">
       {rootDisplayName !== null ? (
         <div className="sg-root-chip">
           <div className="sg-root-chip__avatar">
-            {rootPictureUrl ? (
+            {rootPictureSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img alt="" src={rootPictureUrl} />
+              <img
+                alt=""
+                className="h-full w-full object-cover"
+                decoding="async"
+                height={28}
+                loading="eager"
+                src={rootPictureSrc}
+                width={28}
+              />
             ) : (
               <AvatarFallback initials={initials} seed={rootNpub ?? rootDisplayName} />
             )}
@@ -114,6 +129,7 @@ export const SigmaTopBar = memo(function SigmaTopBar({
               className="block"
               imageClassName="h-10 w-auto object-contain"
               priority
+              sizes="96px"
             />
           </Link>
           <span style={{ marginLeft: 8, color: 'var(--sg-fg-faint)' }}>

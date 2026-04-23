@@ -71,6 +71,7 @@ export default function Navbar() {
               className="block"
               imageClassName="h-12 w-auto object-contain sm:h-14"
               priority
+              sizes="(max-width: 640px) 112px, 128px"
             />
           </Link>
 

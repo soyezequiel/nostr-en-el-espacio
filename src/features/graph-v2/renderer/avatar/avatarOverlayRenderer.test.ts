@@ -68,6 +68,19 @@ test('draws the forced dragged avatar after budgeted regular avatars', () => {
   )
 })
 
+test('frame cap keeps only the budgeted regular overlay draw items', () => {
+  const items = [
+    { pubkey: 'low-priority', priority: 5, r: 8 },
+    { pubkey: 'highest-priority', priority: 0, r: 10 },
+    { pubkey: 'mid-priority', priority: 2, r: 9 },
+  ]
+
+  assert.deepEqual(
+    selectAvatarDrawItemsForFrame(items, 2, new Set()).map((item) => item.pubkey),
+    ['highest-priority', 'mid-priority'],
+  )
+})
+
 test('caps proximity reveal pubkeys to the closest nodes before forcing avatars', () => {
   const candidates = [
     { pubkey: 'near-b', distanceSquared: 16 },

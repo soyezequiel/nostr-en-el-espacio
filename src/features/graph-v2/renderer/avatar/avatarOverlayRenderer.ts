@@ -113,7 +113,6 @@ interface AvatarDrawItem {
   zoomedOutMonogram: boolean
   priority: number
   monogramInput: MonogramInput
-  monogramCanvas: HTMLCanvasElement
 }
 
 interface AvatarUrlMetadata {
@@ -807,7 +806,6 @@ export class AvatarOverlayRenderer {
         zoomedOutMonogram,
         priority,
         monogramInput,
-        monogramCanvas: this.cache.getMonogram(pubkey, monogramInput),
       })
     })
     this.lastVisibleNodePubkeys = Array.from(seenNodes)
@@ -947,27 +945,9 @@ export class AvatarOverlayRenderer {
       selectedPubkeys,
       (urlKey) => this.scheduler.hasInflight(urlKey),
     )
-    const selectedOrder = new Map(
-      selectedDrawItems.map((item, index) => [item.pubkey, index]),
-    )
-    const unselectedDrawItems = resolvedDrawItems.filter(
-      (item) => !selectedPubkeys.has(item.pubkey),
-    )
-    const orderedDrawItems = budget.showZoomedOutMonograms
-      ? [
-          ...unselectedDrawItems,
-          ...selectedDrawItems,
-        ].sort((a, b) => {
-          const aOrder = selectedOrder.get(a.pubkey)
-          const bOrder = selectedOrder.get(b.pubkey)
-          if (aOrder !== undefined && bOrder !== undefined) {
-            return aOrder - bOrder
-          }
-          if (aOrder !== undefined) return 1
-          if (bOrder !== undefined) return -1
-          return b.priority - a.priority
-        })
-      : selectedDrawItems
+    // Keep total overlay work bounded by the frame cap instead of only
+    // capping image candidates and then drawing monograms for the full set.
+    const orderedDrawItems = selectedDrawItems
     const maxImageDrawsPerFrame = resolveAvatarFrameDrawCap({
       baseCap: budget.maxImageDrawsPerFrame,
       visibleCount: visiblePhotoCount,
@@ -1026,7 +1006,7 @@ export class AvatarOverlayRenderer {
         x: item.x,
         y: item.y,
         r: item.r,
-        monogram: item.monogramCanvas,
+        monogram: this.cache.getMonogram(item.pubkey, item.monogramInput),
         pubkey: item.pubkey,
         url: item.url,
         disableImageReason,
@@ -1171,7 +1151,7 @@ export class AvatarOverlayRenderer {
         fastNodeVelocityThreshold: budget.fastNodeVelocityThreshold,
       },
       counts: {
-        visibleNodes: orderedDrawItems.length,
+        visibleNodes: resolvedDrawItems.length,
         nodesWithPictureUrl: nodesWithPictureUrlCount,
         nodesWithSafePictureUrl: visiblePhotoCount,
         selectedForImage: selectedForImageCount,

@@ -1,8 +1,7 @@
 ﻿import type { Event } from 'nostr-tools'
 
 import { detectDevicePerformance } from '@/features/graph-runtime/devicePerformance'
-
-const VERIFY_WORKER_SCRIPT_URL = '/workers/verify.worker.js'
+import { getVerifyWorkerScriptUrl } from '@/features/graph-runtime/workers/workerScriptUrl'
 
 type PendingRequest = {
   resolve: (value: boolean) => void
@@ -84,7 +83,7 @@ export class VerifyWorkerPool {
 
     try {
       const workerSlots = Array.from({ length: workerCount }, () => {
-        const worker = new Worker(VERIFY_WORKER_SCRIPT_URL, {
+        const worker = new Worker(getVerifyWorkerScriptUrl(), {
           type: 'module',
           name: 'verify.worker',
         })

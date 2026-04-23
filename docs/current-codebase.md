@@ -71,6 +71,8 @@ Export auditable existe en runtime y kernel, pero `GraphAppV2.tsx` no lo mezcla 
 - `src/features/graph-runtime/workers/graph.worker.ts`
 - `src/features/graph-runtime/workers/verifyWorker.ts`
 
+`next.config.ts` publica un `NEXT_PUBLIC_GRAPH_WORKER_BUILD_ID` derivado de esos artefactos para versionar las URLs del browser y evitar reutilizar bundles viejos despues de reinicios.
+
 No existe `physics.worker`: la fisica actual corre desde el renderer de Sigma/Graphology.
 
 ## Donde tocar

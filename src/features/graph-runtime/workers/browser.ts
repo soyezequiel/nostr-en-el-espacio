@@ -14,13 +14,14 @@ import {
   type WorkerClient,
   type WorkerLike,
 } from '@/features/graph-runtime/workers/shared/runtime'
+import {
+  getEventsWorkerScriptUrl,
+  getGraphWorkerScriptUrl,
+} from '@/features/graph-runtime/workers/workerScriptUrl'
 
 const INLINE_WORKERS_FLAG = '1'
 const WORKER_PROBE_TIMEOUT_MS = 5_000
 const WORKER_PROBE_ATTEMPTS = 2
-const EVENTS_WORKER_SCRIPT_URL = '/workers/events.worker.js'
-const GRAPH_WORKER_SCRIPT_URL = '/workers/graph.worker.js'
-
 const shouldForceInlineWorkers = () =>
   process.env.NEXT_PUBLIC_GRAPH_INLINE_WORKERS === INLINE_WORKERS_FLAG
 
@@ -218,7 +219,7 @@ function createNativeWorkerGateway<TMap extends WorkerActionMap>(
 
 export function createEventsWorkerGateway(): WorkerClient<EventsWorkerActionMap> {
   return createNativeWorkerGateway<EventsWorkerActionMap>(
-    EVENTS_WORKER_SCRIPT_URL,
+    getEventsWorkerScriptUrl(),
     'events.worker',
     createInlineEventsWorkerGateway,
   )
@@ -226,7 +227,7 @@ export function createEventsWorkerGateway(): WorkerClient<EventsWorkerActionMap>
 
 export function createGraphWorkerGateway(): WorkerClient<GraphWorkerActionMap> {
   return createNativeWorkerGateway<GraphWorkerActionMap>(
-    GRAPH_WORKER_SCRIPT_URL,
+    getGraphWorkerScriptUrl(),
     'graph.worker',
     createInlineGraphWorkerGateway,
   )

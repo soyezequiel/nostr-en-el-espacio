@@ -85,6 +85,7 @@ const HIGHLIGHT_TRANSITION_MS = 180
 const HOVER_FOCUS_DWELL_MS = 500
 const SCENE_FOCUS_TRANSITION_MS = 180
 const STAGE_CLICK_SUPPRESS_AFTER_DRAG_MS = 160
+const PHYSICS_BRIDGE_PRIORITY_CAP = 768
 const NODE_ZOOM_OUT_MIN_SCALE = 0.42
 const NODE_ZOOM_OUT_SCALE_EXPONENT = 0.55
 const AVATAR_MIN_SIZE_THRESHOLD = 4
@@ -2233,26 +2234,107 @@ export class SigmaRendererAdapter implements RendererAdapter {
     return changed
   }
 
+  private readonly collectPhysicsBridgePubkeys = () => {
+    if (!this.physicsStore) {
+      return []
+    }
+
+    const physicsStore = this.physicsStore
+    const pubkeys: string[] = []
+    const seen = new Set<string>()
+    const addPubkey = (pubkey: string | null | undefined) => {
+      if (
+        !pubkey ||
+        seen.has(pubkey) ||
+        !physicsStore.hasNode(pubkey) ||
+        pubkeys.length >= PHYSICS_BRIDGE_PRIORITY_CAP
+      ) {
+        return
+      }
+
+      seen.add(pubkey)
+      pubkeys.push(pubkey)
+    }
+
+    addPubkey(this.scene?.render.cameraHint.rootPubkey)
+    addPubkey(this.scene?.render.selection.selectedNodePubkey)
+    addPubkey(this.hoveredNodePubkey)
+    addPubkey(this.draggedNodePubkey)
+
+    for (const pubkey of this.scene?.render.pins.pubkeys ?? []) {
+      addPubkey(pubkey)
+    }
+    for (const pubkey of this.avatarOverlay?.getVisibleNodePubkeys() ?? []) {
+      addPubkey(pubkey)
+    }
+    for (const pubkey of this.hoveredNeighbors) {
+      addPubkey(pubkey)
+    }
+    for (const [pubkey] of Array.from(this.dragHopDistances.entries()).sort(
+      (left, right) => left[1] - right[1] || left[0].localeCompare(right[0]),
+    )) {
+      addPubkey(pubkey)
+    }
+
+    return pubkeys
+  }
+
   private readonly flushPhysicsPositionBridge = () => {
     this.pendingPhysicsBridgeFrame = null
 
     if (!this.forceRuntime?.isRunning()) {
+      if (this.forceRuntime?.isSuspended() || this.draggedNodePubkey) {
+        return
+      }
+
+      const startedAtMs = isGraphPerfTraceEnabled() ? nowGraphPerfMs() : 0
+      const changed = this.syncPhysicsPositionsToRender()
+      if (startedAtMs > 0) {
+        traceGraphPerfDuration(
+          'renderer.flushPhysicsPositionBridge',
+          startedAtMs,
+          () => ({
+            syncMode: 'full_settle',
+            changed,
+            renderNodeCount: this.renderStore?.getGraph().order ?? 0,
+            renderEdgeCount: this.renderStore?.getGraph().size ?? 0,
+            physicsNodeCount: this.physicsStore?.getGraph().order ?? 0,
+            physicsEdgeCount: this.physicsStore?.getGraph().size ?? 0,
+            visibleNodeCount:
+              this.avatarOverlay?.getVisibleNodePubkeys().length ?? 0,
+            hasDraggedNode: Boolean(this.draggedNodePubkey),
+            hasHoveredNode: Boolean(this.hoveredNodePubkey),
+          }),
+          { thresholdMs: 8 },
+        )
+      }
+      if (changed) {
+        this.markMotion()
+        this.safeRefresh()
+      }
       return
     }
 
     const startedAtMs = isGraphPerfTraceEnabled() ? nowGraphPerfMs() : 0
-    const changed = this.syncPhysicsPositionsToRender()
+    const priorityPubkeys = this.collectPhysicsBridgePubkeys()
+    const physicsNodeCount = this.physicsStore?.getGraph().order ?? 0
+    const shouldUsePrioritySync =
+      priorityPubkeys.length > 0 && priorityPubkeys.length < physicsNodeCount
+    const changed = shouldUsePrioritySync
+      ? this.syncPhysicsPositionsToRenderForPubkeys(priorityPubkeys)
+      : this.syncPhysicsPositionsToRender()
     if (startedAtMs > 0) {
       traceGraphPerfDuration(
         'renderer.flushPhysicsPositionBridge',
         startedAtMs,
         () => ({
-          syncMode: 'full',
+          syncMode: shouldUsePrioritySync ? 'priority' : 'full',
           changed,
           renderNodeCount: this.renderStore?.getGraph().order ?? 0,
           renderEdgeCount: this.renderStore?.getGraph().size ?? 0,
-          physicsNodeCount: this.physicsStore?.getGraph().order ?? 0,
+          physicsNodeCount,
           physicsEdgeCount: this.physicsStore?.getGraph().size ?? 0,
+          priorityNodeCount: priorityPubkeys.length,
           visibleNodeCount:
             this.avatarOverlay?.getVisibleNodePubkeys().length ?? 0,
           hasDraggedNode: Boolean(this.draggedNodePubkey),
@@ -2262,6 +2344,9 @@ export class SigmaRendererAdapter implements RendererAdapter {
       )
     }
     if (changed) {
+      if (shouldUsePrioritySync) {
+        this.nodeHitTester?.markDirty()
+      }
       this.markMotion()
       this.safeRefresh()
     }

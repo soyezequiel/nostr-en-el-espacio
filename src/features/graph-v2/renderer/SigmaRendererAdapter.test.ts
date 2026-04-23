@@ -362,6 +362,95 @@ test('releaseDrag keeps physics paused when drag started from a suspended runtim
   assert.deepEqual(dragEnds, [{ x: 10, y: 20 }])
 })
 
+test('physics bridge syncs priority nodes while running and all nodes on settle', async () => {
+  const restoreAnimationFrame = installAnimationFrameStub()
+  const originalWebGL2RenderingContext = globalThis.WebGL2RenderingContext
+  const originalWebGLRenderingContext = globalThis.WebGLRenderingContext
+
+  globalThis.WebGL2RenderingContext ??= class {} as typeof WebGL2RenderingContext
+  globalThis.WebGLRenderingContext ??= class {} as typeof WebGLRenderingContext
+
+  try {
+    const { SigmaRendererAdapter } = await import(
+      '@/features/graph-v2/renderer/SigmaRendererAdapter'
+    )
+
+    const scene = createScene()
+    const ledger = new NodePositionLedger()
+    const renderStore = new RenderGraphStore(ledger)
+    const physicsStore = new PhysicsGraphStore(ledger)
+    renderStore.applyScene(scene.render)
+    physicsStore.applyScene(scene.physics)
+    renderStore.setNodePosition('A', 0, 0)
+    renderStore.setNodePosition('D', 10, 0)
+    physicsStore.setNodePosition('A', 100, 0)
+    physicsStore.setNodePosition('D', 200, 0)
+
+    let running = true
+    let suspended = false
+    let dirtyMarks = 0
+    const adapter = new SigmaRendererAdapter() as unknown as {
+      scene: GraphSceneSnapshot
+      renderStore: RenderGraphStore
+      physicsStore: PhysicsGraphStore
+      positionLedger: NodePositionLedger
+      forceRuntime: { isRunning: () => boolean; isSuspended: () => boolean }
+      avatarOverlay: { getVisibleNodePubkeys: () => string[] }
+      nodeHitTester: { markDirty: () => void }
+      sigma: { refresh: () => void }
+      flushPhysicsPositionBridge: () => void
+      cancelPhysicsPositionBridge: () => void
+    }
+
+    adapter.scene = scene
+    adapter.renderStore = renderStore
+    adapter.physicsStore = physicsStore
+    adapter.positionLedger = ledger
+    adapter.forceRuntime = {
+      isRunning: () => running,
+      isSuspended: () => suspended,
+    }
+    adapter.avatarOverlay = { getVisibleNodePubkeys: () => ['A'] }
+    adapter.nodeHitTester = {
+      markDirty: () => {
+        dirtyMarks += 1
+      },
+    }
+    adapter.sigma = { refresh: () => {} }
+
+    adapter.flushPhysicsPositionBridge()
+
+    assert.deepEqual(renderStore.getNodePosition('A'), { x: 100, y: 0 })
+    assert.deepEqual(
+      renderStore.getNodePosition('D'),
+      { x: 10, y: 0 },
+      'non-priority nodes should not be walked on active layout frames',
+    )
+
+    running = false
+    suspended = true
+    physicsStore.setNodePosition('D', 300, 0)
+    adapter.flushPhysicsPositionBridge()
+
+    assert.deepEqual(
+      renderStore.getNodePosition('D'),
+      { x: 10, y: 0 },
+      'suspended physics should not force a settle sync',
+    )
+
+    suspended = false
+    adapter.flushPhysicsPositionBridge()
+
+    assert.deepEqual(renderStore.getNodePosition('D'), { x: 300, y: 0 })
+    assert.ok(dirtyMarks >= 2)
+    adapter.cancelPhysicsPositionBridge()
+  } finally {
+    restoreAnimationFrame()
+    globalThis.WebGL2RenderingContext = originalWebGL2RenderingContext
+    globalThis.WebGLRenderingContext = originalWebGLRenderingContext
+  }
+})
+
 test('keeps hovered neighbors on their base color while marking them highlighted', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'

@@ -1682,12 +1682,12 @@ export default function GraphAppV2() {
     prevSignatureRef.current = sig
   })
 
-  const scene = useMemo(
-    () => buildGraphSceneSnapshot(sceneState),
+  const deferredSceneState = useDeferredValue(sceneState)
+  const deferredScene = useMemo(
+    () => buildGraphSceneSnapshot(deferredSceneState),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sceneState.sceneSignature],
+    [deferredSceneState.sceneSignature],
   )
-  const deferredScene = useDeferredValue(scene)
   const visiblePubkeys = useMemo(
     () => deferredScene.render.nodes.map((node) => node.pubkey),
     [deferredScene.render.nodes],
@@ -3516,7 +3516,7 @@ export default function GraphAppV2() {
         relayState={relayState}
         rootLoadOverride={fixtureUiState?.rootLoad ?? null}
         rootPubkey={sceneState.rootPubkey}
-        sceneNodeCount={scene.render.nodes.length}
+        sceneNodeCount={deferredScene.render.nodes.length}
       />
 
       {/* Top bar: root chip (left) + brand (right) */}

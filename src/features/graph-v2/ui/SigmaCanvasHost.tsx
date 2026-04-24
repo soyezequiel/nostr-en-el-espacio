@@ -283,7 +283,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
     }
 
     emitSnapshot()
-    const intervalId = window.setInterval(emitSnapshot, 500)
+    const intervalId = window.setInterval(emitSnapshot, 1000)
     return () => window.clearInterval(intervalId)
   }, [onAvatarPerfSnapshot])
 

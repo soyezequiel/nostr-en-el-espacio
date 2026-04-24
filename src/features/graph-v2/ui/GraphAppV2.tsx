@@ -119,6 +119,12 @@ import {
 } from '@/features/graph-v2/ui/visibleProfileWarmup'
 import { buildExpansionVisibilityHint } from '@/features/graph-v2/ui/expansionVisibilityHint'
 import {
+  createExpansionAutoFitRequest,
+  shouldClearExpansionAutoFitRequest,
+  shouldRunExpansionAutoFit,
+  type ExpansionAutoFitRequest,
+} from '@/features/graph-v2/ui/expansionAutoFit'
+import {
   MAX_ZAP_FILTER_PUBKEYS,
   useLiveZapFeed,
 } from '@/features/graph-v2/zaps/useLiveZapFeed'
@@ -264,6 +270,8 @@ const createDefaultPhysicsTuningForViewport = (): ForceAtlasPhysicsTuning => {
     repulsionForce: MOBILE_FORCE_ATLAS_REPULSION_FORCE,
   }
 }
+const isMobileGraphViewport = () =>
+  typeof window !== 'undefined' && window.matchMedia(MOBILE_PHYSICS_QUERY).matches
 const VISIBLE_PROFILE_WARMUP_LOOP_DELAY_MS = 1500
 const VISIBLE_PROFILE_WARMUP_INITIAL_DELAY_MS = 250
 const CONNECTION_LOD_RECOVERY_FRAME_MS = 24
@@ -1442,6 +1450,9 @@ export default function GraphAppV2() {
   const [zapActivityLog, setZapActivityLog] = useState<ZapActivityLogEntry[]>([])
   const zapActivitySequenceRef = useRef(0)
   const sigmaHostRef = useRef<SigmaCanvasHostHandle | null>(null)
+  const pendingExpansionAutoFitRef = useRef<ExpansionAutoFitRequest | null>(
+    null,
+  )
   const visibleProfileWarmupAttemptedAtRef = useRef(new Map<string, number>())
   const visibleProfileWarmupInflightRef = useRef(new Set<string>())
   const visibleProfileWarmupDebugRef =
@@ -1698,6 +1709,16 @@ export default function GraphAppV2() {
     dismissIdentityHelp()
     if (isExpanded) return
 
+    if (!isFixtureMode) {
+      if (isMobileGraphViewport()) {
+        setMobilePanelSnap('peek')
+      }
+      pendingExpansionAutoFitRef.current = createExpansionAutoFitRequest(
+        pubkey,
+        latestSceneStateRef.current,
+      )
+    }
+
     startTransition(() => {
       if (isFixtureMode) {
         setActionFeedback('El fixture no trae conexiones por relay.')
@@ -1705,9 +1726,13 @@ export default function GraphAppV2() {
       }
       void bridge.expandNode(pubkey)
         .then((result) => {
+          if (result.status === 'error') {
+            pendingExpansionAutoFitRef.current = null
+          }
           setActionFeedback(result.message)
         })
         .catch((error) => {
+          pendingExpansionAutoFitRef.current = null
           setActionFeedback(
             error instanceof Error
               ? `No se pudo expandir: ${error.message}`
@@ -1838,6 +1863,41 @@ export default function GraphAppV2() {
     () => applyPersonSearchHighlight(deferredScene, personSearchMatches),
     [deferredScene, personSearchMatches],
   )
+
+  useEffect(() => {
+    const pendingRequest = pendingExpansionAutoFitRef.current
+    if (!pendingRequest) {
+      return
+    }
+
+    if (
+      shouldClearExpansionAutoFitRequest(
+        pendingRequest,
+        deferredSceneState,
+      )
+    ) {
+      pendingExpansionAutoFitRef.current = null
+      return
+    }
+
+    if (
+      !shouldRunExpansionAutoFit(
+        pendingRequest,
+        deferredSceneState,
+        isSceneTransitionPending,
+      )
+    ) {
+      return
+    }
+
+    pendingExpansionAutoFitRef.current = null
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        sigmaHostRef.current?.fitCameraToGraph()
+      })
+    })
+  }, [deferredSceneState, isSceneTransitionPending])
+
   const detail = useMemo(
     () => buildNodeDetailProjection(sceneState),
     // eslint-disable-next-line react-hooks/exhaustive-deps

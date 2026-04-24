@@ -1581,9 +1581,13 @@ export class SigmaRendererAdapter implements RendererAdapter {
   }
 
   private copyHoverFocusSnapshot(): HoverFocusSnapshot {
+    // The neighbors Set is treated as read-only: setHoveredNode reassigns
+    // currentHoverFocus to a fresh object+Set on every transition rather than
+    // mutating, so sharing the reference here is safe and avoids cloning a
+    // potentially large Set each hover event.
     return {
       pubkey: this.currentHoverFocus.pubkey,
-      neighbors: new Set(this.currentHoverFocus.neighbors),
+      neighbors: this.currentHoverFocus.neighbors,
     }
   }
 
@@ -2111,10 +2115,10 @@ export class SigmaRendererAdapter implements RendererAdapter {
       pubkey,
       neighbors: nextNeighbors,
     }
-    this.startHighlightTransition(previousFocus, {
-      pubkey,
-      neighbors: new Set(nextNeighbors),
-    })
+    // Share the same Set reference with the transition: currentHoverFocus is
+    // reassigned (not mutated) on the next hover, so the transition's `to`
+    // snapshot stays stable without a defensive clone.
+    this.startHighlightTransition(previousFocus, this.currentHoverFocus)
     this.safeRefresh()
   }
 

@@ -247,8 +247,23 @@ const selectSavedRootState = (state: AppStore) => ({
   setSavedRootProfile: state.setSavedRootProfile,
 })
 
+// Zustand reruns every subscribed selector on every state mutation, so cache
+// Object.keys(state.nodes).length by reference. state.nodes is a Record that
+// gets reassigned on every node upsert, so identity changes exactly when the
+// count can change — perfect WeakMap cache key. Avoids allocating a fresh
+// keys-array (potentially thousands of strings) on every unrelated store
+// mutation (zap ticks, relay status, UI flags, etc.).
+const nodeCountCache = new WeakMap<object, number>()
+const getCachedNodeCount = (nodes: Record<string, unknown>): number => {
+  const cached = nodeCountCache.get(nodes)
+  if (cached !== undefined) return cached
+  const count = Object.keys(nodes).length
+  nodeCountCache.set(nodes, count)
+  return count
+}
+
 const selectRuntimeInspectorStoreState = (state: AppStore) => ({
-  nodeCount: Object.keys(state.nodes).length,
+  nodeCount: getCachedNodeCount(state.nodes),
   linkCount: state.links.length,
   maxNodes: state.graphCaps.maxNodes,
   capReached: state.graphCaps.capReached,

@@ -117,6 +117,7 @@ const createBaseInput = (
   liveZapFeedback: null,
   showZaps: true,
   physicsEnabled: false,
+  imageQualityMode: 'adaptive',
   sceneUpdatesPerMinute: 0,
   uiUpdatesPerMinute: 0,
 })
@@ -476,6 +477,52 @@ test('runtime inspector translates unsupported COUNT relay notices', () => {
     snapshot.relays.filas[0]?.detalle,
     'COUNT no soportado por este relay',
   )
+})
+
+test('runtime inspector ranks the full graph layer as the top resource mode for dense scenes', () => {
+  const input = createBaseInput(createAvatarRuntimeSnapshot())
+  input.sceneState.activeLayer = 'graph'
+  input.scene.render.diagnostics.activeLayer = 'graph'
+  input.scene.render.diagnostics.nodeCount = 1800
+  input.scene.render.diagnostics.visibleEdgeCount = 4200
+  input.scene.physics.diagnostics.nodeCount = 1800
+  input.scene.physics.diagnostics.edgeCount = 4200
+  input.graphSummary.nodeCount = 1800
+  input.graphSummary.linkCount = 4200
+  input.showZaps = false
+
+  const snapshot = buildRuntimeInspectorSnapshot(input)
+
+  assert.equal(snapshot.resourceTop[0]?.id, 'graph-layer')
+  assert.equal(snapshot.resourceTop[0]?.intensidad, 'alta')
+  assert.equal(snapshot.resourceTop[0]?.rank, 1)
+})
+
+test('runtime inspector ranks high quality avatar mode above small graph work', () => {
+  const runtimeSnapshot = createAvatarRuntimeSnapshot()
+  if (!runtimeSnapshot.overlay) {
+    throw new Error('Expected avatar overlay fixture.')
+  }
+  runtimeSnapshot.overlay.counts.drawnImages = 160
+  runtimeSnapshot.overlay.counts.loadCandidates = 240
+  runtimeSnapshot.overlay.counts.pendingCandidates = 90
+  runtimeSnapshot.overlay.resolvedBudget.maxBucket = 1024
+  runtimeSnapshot.cache!.totalBytes = 48 * 1024 * 1024
+
+  const input = createBaseInput(runtimeSnapshot)
+  input.imageQualityMode = 'full-hd'
+  input.scene.render.diagnostics.nodeCount = 50
+  input.scene.render.diagnostics.visibleEdgeCount = 50
+  input.scene.physics.diagnostics.nodeCount = 50
+  input.scene.physics.diagnostics.edgeCount = 50
+  input.showZaps = false
+  input.physicsEnabled = false
+
+  const snapshot = buildRuntimeInspectorSnapshot(input)
+
+  assert.equal(snapshot.resourceTop[0]?.id, 'avatars')
+  assert.equal(snapshot.resourceTop[0]?.intensidad, 'alta')
+  assert.match(snapshot.resourceTop[0]?.detalle ?? '', /full HD/)
 })
 
 test('runtime inspector does not surface layer-filter coverage as the primary issue', () => {

@@ -3616,6 +3616,16 @@
     grid-template-columns: 1fr;
   }
 
+  [data-graph-v2] .sg-runtime__resource-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  [data-graph-v2] .sg-runtime__resource-value,
+  [data-graph-v2] .sg-runtime__resource-intensity {
+    grid-column: 2;
+    justify-self: start;
+  }
+
   [data-graph-v2] .sg-runtime__summary-row {
     grid-template-columns: 1fr;
   }

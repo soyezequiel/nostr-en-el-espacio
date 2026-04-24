@@ -1330,11 +1330,14 @@ const buildResourceTop = (
   return rows
     .sort((left, right) => right.score - left.score || left.titulo.localeCompare(right.titulo))
     .slice(0, 5)
-    .map(({ score: _score, tone, ...row }, index) => ({
-      ...row,
+    .map((row, index) => ({
+      id: row.id,
+      titulo: row.titulo,
+      valor: row.valor,
+      detalle: row.detalle,
       rank: index + 1,
-      intensidad: intensityFromTone(tone),
-      tone,
+      intensidad: intensityFromTone(row.tone),
+      tone: row.tone,
     }))
 }
 

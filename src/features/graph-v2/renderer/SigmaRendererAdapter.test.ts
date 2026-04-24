@@ -177,6 +177,36 @@ type HoverHarness = {
   }
 }
 
+type EdgeReducerHarness = {
+  sigma: {
+    getGraph: () => {
+      hasEdge: (_edgeId: string) => boolean
+      source: (_edgeId: string) => string
+      target: (_edgeId: string) => string
+    }
+  }
+  draggedNodePubkey: string | null
+  currentHoverFocus: { pubkey: string | null; neighbors: Set<string> }
+  edgeReducer: (
+    edge: string,
+    data: {
+      size: number
+      color: string
+      hidden: boolean
+      label: string | null
+      weight: number
+      isDimmed: boolean
+      touchesFocus: boolean
+      zIndex: number
+    },
+  ) => {
+    size: number
+    color: string
+    hidden: boolean
+    zIndex: number
+  }
+}
+
 test('continues local drag influence even when pointer movement pauses', async () => {
   const originalRequestAnimationFrame = globalThis.requestAnimationFrame
   const originalCancelAnimationFrame = globalThis.cancelAnimationFrame
@@ -660,6 +690,48 @@ test('keeps hovered neighbors on their base color while marking them highlighted
   assert.equal(hoveredNeighbor.color, '#8ebfc7')
   assert.equal(hoveredNeighbor.highlighted, true)
   assert.equal(hoveredNeighbor.zIndex, 8)
+})
+
+test('edge reducer hides non first-order edges while dragging a node', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const edgeEndpoints = new Map<string, [string, string]>([
+    ['A->B', ['A', 'B']],
+    ['C->D', ['C', 'D']],
+  ])
+  const adapter = new SigmaRendererAdapter() as unknown as EdgeReducerHarness
+  const baseEdge = {
+    size: 1,
+    color: '#64b5ff',
+    hidden: false,
+    label: null,
+    weight: 1,
+    isDimmed: false,
+    touchesFocus: false,
+    zIndex: 1,
+  }
+
+  adapter.sigma = {
+    getGraph: () => ({
+      hasEdge: (edgeId) => edgeEndpoints.has(edgeId),
+      source: (edgeId) => edgeEndpoints.get(edgeId)?.[0] ?? '',
+      target: (edgeId) => edgeEndpoints.get(edgeId)?.[1] ?? '',
+    }),
+  }
+  adapter.draggedNodePubkey = 'A'
+  adapter.currentHoverFocus = {
+    pubkey: 'A',
+    neighbors: new Set(['B']),
+  }
+
+  const firstOrder = adapter.edgeReducer('A->B', baseEdge)
+  const unrelated = adapter.edgeReducer('C->D', baseEdge)
+
+  assert.equal(firstOrder.hidden, false)
+  assert.ok(firstOrder.size > baseEdge.size)
+  assert.equal(unrelated.hidden, true)
 })
 
 test('social capture uses an isolated avatar cache', async () => {

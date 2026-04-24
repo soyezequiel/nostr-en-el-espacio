@@ -375,10 +375,6 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private isCameraLocked = false
 
-  // Cached so the per-node-per-frame nodeReducer hot path doesn't call
-  // sigma.getCamera().getState() (which allocates a new state object) N times.
-  private cachedCameraRatio = 1
-
   private isGraphBoundsLocked = false
 
   private avatarCache: AvatarBitmapCache | null = null
@@ -1311,7 +1307,6 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
     const sigma = this.sigma
     this.observeContainer(container)
-    this.cachedCameraRatio = sigma.getCamera().getState().ratio
     this.nodeHitTester = installStrictNodeHitTesting(
       sigma,
       this.renderStore.getGraph(),
@@ -1842,7 +1837,6 @@ export class SigmaRendererAdapter implements RendererAdapter {
     })
 
     sigma.getCamera().on('updated', (viewport) => {
-      this.cachedCameraRatio = viewport.ratio
       callbacks.onViewportChange(viewport)
     })
 
@@ -1854,7 +1848,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     data: RenderNodeAttributes,
     focus: HoverFocusSnapshot,
   ): RenderNodeAttributes {
-    const zoomScaledSize = data.size * resolveZoomOutNodeScale(this.cachedCameraRatio)
+    const cameraRatio = this.sigma?.getCamera().ratio ?? 1
+    const zoomScaledSize = data.size * resolveZoomOutNodeScale(cameraRatio)
 
     if (!focus.pubkey) {
       // Hot path during pan/zoom with no hover: merge size + label visibility
@@ -1953,6 +1948,32 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
   }
 
+  private resolveDragEdgeLodAttributes(
+    edge: string,
+    data: RenderEdgeAttributes,
+  ): RenderEdgeAttributes | null {
+    const draggedNodePubkey = this.draggedNodePubkey
+    if (!draggedNodePubkey || !this.sigma) {
+      return null
+    }
+
+    const graph = this.sigma.getGraph()
+    if (!graph.hasEdge(edge)) {
+      return data
+    }
+
+    const source = graph.source(edge)
+    const target = graph.target(edge)
+    if (source !== draggedNodePubkey && target !== draggedNodePubkey) {
+      return data.hidden ? data : { ...data, hidden: true }
+    }
+
+    return this.resolveEdgeHoverAttributes(edge, data, {
+      pubkey: draggedNodePubkey,
+      neighbors: this.currentHoverFocus.neighbors,
+    })
+  }
+
   private applyNodeSceneFocusTransition(
     node: string,
     target: RenderNodeAttributes,
@@ -2025,6 +2046,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
     edge: string,
     data: RenderEdgeAttributes,
   ) => {
+    const dragEdgeLod = this.resolveDragEdgeLodAttributes(edge, data)
+    if (dragEdgeLod) {
+      return dragEdgeLod
+    }
+
     if (this.highlightTransition) {
       const amount = this.getTransitionAmount(this.highlightTransition)
       const from = this.resolveEdgeHoverAttributes(

@@ -2283,6 +2283,7 @@ export default function GraphAppV2() {
   const handleRecentZapReplay = useCallback((zap: ParsedZap) => {
     const played = handleZap(zap)
     appendZapActivity(zap, 'recent-hour', played)
+    return played
   }, [appendZapActivity, handleZap])
   useLiveZapFeed({
     visiblePubkeys,

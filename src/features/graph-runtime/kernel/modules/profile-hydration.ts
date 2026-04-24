@@ -28,6 +28,10 @@ import {
   nowGraphPerfMs,
   traceGraphPerfDuration,
 } from '@/features/graph-runtime/debug/perfTrace'
+import {
+  logTerminalWarning,
+  summarizeHumanTerminalError,
+} from '@/features/graph-runtime/debug/humanTerminalLog'
 import { normalizeMediaUrl } from '@/lib/media'
 
 const PROFILE_PATCH_BUFFER_FLUSH_MS = 16
@@ -150,7 +154,10 @@ export function createProfileHydrationModule(ctx: KernelContext) {
         )
       }
     } catch (error) {
-      console.warn('Cached profile hydration failed:', error)
+      logTerminalWarning('Perfiles', 'No se pudo leer cache de perfiles', {
+        cantidad: uniquePubkeys.length,
+        motivo: summarizeHumanTerminalError(error),
+      })
     }
 
     const batches: string[][] = []
@@ -356,7 +363,10 @@ export function createProfileHydrationModule(ctx: KernelContext) {
                 })
               }
             } catch (error) {
-              console.warn('Primal cache profile fallback failed:', error)
+              logTerminalWarning('Perfiles', 'No respondio cache de perfiles', {
+                cantidad: primalCandidatePubkeys.length,
+                motivo: summarizeHumanTerminalError(error),
+              })
             }
           }
 
@@ -386,7 +396,12 @@ export function createProfileHydrationModule(ctx: KernelContext) {
                     : { source: 'relay' },
                 )
               },
-            ).catch(console.warn)
+            ).catch((error) => {
+              logTerminalWarning('Persistencia', 'No se pudieron guardar perfiles', {
+                cantidad: envelopes.length,
+                motivo: summarizeHumanTerminalError(error),
+              })
+            })
           }
 
           for (const pubkey of batch) {

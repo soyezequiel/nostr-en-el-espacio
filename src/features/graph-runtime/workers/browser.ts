@@ -18,6 +18,10 @@ import {
   getEventsWorkerScriptUrl,
   getGraphWorkerScriptUrl,
 } from '@/features/graph-runtime/workers/workerScriptUrl'
+import {
+  logTerminalWarning,
+  summarizeHumanTerminalError,
+} from '@/features/graph-runtime/debug/humanTerminalLog'
 
 const INLINE_WORKERS_FLAG = '1'
 const IS_DEVELOPMENT = process.env.NODE_ENV === 'development'
@@ -162,10 +166,11 @@ class BrowserWorkerGateway<TMap extends WorkerActionMap>
         name: workerName,
       })
     } catch (error) {
-      console.warn(
-        `[graph] Falling back to inline ${workerName} gateway after native worker construction failed.`,
-        error,
-      )
+      logTerminalWarning('Workers', 'Se usara worker interno', {
+        worker: workerName,
+        etapa: 'creacion',
+        motivo: summarizeHumanTerminalError(error),
+      })
       return createInlineGateway()
     }
 
@@ -179,10 +184,11 @@ class BrowserWorkerGateway<TMap extends WorkerActionMap>
       return nativeClient
     } catch (error) {
       nativeClient.dispose()
-      console.warn(
-        `[graph] Falling back to inline ${workerName} gateway after native worker startup failed.`,
-        error,
-      )
+      logTerminalWarning('Workers', 'Se usara worker interno', {
+        worker: workerName,
+        etapa: 'inicio',
+        motivo: summarizeHumanTerminalError(error),
+      })
       return createInlineGateway()
     }
   }

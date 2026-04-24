@@ -9,6 +9,7 @@ import type { KernelContext } from '@/features/graph-runtime/kernel/modules/cont
 import { createIdleRelayHealthSnapshotMap, createRelayHealthSnapshotFromStore, mapRelayHealthStatus, validateRelayOverrideInput, type RelayCollectionResult } from '@/features/graph-runtime/kernel/modules/helpers'
 import { RELAY_HEALTH_FLUSH_DELAY_MS } from '@/features/graph-runtime/kernel/modules/constants'
 import { transitionRelayOverride } from '@/features/graph-runtime/kernel/transitions/relay-override'
+import { logTerminalWarning } from '@/features/graph-runtime/debug/humanTerminalLog'
 
 interface RelayOverrideSnapshot {
   relayUrls: string[]
@@ -27,9 +28,10 @@ export function createRelaySessionModule(ctx: KernelContext) {
     const state = ctx.store.getState()
     const next = transitionRelayOverride(state.relayOverrideStatus, action)
     if (next === null) {
-      console.warn(
-        `Invalid transition: relayOverride ${state.relayOverrideStatus} -> ${action}`,
-      )
+      logTerminalWarning('Relays', 'Transicion de configuracion ignorada', {
+        desde: state.relayOverrideStatus,
+        hacia: action,
+      })
       return
     }
 

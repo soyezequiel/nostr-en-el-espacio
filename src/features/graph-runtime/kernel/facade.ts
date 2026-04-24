@@ -17,6 +17,10 @@ import { createRelaySessionModule } from '@/features/graph-runtime/kernel/module
 import { createRootLoaderModule } from '@/features/graph-runtime/kernel/modules/root-loader'
 import { createZapLayerModule } from '@/features/graph-runtime/kernel/modules/zap-layer'
 import {
+  logTerminalWarning,
+  summarizeHumanTerminalError,
+} from '@/features/graph-runtime/debug/humanTerminalLog'
+import {
   compareConnectionPubkeys,
   createConnectionsDerivedState,
   type ConnectionContactListRecord,
@@ -307,10 +311,9 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
                     publishDerivedLinks()
                   })
                   .catch((error) => {
-                    console.warn(
-                      'Connections contact list progressive ingest failed:',
-                      error,
-                    )
+                    logTerminalWarning('Conexiones', 'No se pudo integrar follows progresivos', {
+                      motivo: summarizeHumanTerminalError(error),
+                    })
                   })
 
                 return progressivePersistChain
@@ -332,7 +335,9 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
           )
           await progressivePersistChain
         } catch (error) {
-          console.warn('Connections contact list fetch failed:', error)
+          logTerminalWarning('Conexiones', 'No se pudieron consultar listas de follows', {
+            motivo: summarizeHumanTerminalError(error),
+          })
         } finally {
           adapter.close()
         }

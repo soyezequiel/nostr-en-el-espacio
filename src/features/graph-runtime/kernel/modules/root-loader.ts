@@ -12,6 +12,11 @@ import {
   isAccountTraceRoot,
   traceAccountFlow,
 } from '@/features/graph-runtime/debug/accountTrace'
+import {
+  logTerminalOk,
+  logTerminalWarning,
+  summarizeHumanTerminalError,
+} from '@/features/graph-runtime/debug/humanTerminalLog'
 import type { RelayDiscoveryStatsRecord } from '@/features/graph-runtime/db/entities'
 import type {
   RelayCountResult,
@@ -246,9 +251,10 @@ export function createRootLoaderModule(
     const state = ctx.store.getState()
     const nextStatus = transitionRootLoad(state.rootLoad.status, action)
     if (nextStatus === null) {
-      console.warn(
-        `Invalid transition: rootLoad ${state.rootLoad.status} -> ${action}`,
-      )
+      logTerminalWarning('Carga raiz', 'Transicion ignorada', {
+        desde: state.rootLoad.status,
+        hacia: action,
+      })
       return
     }
     state.setRootLoadState({
@@ -506,7 +512,9 @@ export function createRootLoaderModule(
         void ctx.repositories.relayDiscoveryStats
           .recordCountResults(countResults, ctx.now())
           .catch((error) => {
-            console.warn('Relay COUNT stats persistence failed:', error)
+            logTerminalWarning('Persistencia', 'No se pudo guardar conteo de relays', {
+              motivo: summarizeHumanTerminalError(error),
+            })
           })
 
         const usefulCountResults = countResults
@@ -865,10 +873,10 @@ export function createRootLoaderModule(
                 error,
               })
             }
-            console.warn(
-              'Background targeted reciprocal follower evidence failed during root load progress:',
-              error,
-            )
+            logTerminalWarning('Followers', 'No se pudo completar evidencia reciproca', {
+              etapa: 'carga_raiz',
+              motivo: summarizeHumanTerminalError(error),
+            })
             publishVisibleLinkProgress(true)
           })
           .finally(() => {
@@ -954,11 +962,11 @@ export function createRootLoaderModule(
         const now = ctx.now()
         if (firstFastContactListAppliedAt === null) {
           firstFastContactListAppliedAt = now
-          console.info('[graph/root-loader] fast contact list graph applied', {
-            elapsedMs: now - loadStartedAt,
-            followCount: replacementResult.discoveredFollowCount,
-            relayUrl: envelope.relayUrl,
-            rootPubkey: rootPubkey.slice(0, 12),
+          logTerminalOk('Grafo', 'Lista de follows aplicada', {
+            duracion_ms: now - loadStartedAt,
+            follows: replacementResult.discoveredFollowCount,
+            relay: envelope.relayUrl,
+            raiz: rootPubkey.slice(0, 12),
           })
         }
 
@@ -1206,7 +1214,9 @@ export function createRootLoaderModule(
                 error,
               })
             }
-            console.warn('Background remaining relay enrichment failed:', error)
+            logTerminalWarning('Relays', 'No se pudo completar mejora en segundo plano', {
+              motivo: summarizeHumanTerminalError(error),
+            })
           })
           .finally(() => {
             remainingAdapter.close()
@@ -1317,7 +1327,9 @@ export function createRootLoaderModule(
             ctx.now(),
           )
           .catch((error) => {
-            console.warn('Relay inbound fetch stats persistence failed:', error)
+            logTerminalWarning('Persistencia', 'No se pudo guardar busqueda inbound', {
+              motivo: summarizeHumanTerminalError(error),
+            })
           })
         ctx.store.getState().setRootLoadState({
           message: 'Correlacionando followers inbound con evidencia recibida de relays...',
@@ -1679,7 +1691,9 @@ export function createRootLoaderModule(
         )
           .catch((error) => {
             if (!isStaleLoad(loadId)) {
-              console.warn('Background root enrichment failed:', error)
+              logTerminalWarning('Grafo', 'La mejora de raiz quedo parcial', {
+                motivo: summarizeHumanTerminalError(error),
+              })
               setRootLoadState('live-partial', {
                 message:
                   'Grafo inicial cargado. La mejora de followers/perfiles/zaps quedo parcial.',

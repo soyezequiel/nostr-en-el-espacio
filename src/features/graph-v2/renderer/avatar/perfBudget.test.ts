@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { PerfBudget } from '@/features/graph-v2/renderer/avatar/perfBudget'
+import {
+  PerfBudget,
+  resolveFpsFromFrameMs,
+} from '@/features/graph-v2/renderer/avatar/perfBudget'
 
 test('PerfBudget starts at declared tier', () => {
   const budget = new PerfBudget('mid', () => 0)
@@ -52,6 +55,14 @@ test('PerfBudget does not downgrade on brief spikes', () => {
   assert.equal(snap.tier, 'high')
 })
 
+test('PerfBudget tracks frame time EMA from valid deltas', () => {
+  const budget = new PerfBudget('mid', () => 0)
+  budget.recordFrame(26)
+  assert.equal(budget.snapshot().emaFrameMs, 17)
+  budget.recordFrame(36)
+  assert.ok(Math.abs(budget.snapshot().emaFrameMs - 18.9) < 0.0001)
+})
+
 test('PerfBudget upgrades back after sustained healthy frames', () => {
   let now = 0
   const budget = new PerfBudget('high', () => now)
@@ -81,4 +92,12 @@ test('PerfBudget ignores non-finite deltas', () => {
   budget.recordFrame(-5)
   budget.recordFrame(0)
   assert.equal(budget.snapshot().emaFrameMs, 16)
+})
+
+test('resolveFpsFromFrameMs converts valid frame times only', () => {
+  assert.equal(resolveFpsFromFrameMs(16), 62.5)
+  assert.equal(resolveFpsFromFrameMs(40), 25)
+  assert.equal(resolveFpsFromFrameMs(null), null)
+  assert.equal(resolveFpsFromFrameMs(0), null)
+  assert.equal(resolveFpsFromFrameMs(Number.NaN), null)
 })

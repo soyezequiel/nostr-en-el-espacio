@@ -151,7 +151,6 @@ const createAvatarRuntimeSnapshot = (): AvatarRuntimeStateDebugSnapshot => ({
     allowZoomedOutImages: true,
     showAllVisibleImages: true,
     maxInteractiveBucket: 256,
-    maxSocialCaptureBucket: 1024,
   },
   perfBudget: null,
   cache: {

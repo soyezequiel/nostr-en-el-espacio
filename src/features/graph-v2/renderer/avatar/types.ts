@@ -54,7 +54,6 @@ export interface AvatarRuntimeOptions {
   readonly allowZoomedOutImages: boolean
   readonly showAllVisibleImages: boolean
   readonly maxInteractiveBucket: ImageLodBucket
-  readonly maxSocialCaptureBucket: ImageLodBucket
 }
 
 export type DeviceTier = 'low' | 'mid' | 'high'
@@ -72,7 +71,6 @@ export const DEFAULT_AVATAR_RUNTIME_OPTIONS: AvatarRuntimeOptions = {
   allowZoomedOutImages: true,
   showAllVisibleImages: true,
   maxInteractiveBucket: 256,
-  maxSocialCaptureBucket: 1024,
 }
 
 export const DEFAULT_BUDGETS: Record<DeviceTier, AvatarBudget> = {

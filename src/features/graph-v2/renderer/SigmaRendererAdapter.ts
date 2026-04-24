@@ -48,10 +48,6 @@ import {
 import type { AvatarRuntimeOptions } from '@/features/graph-v2/renderer/avatar/types'
 import type { ImageLodBucket } from '@/features/graph-v2/renderer/avatar/avatarImageUtils'
 import {
-  captureSocialGraphImage,
-  type SocialGraphCaptureOptions,
-} from '@/features/graph-v2/renderer/socialGraphCapture'
-import {
   createSuppressedNodeClick,
   createPendingNodeDragGesture,
   shouldSuppressNodeClick,
@@ -100,7 +96,6 @@ const AVATAR_MAX_HOVER_REVEAL_MAX_NODES = 96
 const AVATAR_MIN_FAST_NODE_VELOCITY = 40
 const AVATAR_MAX_FAST_NODE_VELOCITY = 2000
 const AVATAR_MAX_INTERACTIVE_BUCKETS = [32, 64, 128, 256] as const
-const AVATAR_MAX_SOCIAL_CAPTURE_BUCKETS = [32, 64, 128, 256, 512, 1024] as const
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
@@ -900,11 +895,6 @@ export class SigmaRendererAdapter implements RendererAdapter {
         AVATAR_MAX_INTERACTIVE_BUCKETS,
         DEFAULT_AVATAR_RUNTIME_OPTIONS.maxInteractiveBucket,
       ),
-      maxSocialCaptureBucket: normalizeBucketOption(
-        options.maxSocialCaptureBucket,
-        AVATAR_MAX_SOCIAL_CAPTURE_BUCKETS,
-        DEFAULT_AVATAR_RUNTIME_OPTIONS.maxSocialCaptureBucket,
-      ),
     }
 
     if (
@@ -929,9 +919,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       this.avatarRuntimeOptions.showAllVisibleImages ===
         nextOptions.showAllVisibleImages &&
       this.avatarRuntimeOptions.maxInteractiveBucket ===
-        nextOptions.maxInteractiveBucket &&
-      this.avatarRuntimeOptions.maxSocialCaptureBucket ===
-        nextOptions.maxSocialCaptureBucket
+        nextOptions.maxInteractiveBucket
     ) {
       return
     }
@@ -1008,75 +996,6 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   public getVisibleNodePubkeys(): string[] {
     return this.avatarOverlay?.getVisibleNodePubkeys() ?? []
-  }
-
-  public async captureSocialGraph(
-    options: SocialGraphCaptureOptions = {},
-  ): Promise<Blob> {
-    const sigma = this.sigma
-    const renderStore = this.renderStore
-    if (!sigma || !renderStore) {
-      throw new Error('sigma_not_ready')
-    }
-
-    const graph = renderStore.getGraph()
-    const cache = new AvatarBitmapCache(
-      Math.max(
-        DEFAULT_BUDGETS.high.lruCap,
-        this.avatarCache?.capacity() ?? 0,
-      ),
-    )
-    const loader = this.avatarLoader ?? new AvatarLoader()
-    const previousCameraState = sigma.getCamera().getState()
-    const wasPhysicsRunning = this.forceRuntime?.isRunning() ?? false
-
-    const nodes = graph.nodes().map((pubkey) => ({
-      pubkey,
-      attrs: graph.getNodeAttributes(pubkey) as RenderNodeAttributes,
-      degree: graph.degree(pubkey),
-    }))
-    const edges = graph.edges().map((edgeId) => ({
-      source: graph.source(edgeId),
-      target: graph.target(edgeId),
-      attrs: graph.getEdgeAttributes(edgeId) as RenderEdgeAttributes,
-    }))
-
-    this.forceRuntime?.suspend()
-    this.cancelPhysicsPositionBridge()
-    if (this.motionClearTimer !== null) {
-      clearTimeout(this.motionClearTimer)
-      this.motionClearTimer = null
-    }
-    if (this.cameraMotionClearTimer !== null) {
-      clearTimeout(this.cameraMotionClearTimer)
-      this.cameraMotionClearTimer = null
-    }
-    this.motionActive = false
-    this.cameraMotionActive = false
-
-    try {
-      return await captureSocialGraphImage({
-        nodes,
-        edges,
-        cache,
-        loader,
-        rootPubkey: this.scene?.render.cameraHint.rootPubkey ?? null,
-        options: {
-          ...options,
-          maxBucket:
-            options.maxBucket ??
-            this.avatarRuntimeOptions.maxSocialCaptureBucket,
-        },
-      })
-    } finally {
-      sigma.getCamera().setState(previousCameraState)
-      if (wasPhysicsRunning) {
-        this.forceRuntime?.resume()
-        this.ensurePhysicsPositionBridge()
-      }
-      cache.clear()
-      this.safeRefresh()
-    }
   }
 
   public setDragInfluenceTuning(

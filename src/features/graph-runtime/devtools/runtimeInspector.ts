@@ -11,7 +11,10 @@ import type {
   CanonicalGraphUiState,
 } from '@/features/graph-v2/domain/types'
 import type { AvatarRuntimeStateDebugSnapshot } from '@/features/graph-v2/renderer/avatar/avatarDebug'
-import type { PerfBudgetSnapshot } from '@/features/graph-v2/renderer/avatar/perfBudget'
+import {
+  resolveFpsFromFrameMs,
+  type PerfBudgetSnapshot,
+} from '@/features/graph-v2/renderer/avatar/perfBudget'
 import type { GraphSceneSnapshot } from '@/features/graph-v2/renderer/contracts'
 import type { DebugPhysicsDiagnostics } from '@/features/graph-v2/testing/browserDebug'
 import type { VisibleProfileWarmupDebugSnapshot } from '@/features/graph-v2/ui/visibleProfileWarmup'
@@ -213,6 +216,27 @@ const formatDecimal = (value: number | null | undefined, digits = 1) => {
     return 'sin dato'
   }
   return value.toFixed(digits)
+}
+
+const formatFps = (frameMs: number | null | undefined) => {
+  const fps = resolveFpsFromFrameMs(frameMs)
+  if (fps === null) {
+    return 'sin dato'
+  }
+  return `${fps >= 10 ? fps.toFixed(0) : fps.toFixed(1)} fps`
+}
+
+const formatFpsWithFrameMs = (frameMs: number | null | undefined) => {
+  const fpsLabel = formatFps(frameMs)
+  if (
+    fpsLabel === 'sin dato' ||
+    frameMs === null ||
+    frameMs === undefined ||
+    !Number.isFinite(frameMs)
+  ) {
+    return fpsLabel
+  }
+  return `${fpsLabel} (${formatDecimal(frameMs)} ms)`
 }
 
 const formatBytes = (value: number | null | undefined) => {
@@ -990,8 +1014,8 @@ const buildAvatarSection = (
       { label: 'Loader blocked', value: formatInteger(blockedCount), tone: visibleBlockedCount > 0 ? 'bad' : blockedCount > 0 ? 'warn' : 'ok' },
       { label: 'Visibles afectadas', value: formatInteger(visibleAffectedCount), tone: visiblePipelineAffectedCount >= 5 ? 'bad' : visibleAffectedCount > 0 ? 'warn' : 'ok' },
       {
-        label: 'Frame EMA',
-        value: input.avatarPerfSnapshot ? `${formatDecimal(input.avatarPerfSnapshot.emaFrameMs)} ms` : 'sin dato',
+        label: 'FPS EMA',
+        value: formatFpsWithFrameMs(input.avatarPerfSnapshot?.emaFrameMs),
         tone:
           input.avatarPerfSnapshot && input.avatarPerfSnapshot.emaFrameMs > 22
             ? 'warn'
@@ -1358,7 +1382,7 @@ const buildPerformanceSection = (
 
   if (frameMs !== null && frameMs > 24) {
     tone = 'bad'
-    suspects.push('Frame EMA alto')
+    suspects.push('FPS bajo')
     if (avatarDraws > 60) {
       suspects.push('Avatar overlay cargado')
     }
@@ -1395,15 +1419,15 @@ const buildPerformanceSection = (
     titulo: 'Rendimiento',
     resumen,
     estado:
-      frameMs === null ? 'sin frame EMA' : `${formatDecimal(frameMs)} ms de frame`,
+      frameMs === null ? 'sin FPS EMA' : `${formatFpsWithFrameMs(frameMs)} de render Sigma`,
     queSignifica:
       'Resume si la lentitud parece venir de redraw, churn de UI o actividad de fisica.',
     quePasaAhora,
     queLeerAhora,
     metricas: [
       {
-        label: 'Frame EMA',
-        value: frameMs === null ? 'sin dato' : `${formatDecimal(frameMs)} ms`,
+        label: 'FPS EMA',
+        value: formatFpsWithFrameMs(frameMs),
         tone: frameMs !== null && frameMs > 24 ? 'bad' : frameMs !== null && frameMs > 18 ? 'warn' : 'ok',
       },
       {

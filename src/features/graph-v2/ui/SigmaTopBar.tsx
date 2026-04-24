@@ -6,8 +6,6 @@ import AvatarFallback from '@/components/AvatarFallback'
 import BrandLogo from '@/components/BrandLogo'
 import { isSafeAvatarUrl } from '@/features/graph-runtime/avatar'
 import { resolveAvatarFetchUrl } from '@/features/graph-runtime/avatarProxyUrl'
-import type { SocialGraphCaptureFormat } from '@/features/graph-v2/renderer/socialGraphCapture'
-import { ImageShareIcon } from '@/features/graph-v2/ui/SigmaIcons'
 
 interface Props {
   rootDisplayName: string | null
@@ -15,12 +13,6 @@ interface Props {
   rootPictureUrl: string | null
   onSwitchRoot: () => void
   brandVersion?: string
-  shareFormat?: SocialGraphCaptureFormat
-  shareStatus?: string | null
-  shareBusy?: boolean
-  canShare?: boolean
-  onShareFormatChange?: (format: SocialGraphCaptureFormat) => void
-  onShareImage?: () => void
 }
 
 export const SigmaTopBar = memo(function SigmaTopBar({
@@ -29,12 +21,6 @@ export const SigmaTopBar = memo(function SigmaTopBar({
   rootPictureUrl,
   onSwitchRoot,
   brandVersion = 'v0.3.2',
-  shareFormat = 'wide',
-  shareStatus = null,
-  shareBusy = false,
-  canShare = false,
-  onShareFormatChange,
-  onShareImage,
 }: Props) {
   const initials = rootDisplayName
     ? rootDisplayName
@@ -94,35 +80,6 @@ export const SigmaTopBar = memo(function SigmaTopBar({
       )}
 
       <div className="sg-topbar__right">
-        {onShareImage ? (
-          <div className="sg-share-control" aria-live="polite">
-            <select
-              aria-label="Formato de imagen"
-              className="sg-share-control__select"
-              disabled={shareBusy || !canShare}
-              onChange={(event) => {
-                onShareFormatChange?.(event.target.value as SocialGraphCaptureFormat)
-              }}
-              value={shareFormat}
-            >
-              <option value="wide">wide</option>
-              <option value="square">square</option>
-              <option value="story">story</option>
-            </select>
-            <button
-              className="sg-share-control__button"
-              disabled={shareBusy || !canShare}
-              onClick={onShareImage}
-              type="button"
-            >
-              <ImageShareIcon />
-              <span>Compartir imagen</span>
-            </button>
-            {shareStatus ? (
-              <span className="sg-share-control__status">{shareStatus}</span>
-            ) : null}
-          </div>
-        ) : null}
         <div className="sg-brand">
           <Link href="/" style={{ display: 'inline-flex', alignItems: 'center' }}>
             <BrandLogo

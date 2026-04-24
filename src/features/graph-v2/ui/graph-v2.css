@@ -227,15 +227,6 @@
   min-width: 0;
 }
 
-[data-graph-v2] .sg-share-control {
-  display: grid;
-  grid-template-columns: auto auto;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-[data-graph-v2] .sg-share-control__select,
 [data-graph-v2] .sg-select {
   min-height: 32px;
   border: 1px solid var(--sg-stroke);
@@ -247,47 +238,8 @@
   padding: 0 8px;
 }
 
-[data-graph-v2] .sg-share-control__button {
-  min-height: 32px;
-  border: 1px solid var(--sg-stroke);
-  border-radius: 8px;
-  background: var(--sg-bg-panel);
-  backdrop-filter: blur(14px) saturate(1.1);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
-  box-shadow: var(--sg-shadow-panel);
-  color: var(--sg-fg);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 0 10px;
-  white-space: nowrap;
-}
-
-[data-graph-v2] .sg-share-control__button:hover:not(:disabled),
-[data-graph-v2] .sg-share-control__select:hover:not(:disabled),
 [data-graph-v2] .sg-select:hover {
   border-color: var(--sg-stroke-strong);
-}
-
-[data-graph-v2] .sg-share-control__button:disabled,
-[data-graph-v2] .sg-share-control__select:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-[data-graph-v2] .sg-share-control__status {
-  grid-column: 1 / -1;
-  justify-self: end;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--sg-fg-muted);
-  font-family: var(--sg-font-mono);
-  font-size: 10.5px;
 }
 
 [data-graph-v2] .sg-brand__dot {
@@ -689,6 +641,9 @@
 }
 
 [data-graph-v2] .sg-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: transparent;
   border: 0;
   padding: 10px 12px;
@@ -705,6 +660,17 @@
 [data-graph-v2] .sg-tab--active {
   color: var(--sg-fg);
   border-bottom-color: var(--sg-fg);
+}
+
+[data-graph-v2] .sg-tab__badge {
+  border: 1px solid oklch(76% 0.16 78 / 0.55);
+  border-radius: 4px;
+  padding: 1px 4px;
+  color: oklch(83% 0.13 78);
+  font-family: var(--sg-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
 }
 
 /* ── Node detail inside side panel ──────────────────────────────────────── */
@@ -1857,19 +1823,6 @@
   [data-graph-v2] .sg-topbar__right {
     flex: 0 0 auto;
   }
-  [data-graph-v2] .sg-share-control {
-    grid-template-columns: auto;
-  }
-  [data-graph-v2] .sg-share-control__select {
-    display: none;
-  }
-  [data-graph-v2] .sg-share-control__button span {
-    display: none;
-  }
-  [data-graph-v2] .sg-share-control__status {
-    display: none;
-  }
-
   [data-graph-v2] .sg-filter-stack {
     top: auto;
     bottom: 78px;

@@ -38,6 +38,10 @@ import {
   buildDiscoveredMessage,
   buildExpandedStructureMessage,
 } from '@/features/graph-runtime/kernel/modules/text-helpers'
+import {
+  logTerminalWarning,
+  summarizeHumanTerminalError,
+} from '@/features/graph-runtime/debug/humanTerminalLog'
 
 const NODE_EXPANSION_TOTAL_STEPS = 4
 const MAX_PROFILE_HYDRATION_RELAY_URLS = MAX_SESSION_RELAYS
@@ -113,10 +117,10 @@ export function createNodeExpansionModule(
     try {
       return await ctx.repositories.contactLists.get(targetPubkey)
     } catch (error) {
-      console.warn(
-        'Contact list cache lookup failed during node expansion:',
-        error,
-      )
+      logTerminalWarning('Expansion', 'No se pudo leer cache de follows', {
+        nodo: targetPubkey.slice(0, 12),
+        motivo: summarizeHumanTerminalError(error),
+      })
       return null
     }
   }
@@ -147,10 +151,10 @@ export function createNodeExpansionModule(
     try {
       return await loadDirectInboundFollowerEvidence(input)
     } catch (error) {
-      console.warn(
-        'Direct inbound follower evidence failed during node expansion:',
-        error,
-      )
+      logTerminalWarning('Expansion', 'No se pudo obtener evidencia inbound', {
+        nodo: input.pubkey.slice(0, 12),
+        motivo: summarizeHumanTerminalError(error),
+      })
       return {
         followerPubkeys: [],
         partial: true,
@@ -287,10 +291,10 @@ export function createNodeExpansionModule(
           persistProfileEvent: collaborators.persistence.persistProfileEvent,
         },
       ).catch((error) => {
-        console.warn(
-          'Profile hydration failed after reciprocal node expansion enrichment:',
-          error,
-        )
+        logTerminalWarning('Perfiles', 'No se pudieron hidratar nodos reciprocos', {
+          cantidad: inboundNodeResult.acceptedPubkeys.length,
+          motivo: summarizeHumanTerminalError(error),
+        })
       })
     }
 
@@ -298,7 +302,10 @@ export function createNodeExpansionModule(
       collaborators.zapLayer.getZapTargetPubkeys(),
       options.relayUrls.slice(),
     ).catch((error) => {
-      console.warn('Zap layer prefetch failed after reciprocal enrichment:', error)
+      logTerminalWarning('Zaps', 'No se pudo preparar capa de zaps', {
+        etapa: 'enriquecimiento_reciproco',
+        motivo: summarizeHumanTerminalError(error),
+      })
     })
   }
 
@@ -332,10 +339,10 @@ export function createNodeExpansionModule(
         stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
       })
     } catch (error) {
-      console.warn(
-        'Background targeted reciprocal adapter creation failed during expansion:',
-        error,
-      )
+      logTerminalWarning('Expansion', 'No se pudo abrir consulta reciproca', {
+        nodo: pubkey.slice(0, 12),
+        motivo: summarizeHumanTerminalError(error),
+      })
       return
     }
 
@@ -355,10 +362,10 @@ export function createNodeExpansionModule(
         )
       })
       .catch((error) => {
-        console.warn(
-          'Background targeted reciprocal follower evidence failed during expansion:',
-          error,
-        )
+        logTerminalWarning('Expansion', 'No se pudo completar evidencia reciproca', {
+          nodo: pubkey.slice(0, 12),
+          motivo: summarizeHumanTerminalError(error),
+        })
       })
       .finally(() => {
         adapter.close()
@@ -386,10 +393,10 @@ export function createNodeExpansionModule(
         stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
       })
     } catch (error) {
-      console.warn(
-        'Background direct inbound adapter creation failed during expansion:',
-        error,
-      )
+      logTerminalWarning('Expansion', 'No se pudo abrir consulta inbound', {
+        nodo: pubkey.slice(0, 12),
+        motivo: summarizeHumanTerminalError(error),
+      })
       return
     }
 
@@ -407,10 +414,10 @@ export function createNodeExpansionModule(
         )
       })
       .catch((error) => {
-        console.warn(
-          'Background direct inbound follower evidence failed during expansion:',
-          error,
-        )
+        logTerminalWarning('Expansion', 'No se pudo completar evidencia inbound', {
+          nodo: pubkey.slice(0, 12),
+          motivo: summarizeHumanTerminalError(error),
+        })
       })
       .finally(() => {
         adapter.close()
@@ -660,10 +667,10 @@ export function createNodeExpansionModule(
           event: serializeContactListEvent(latestContactListEvent.event),
         })
       } catch (error) {
-        console.warn(
-          'Contact list parsing failed during node expansion:',
-          error,
-        )
+        logTerminalWarning('Expansion', 'No se pudo interpretar lista de follows', {
+          nodo: pubkey.slice(0, 12),
+          motivo: summarizeHumanTerminalError(error),
+        })
         const cachedContactList = await getCachedContactList(pubkey)
         if (cachedContactList) {
           const cachePreviewMessage =
@@ -745,10 +752,10 @@ export function createNodeExpansionModule(
         )
       } catch (error) {
         persistFailed = true
-        console.warn(
-          'Contact list persistence failed during node expansion:',
-          error,
-        )
+        logTerminalWarning('Persistencia', 'No se pudo guardar lista de follows', {
+          nodo: pubkey.slice(0, 12),
+          motivo: summarizeHumanTerminalError(error),
+        })
       }
 
       if (
@@ -828,7 +835,10 @@ export function createNodeExpansionModule(
       )
       return result
     } catch (error) {
-      console.warn('Node expansion degraded to partial after failure:', error)
+      logTerminalWarning('Expansion', 'La expansion quedo parcial', {
+        nodo: pubkey.slice(0, 12),
+        motivo: summarizeHumanTerminalError(error),
+      })
       const message = buildRecoverableExpansionMessage(pubkey, error)
       setTerminalState(pubkey, 'partial', message, startedAt)
       return {
@@ -931,13 +941,22 @@ export function createNodeExpansionModule(
         persistProfileEvent: collaborators.persistence.persistProfileEvent,
       },
     ).catch((err) => {
-      console.warn('Profile hydration failed after expansion:', err)
+      logTerminalWarning('Perfiles', 'No se pudieron hidratar nodos expandidos', {
+        cantidad:
+          1 +
+          outboundNodeResult.acceptedPubkeys.length +
+          inboundNodeResult.acceptedPubkeys.length,
+        motivo: summarizeHumanTerminalError(err),
+      })
     })
     void collaborators.zapLayer.prefetchZapLayer(
       collaborators.zapLayer.getZapTargetPubkeys(),
       options.relayUrls,
     ).catch((err) => {
-      console.warn('Zap layer prefetch failed after expansion:', err)
+      logTerminalWarning('Zaps', 'No se pudo preparar capa de zaps', {
+        etapa: 'expansion',
+        motivo: summarizeHumanTerminalError(err),
+      })
     })
 
     const rejectedPubkeys = Array.from(

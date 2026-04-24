@@ -6,6 +6,10 @@ import {
   isAccountTraceRoot,
   traceAccountFlow,
 } from '@/features/graph-runtime/debug/accountTrace'
+import {
+  logTerminalWarning,
+  summarizeHumanTerminalError,
+} from '@/features/graph-runtime/debug/humanTerminalLog'
 import type { KernelContext, RelayAdapterInstance } from '@/features/graph-runtime/kernel/modules/context'
 import {
   collectRelayEvents,
@@ -59,7 +63,9 @@ export function createFollowerDiscoveryModule(
 
       await persistRelayListEvent(latestRelayListEvent)
     } catch (error) {
-      console.warn('Root relay-list refresh failed:', error)
+      logTerminalWarning('Relays', 'No se pudo actualizar la lista', {
+        motivo: summarizeHumanTerminalError(error),
+      })
     }
   }
 
@@ -85,7 +91,9 @@ export function createFollowerDiscoveryModule(
 
       return countResults
     } catch (error) {
-      console.warn('Inbound follower COUNT probe failed:', error)
+      logTerminalWarning('Relays', 'No se pudo contar followers inbound', {
+        motivo: summarizeHumanTerminalError(error),
+      })
       return []
     }
   }
@@ -111,7 +119,9 @@ export function createFollowerDiscoveryModule(
         completeness,
       })
     } catch (error) {
-      console.warn('Inbound follower snapshot persistence failed:', error)
+      logTerminalWarning('Persistencia', 'No se pudo guardar followers inbound', {
+        motivo: summarizeHumanTerminalError(error),
+      })
     }
   }
 
@@ -136,7 +146,9 @@ export function createFollowerDiscoveryModule(
         relays: parsedRelayList.relays,
       })
     } catch (error) {
-      console.warn('Relay-list persistence failed:', error)
+      logTerminalWarning('Persistencia', 'No se pudo guardar la lista de relays', {
+        motivo: summarizeHumanTerminalError(error),
+      })
     }
   }
 
@@ -154,7 +166,10 @@ export function createFollowerDiscoveryModule(
         persistProfileEvent: collaborators.persistence.persistProfileEvent,
       })
       .catch((error) => {
-        console.warn('Progressive inbound profile hydration failed:', error)
+        logTerminalWarning('Perfiles', 'No se pudieron hidratar followers inbound', {
+          cantidad: pubkeys.length,
+          motivo: summarizeHumanTerminalError(error),
+        })
       })
   }
 

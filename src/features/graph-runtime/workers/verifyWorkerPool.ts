@@ -1,6 +1,10 @@
 ﻿import type { Event } from 'nostr-tools'
 
 import { detectDevicePerformance } from '@/features/graph-runtime/devicePerformance'
+import {
+  logTerminalWarning,
+  summarizeHumanTerminalError,
+} from '@/features/graph-runtime/debug/humanTerminalLog'
 import { getVerifyWorkerScriptUrl } from '@/features/graph-runtime/workers/workerScriptUrl'
 
 type PendingRequest = {
@@ -142,10 +146,9 @@ export class VerifyWorkerPool {
       this.workerSlots = workerSlots
       return workerSlots
     } catch (error) {
-      console.warn(
-        '[graph] Falling back to inline event verification after worker construction failed.',
-        error,
-      )
+      logTerminalWarning('Workers', 'Se verificaran eventos sin worker nativo', {
+        motivo: summarizeHumanTerminalError(error),
+      })
       this.workerSlots = null
       return null
     }

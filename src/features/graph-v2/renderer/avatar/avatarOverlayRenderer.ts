@@ -1447,7 +1447,6 @@ export class AvatarOverlayRenderer {
         allowZoomedOutImages: false,
         showAllVisibleImages: false,
         maxInteractiveBucket: budget.maxBucket,
-        maxSocialCaptureBucket: DEFAULT_AVATAR_RUNTIME_OPTIONS.maxSocialCaptureBucket,
       }
     }
     const adaptiveVisualsActive = snapshot.isDegraded || budget.maxBucket <= 64
@@ -1473,7 +1472,6 @@ export class AvatarOverlayRenderer {
         runtimeOptions.allowZoomedOutImages && !snapshot.isDegraded,
       showAllVisibleImages: runtimeOptions.showAllVisibleImages,
       maxInteractiveBucket: runtimeOptions.maxInteractiveBucket,
-      maxSocialCaptureBucket: runtimeOptions.maxSocialCaptureBucket,
     }
   }
 

@@ -61,12 +61,9 @@ import {
 } from '@/features/graph-v2/renderer/avatar/types'
 import {
   PERF_BUDGET_DOWNGRADE_MS,
+  resolveFpsFromFrameMs,
   type PerfBudgetSnapshot,
 } from '@/features/graph-v2/renderer/avatar/perfBudget'
-import type {
-  SocialGraphCaptureFormat,
-  SocialGraphCapturePhase,
-} from '@/features/graph-v2/renderer/socialGraphCapture'
 import {
   DEFAULT_DRAG_NEIGHBORHOOD_INFLUENCE_TUNING,
   type DragNeighborhoodInfluenceTuning,
@@ -85,7 +82,6 @@ import {
   CopyIcon,
   ExternalLinkIcon,
   GearIcon,
-  PhotoIcon,
   PinIcon,
   PulseIcon,
   SearchIcon,
@@ -123,14 +119,6 @@ import {
 } from '@/features/graph-v2/ui/visibleProfileWarmup'
 import { buildExpansionVisibilityHint } from '@/features/graph-v2/ui/expansionVisibilityHint'
 import {
-  buildSocialCaptureDebugFilename,
-  buildSocialCaptureDebugPayload,
-  isSocialCaptureDebugDownloadEnabled,
-  readSocialCaptureDebugBrowserSnapshot,
-  readSocialCaptureDebugLocationSnapshot,
-  type SocialCaptureDebugProgressSnapshot,
-} from '@/features/graph-v2/ui/socialCaptureDebug'
-import {
   MAX_ZAP_FILTER_PUBKEYS,
   useLiveZapFeed,
 } from '@/features/graph-v2/zaps/useLiveZapFeed'
@@ -154,7 +142,7 @@ import {
 import { downloadBlob } from '@/features/graph-runtime/export/download'
 import type { NostrProfile } from '@/lib/nostr'
 
-type SigmaSettingsTab = 'renderer' | 'relays' | 'dev'
+type SigmaSettingsTab = 'performance' | 'visuals' | 'relays' | 'dev'
 type NotificationSource = 'action' | 'zap'
 type ZapFeedMode = 'live' | 'recent-hour'
 type SceneConnection = Pick<
@@ -185,19 +173,6 @@ const ZAP_REPLAY_TIME_FORMATTER = new Intl.DateTimeFormat('es-AR', {
 const GRAPH_MAX_NODES_SLIDER_MIN = 250
 const GRAPH_MAX_NODES_SLIDER_MAX = 12000
 const GRAPH_MAX_NODES_SLIDER_STEP = 250
-
-const SOCIAL_CAPTURE_FORMAT_LABELS: Record<SocialGraphCaptureFormat, string> = {
-  wide: 'Wide 3840x2160',
-  square: 'Square 2160',
-  story: 'Story 2160x3840',
-}
-
-const SOCIAL_CAPTURE_PHASE_LABELS: Record<SocialGraphCapturePhase, string> = {
-  preparing: 'preparando',
-  'loading-avatars': 'cargando avatares',
-  'generating-image': 'generando imagen',
-  completed: 'finalizando',
-}
 
 const NODE_EXPANSION_STATUS_LABELS: Record<
   NonNullable<CanonicalNode['nodeExpansionState']>['status'],
@@ -244,13 +219,14 @@ interface LoadRootInput
 }
 
 const PUBLIC_SIGMA_SETTINGS_TABS: Array<{ id: SigmaSettingsTab; label: string }> = [
-  { id: 'renderer', label: 'Render' },
-  { id: 'relays', label: 'Relays' },
+  { id: 'performance', label: 'Rendimiento' },
+  { id: 'visuals', label: 'Visuales' },
+  { id: 'relays', label: 'Red' },
 ]
 
 const DEV_SIGMA_SETTINGS_TAB: { id: SigmaSettingsTab; label: string } = {
   id: 'dev',
-  label: 'Dev',
+  label: 'Avanzado',
 }
 
 const IDENTITY_FIRST_RUN_HELP_KEY = 'sigma.identityFirstRunHelpDismissed'
@@ -274,6 +250,22 @@ const resolveLowPerformanceConnectionLodState = (
   }
 
   return wasActive && snapshot.emaFrameMs > CONNECTION_LOD_RECOVERY_FRAME_MS
+}
+
+const formatFpsFromFrameMs = (frameMs: number | null | undefined) => {
+  const fps = resolveFpsFromFrameMs(frameMs)
+  if (fps === null) {
+    return 'n/a'
+  }
+  return `${fps >= 10 ? fps.toFixed(0) : fps.toFixed(1)} fps`
+}
+
+const formatFpsWithFrameMs = (frameMs: number | null | undefined) => {
+  const fpsLabel = formatFpsFromFrameMs(frameMs)
+  if (fpsLabel === 'n/a' || frameMs === null || frameMs === undefined) {
+    return fpsLabel
+  }
+  return `${fpsLabel} (${frameMs.toFixed(1)}ms)`
 }
 
 const selectSavedRootState = (state: AppStore) => ({
@@ -544,13 +536,11 @@ const pickFixtureUiState = (
 
 function RelayEditor({
   relayUrls,
-  overrideStatus,
   isGraphStale,
   onApply,
   onRevert,
 }: {
   relayUrls: readonly string[]
-  overrideStatus: string
   isGraphStale: boolean
   onApply: (relayUrls: string[]) => Promise<unknown>
   onRevert: () => Promise<void>
@@ -565,9 +555,9 @@ function RelayEditor({
 
   return (
     <div className="sg-settings-section">
-      <h4>Relays conectados</h4>
+      <h4>Relays de sesion</h4>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 12, color: 'var(--sg-fg-muted)' }}>Bridge override</span>
+        <span style={{ fontSize: 12, color: 'var(--sg-fg-muted)' }}>Estado</span>
         <span
           style={{
             borderRadius: 999,
@@ -578,7 +568,7 @@ function RelayEditor({
             fontFamily: 'var(--sg-font-mono)',
           }}
         >
-          {overrideStatus} / {isGraphStale ? 'stale' : 'live'}
+          {isGraphStale ? 'personalizados' : 'base'}
         </span>
       </div>
       <textarea
@@ -621,22 +611,24 @@ function RelayEditor({
         >
           Aplicar
         </button>
-        <button
-          className="sg-btn"
-          onClick={() => {
-            startTransition(() => {
-              void onRevert()
-                .then(() => { setMessage('Se revirtio el override de relays.') })
-                .catch((error) => {
-                  setMessage(error instanceof Error ? error.message : 'No se pudo revertir el override.')
-                })
-            })
-          }}
-          style={{ flex: 'none' }}
-          type="button"
-        >
-          Revertir
-        </button>
+        {isGraphStale ? (
+          <button
+            className="sg-btn"
+            onClick={() => {
+              startTransition(() => {
+                void onRevert()
+                  .then(() => { setMessage('Se revirtio la configuracion personalizada de relays.') })
+                  .catch((error) => {
+                    setMessage(error instanceof Error ? error.message : 'No se pudo revertir la configuracion de relays.')
+                  })
+              })
+            }}
+            style={{ flex: 'none' }}
+            type="button"
+          >
+            Revertir
+          </button>
+        ) : null}
       </div>
       {message ? <p style={{ marginTop: 8, fontSize: 12, color: 'var(--sg-fg-muted)' }}>{message}</p> : null}
     </div>
@@ -872,7 +864,140 @@ function DragTuningPanel({
   )
 }
 
-function RenderOptionsPanel({
+function VisualOptionsPanel({
+  avatarRuntimeOptions,
+  onAvatarRuntimeOptionsChange,
+}: {
+  avatarRuntimeOptions: AvatarRuntimeOptions
+  onAvatarRuntimeOptionsChange: (options: AvatarRuntimeOptions) => void
+}) {
+  return (
+    <div className="sg-settings-section">
+      <h4>Monogramas</h4>
+      <div className="sg-setting-row">
+        <div>
+          <div className="sg-setting-row__lbl">Letras de monograma</div>
+          <div className="sg-setting-row__desc">
+            Muestra iniciales cuando no hay foto disponible.
+          </div>
+        </div>
+        <button
+          className={`sg-toggle${avatarRuntimeOptions.showMonogramText ? ' sg-toggle--on' : ''}`}
+          onClick={() => onAvatarRuntimeOptionsChange({
+            ...avatarRuntimeOptions,
+            showMonogramText: !avatarRuntimeOptions.showMonogramText,
+          })}
+          type="button"
+        />
+      </div>
+    </div>
+  )
+}
+
+function PerformanceOptionsPanel({
+  avatarPhotosEnabled,
+  avatarRuntimeOptions,
+  capReached,
+  devicePerformanceProfile,
+  hideConnectionsOnLowPerformance,
+  lowPerformanceConnectionStatusLabel,
+  maxNodes,
+  nodeCount,
+  recommendedMaxNodes,
+  onGraphMaxNodesChange,
+  onToggleAvatarPhotos,
+  onToggleHideConnectionsOnLowPerformance,
+  onAvatarRuntimeOptionsChange,
+}: {
+  avatarPhotosEnabled: boolean
+  avatarRuntimeOptions: AvatarRuntimeOptions
+  capReached: boolean
+  devicePerformanceProfile: AppStore['devicePerformanceProfile']
+  hideConnectionsOnLowPerformance: boolean
+  lowPerformanceConnectionStatusLabel: string
+  maxNodes: number
+  nodeCount: number
+  recommendedMaxNodes: number
+  onGraphMaxNodesChange: (maxNodes: number) => void
+  onToggleAvatarPhotos: () => void
+  onToggleHideConnectionsOnLowPerformance: () => void
+  onAvatarRuntimeOptionsChange: (options: AvatarRuntimeOptions) => void
+}) {
+  return (
+    <div>
+      <GraphCapacityPanel
+        capReached={capReached}
+        devicePerformanceProfile={devicePerformanceProfile}
+        maxNodes={maxNodes}
+        nodeCount={nodeCount}
+        onChange={onGraphMaxNodesChange}
+        recommendedMaxNodes={recommendedMaxNodes}
+      />
+      <div className="sg-settings-section">
+        <h4>Fluidez</h4>
+        <div className="sg-setting-row">
+          <div>
+            <div className="sg-setting-row__lbl">Priorizar fluidez</div>
+            <div className="sg-setting-row__desc">
+              Reduce conexiones visibles cuando el rendimiento cae. Estado: {lowPerformanceConnectionStatusLabel}.
+            </div>
+          </div>
+          <button
+            aria-pressed={hideConnectionsOnLowPerformance}
+            className={`sg-toggle${hideConnectionsOnLowPerformance ? ' sg-toggle--on' : ''}`}
+            onClick={onToggleHideConnectionsOnLowPerformance}
+            title={
+              hideConnectionsOnLowPerformance
+                ? 'Desactivar LOD de conexiones por rendimiento'
+                : 'Activar LOD de conexiones por rendimiento'
+            }
+            type="button"
+          />
+        </div>
+      </div>
+      <div className="sg-settings-section">
+        <h4>Avatares</h4>
+        <div className="sg-setting-row">
+          <div>
+            <div className="sg-setting-row__lbl">Fotos de avatares</div>
+            <div className="sg-setting-row__desc">
+              Las fotos reales cuestan mas carga de red, decode y dibujo.
+            </div>
+          </div>
+          <button
+            aria-pressed={avatarPhotosEnabled}
+            className={`sg-toggle${avatarPhotosEnabled ? ' sg-toggle--on' : ''}`}
+            onClick={onToggleAvatarPhotos}
+            title={
+              avatarPhotosEnabled
+                ? 'Desactivar fotos para ahorrar rendimiento'
+                : 'Activar fotos de avatares'
+            }
+            type="button"
+          />
+        </div>
+        <div className="sg-setting-row">
+          <div>
+            <div className="sg-setting-row__lbl">Ocultar durante movimiento</div>
+            <div className="sg-setting-row__desc">
+              Pasa a monograma durante pan, drag o movimiento rapido de nodos.
+            </div>
+          </div>
+          <button
+            className={`sg-toggle${avatarRuntimeOptions.hideImagesOnFastNodes ? ' sg-toggle--on' : ''}`}
+            onClick={() => onAvatarRuntimeOptionsChange({
+              ...avatarRuntimeOptions,
+              hideImagesOnFastNodes: !avatarRuntimeOptions.hideImagesOnFastNodes,
+            })}
+            type="button"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AdvancedAvatarOptionsPanel({
   avatarRuntimeOptions,
   avatarPerfSnapshot,
   onAvatarRuntimeOptionsChange,
@@ -898,7 +1023,7 @@ function RenderOptionsPanel({
 
   return (
     <div className="sg-settings-section">
-      <h4>Avatares y monogramas</h4>
+      <h4>Avatares dev</h4>
       <div className="sg-setting-row">
         <div>
           <div className="sg-setting-row__lbl">Monogramas en zoom-out</div>
@@ -923,34 +1048,6 @@ function RenderOptionsPanel({
           onClick={() => onAvatarRuntimeOptionsChange({
             ...avatarRuntimeOptions,
             showMonogramBackgrounds: !avatarRuntimeOptions.showMonogramBackgrounds,
-          })}
-          type="button"
-        />
-      </div>
-      <div className="sg-setting-row">
-        <div>
-          <div className="sg-setting-row__lbl">Letras de monograma</div>
-          <div className="sg-setting-row__desc">Iniciales dentro del fallback</div>
-        </div>
-        <button
-          className={`sg-toggle${avatarRuntimeOptions.showMonogramText ? ' sg-toggle--on' : ''}`}
-          onClick={() => onAvatarRuntimeOptionsChange({
-            ...avatarRuntimeOptions,
-            showMonogramText: !avatarRuntimeOptions.showMonogramText,
-          })}
-          type="button"
-        />
-      </div>
-      <div className="sg-setting-row">
-        <div>
-          <div className="sg-setting-row__lbl">Ocultar fotos en movimiento</div>
-          <div className="sg-setting-row__desc">Pasa a monograma durante pan/drag o cuando el nodo cambia rápido de posición en pantalla</div>
-        </div>
-        <button
-          className={`sg-toggle${avatarRuntimeOptions.hideImagesOnFastNodes ? ' sg-toggle--on' : ''}`}
-          onClick={() => onAvatarRuntimeOptionsChange({
-            ...avatarRuntimeOptions,
-            hideImagesOnFastNodes: !avatarRuntimeOptions.hideImagesOnFastNodes,
           })}
           type="button"
         />
@@ -1075,24 +1172,6 @@ function RenderOptionsPanel({
           ))}
         </select>
       </div>
-      <div className="sg-setting-row">
-        <div>
-          <div className="sg-setting-row__lbl">Bucket captura max</div>
-          <div className="sg-setting-row__desc">Presupuesto visual para PNG social</div>
-        </div>
-        <select
-          className="sg-select"
-          onChange={(event) => onAvatarRuntimeOptionsChange({
-            ...avatarRuntimeOptions,
-            maxSocialCaptureBucket: Number.parseInt(event.target.value, 10) as AvatarRuntimeOptions['maxSocialCaptureBucket'],
-          })}
-          value={avatarRuntimeOptions.maxSocialCaptureBucket}
-        >
-          {[128, 256, 512, 1024].map((bucket) => (
-            <option key={bucket} value={bucket}>{bucket}px</option>
-          ))}
-        </select>
-      </div>
       <button
         className="sg-btn"
         onClick={() => { onAvatarRuntimeOptionsChange(DEFAULT_AVATAR_RUNTIME_OPTIONS) }}
@@ -1108,7 +1187,7 @@ function RenderOptionsPanel({
         </div>
         <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
           {[
-            ['Frame EMA', avatarPerfSnapshot ? `${avatarPerfSnapshot.emaFrameMs.toFixed(1)}ms` : 'n/a'],
+            ['FPS EMA', formatFpsWithFrameMs(avatarPerfSnapshot?.emaFrameMs)],
             ['Base', avatarPerfSnapshot?.baseTier ?? 'n/a'],
             ['Loads', avatarPerfSnapshot?.budget.concurrency ?? 'n/a'],
             ['Bucket', avatarPerfSnapshot ? `${avatarPerfSnapshot.budget.maxBucket}px` : 'n/a'],
@@ -1392,8 +1471,8 @@ export default function GraphAppV2() {
     useState<ForceAtlasPhysicsTuning>(DEFAULT_FORCE_ATLAS_PHYSICS_TUNING)
   const [devPhysicsAutoFreezeEnabled, setDevPhysicsAutoFreezeEnabled] = useState(true)
   const [
-    devHideConnectionsOnLowPerformance,
-    setDevHideConnectionsOnLowPerformance,
+    hideConnectionsOnLowPerformance,
+    setHideConnectionsOnLowPerformance,
   ] = useState(false)
   const [
     isLowPerformanceForConnections,
@@ -1402,16 +1481,10 @@ export default function GraphAppV2() {
   const [avatarRuntimeOptions, setAvatarRuntimeOptions] =
     useState<AvatarRuntimeOptions>(DEFAULT_AVATAR_RUNTIME_OPTIONS)
   const [avatarPerfSnapshot, setAvatarPerfSnapshot] = useState<PerfBudgetSnapshot | null>(null)
-  const [socialCaptureFormat, setSocialCaptureFormat] =
-    useState<SocialGraphCaptureFormat>('wide')
-  const [socialCapturePhase, setSocialCapturePhase] =
-    useState<SocialGraphCapturePhase | null>(null)
-  const [socialCaptureProgress, setSocialCaptureProgress] =
-    useState<SocialCaptureDebugProgressSnapshot | null>(null)
-  const [isSocialCaptureBusy, setIsSocialCaptureBusy] = useState(false)
-  const [activeSettingsTab, setActiveSettingsTab] = useState<SigmaSettingsTab>('relays')
+  const [activeSettingsTab, setActiveSettingsTab] = useState<SigmaSettingsTab>('performance')
   const [isRootSheetOpen, setIsRootSheetOpen] = useState(!isFixtureMode)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isZapsPanelOpen, setIsZapsPanelOpen] = useState(false)
   const [isRuntimeInspectorOpen, setIsRuntimeInspectorOpen] = useState(false)
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [isPersonSearchOpen, setIsPersonSearchOpen] = useState(false)
@@ -1615,6 +1688,7 @@ export default function GraphAppV2() {
       if (event.key === 'Escape') {
         if (isPersonSearchOpen) { setIsPersonSearchOpen(false); return }
         if (isSettingsOpen) { setIsSettingsOpen(false); return }
+        if (isZapsPanelOpen) { setIsZapsPanelOpen(false); return }
         if (isNotificationsOpen) { setIsNotificationsOpen(false); return }
         if (isRuntimeInspectorOpen) { setIsRuntimeInspectorOpen(false); return }
         if (isRootSheetOpen && sceneState.rootPubkey) { setIsRootSheetOpen(false); return }
@@ -1629,6 +1703,7 @@ export default function GraphAppV2() {
         event.preventDefault()
         setIsPersonSearchOpen(false)
         setIsSettingsOpen(false)
+        setIsZapsPanelOpen(false)
         setIsNotificationsOpen(false)
         setIsRootSheetOpen(false)
         setIsRuntimeInspectorOpen((current) => !current)
@@ -1645,6 +1720,7 @@ export default function GraphAppV2() {
         event.preventDefault()
         if (sceneState.rootPubkey) {
           setIsSettingsOpen(false)
+          setIsZapsPanelOpen(false)
           setIsNotificationsOpen(false)
           setIsPersonSearchOpen(true)
           return
@@ -1654,12 +1730,13 @@ export default function GraphAppV2() {
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [canUseRuntimeInspector, sceneState.rootPubkey, isNotificationsOpen, isPersonSearchOpen, isRootSheetOpen, isRuntimeInspectorOpen, isSettingsOpen])
+  }, [canUseRuntimeInspector, sceneState.rootPubkey, isNotificationsOpen, isPersonSearchOpen, isRootSheetOpen, isRuntimeInspectorOpen, isSettingsOpen, isZapsPanelOpen])
 
   const closeCompetingSidePanels = useCallback(() => {
     setIsRootSheetOpen(false)
     setIsPersonSearchOpen(false)
     setIsSettingsOpen(false)
+    setIsZapsPanelOpen(false)
     setIsNotificationsOpen(false)
     setIsRuntimeInspectorOpen(false)
   }, [])
@@ -2207,9 +2284,13 @@ export default function GraphAppV2() {
 
   const stableAvatarRuntimeOptions = useMemo(() => avatarRuntimeOptions, [avatarRuntimeOptions])
   const lowPerformanceConnectionHidingActive =
-    isDev &&
-    devHideConnectionsOnLowPerformance &&
+    hideConnectionsOnLowPerformance &&
     isLowPerformanceForConnections
+  const lowPerformanceConnectionStatusLabel = lowPerformanceConnectionHidingActive
+    ? 'ocultando conexiones'
+    : isLowPerformanceForConnections
+      ? 'bajo rendimiento detectado'
+      : 'rendimiento estable'
   const handleAvatarPerfSnapshot = useCallback(
     (snapshot: PerfBudgetSnapshot | null) => { setAvatarPerfSnapshot(snapshot) },
     [],
@@ -2260,6 +2341,7 @@ export default function GraphAppV2() {
     setActiveSettingsTab(tab)
     setIsRootSheetOpen(false)
     setIsPersonSearchOpen(false)
+    setIsZapsPanelOpen(false)
     setIsNotificationsOpen(false)
     setIsRuntimeInspectorOpen(false)
     setIsSettingsOpen(true)
@@ -2278,6 +2360,7 @@ export default function GraphAppV2() {
       setLoadFeedback('Cargando root...')
       setIsRootSheetOpen(false)
       setIsRootLoadScreenOpen(true)
+      setIsZapsPanelOpen(false)
       setIsRuntimeInspectorOpen(false)
       startTransition(() => {
         if (isFixtureMode) {
@@ -2461,8 +2544,10 @@ export default function GraphAppV2() {
       tone: relayState.isGraphStale ? 'warn' : 'good',
     },
     {
-      k: 'Frame',
-      v: avatarPerfSnapshot ? `${avatarPerfSnapshot.emaFrameMs.toFixed(1)}ms` : '—',
+      k: 'FPS',
+      v: avatarPerfSnapshot
+        ? formatFpsFromFrameMs(avatarPerfSnapshot.emaFrameMs)
+        : '—',
       tone: avatarPerfSnapshot && avatarPerfSnapshot.emaFrameMs > 20 ? 'warn' : 'default',
     },
   ], [
@@ -2481,6 +2566,7 @@ export default function GraphAppV2() {
   const handleOpenRootSheet = useCallback(() => {
     setIsPersonSearchOpen(false)
     setIsSettingsOpen(false)
+    setIsZapsPanelOpen(false)
     setIsNotificationsOpen(false)
     setIsRuntimeInspectorOpen(false)
     setIsRootSheetOpen(true)
@@ -2498,6 +2584,7 @@ export default function GraphAppV2() {
     }
     setIsRootSheetOpen(false)
     setIsSettingsOpen(false)
+    setIsZapsPanelOpen(false)
     setIsNotificationsOpen(false)
     setIsRuntimeInspectorOpen(false)
     setIsPersonSearchOpen(true)
@@ -2533,10 +2620,25 @@ export default function GraphAppV2() {
     }
     setIsPersonSearchOpen(false)
     setIsSettingsOpen(false)
+    setIsZapsPanelOpen(false)
     setIsRuntimeInspectorOpen(false)
     setIsRootSheetOpen(false)
     setIsNotificationsOpen(true)
   }, [clearSelectedNode, isNotificationsOpen])
+
+  const handleOpenZapsPanel = useCallback(() => {
+    if (isZapsPanelOpen) {
+      setIsZapsPanelOpen(false)
+      clearSelectedNode()
+      return
+    }
+    setIsPersonSearchOpen(false)
+    setIsSettingsOpen(false)
+    setIsNotificationsOpen(false)
+    setIsRuntimeInspectorOpen(false)
+    setIsRootSheetOpen(false)
+    setIsZapsPanelOpen(true)
+  }, [clearSelectedNode, isZapsPanelOpen])
 
   const handleOpenRuntimeInspector = useCallback(() => {
     if (!canUseRuntimeInspector) {
@@ -2549,6 +2651,7 @@ export default function GraphAppV2() {
     }
     setIsPersonSearchOpen(false)
     setIsSettingsOpen(false)
+    setIsZapsPanelOpen(false)
     setIsNotificationsOpen(false)
     setIsRootSheetOpen(false)
     setIsRuntimeInspectorOpen(true)
@@ -2659,159 +2762,6 @@ export default function GraphAppV2() {
     )
   }, [deferredScene.render.nodes, sceneState.nodesByPubkey])
 
-  const handleShareImage = useCallback(() => {
-    if (isSocialCaptureBusy) {
-      return
-    }
-    const host = sigmaHostRef.current
-    if (!host) {
-      setActionFeedback('El grafo todavia no esta listo para capturar.')
-      return
-    }
-
-    setIsSocialCaptureBusy(true)
-    setSocialCapturePhase('preparing')
-    setSocialCaptureProgress(null)
-    let latestCaptureProgress: SocialCaptureDebugProgressSnapshot | null = null
-
-    void host
-      .captureSocialGraph({
-        format: socialCaptureFormat,
-        onProgress: (progress) => {
-          setSocialCapturePhase(progress.phase)
-          if (
-            (progress.phase === 'loading-avatars' ||
-              progress.phase === 'generating-image' ||
-              progress.phase === 'completed') &&
-            progress.totalAvatarCount !== undefined
-          ) {
-            const reasons = progress.failureReasons ?? {}
-            const topFailureReason = Object.entries(reasons).sort(
-              (a, b) => b[1] - a[1],
-            )[0]?.[0]
-            const hosts = progress.failureHosts ?? {}
-            const topFailureHost = Object.entries(hosts).sort(
-              (a, b) => b[1] - a[1],
-            )[0]?.[0]
-            const hostReasons = progress.failureHostReasons ?? {}
-            const topFailureHostReason = Object.entries(hostReasons).sort(
-              (a, b) => b[1] - a[1],
-            )[0]?.[0]
-            latestCaptureProgress = {
-              loaded: progress.loadedAvatarCount ?? 0,
-              total: progress.totalAvatarCount,
-              failed: progress.failedAvatarCount,
-              missing: progress.missingPhotoCount,
-              drawn: progress.drawnImageCount,
-              fallbackWithPhoto: progress.fallbackWithPhotoCount,
-              attempted: progress.attemptedAvatarCount,
-              retried: progress.retriedAvatarCount,
-              timedOut: progress.timedOut,
-              topFailureReason,
-              topFailureHost,
-              topFailureHostReason,
-              failureReasons: progress.failureReasons,
-              failureHosts: progress.failureHosts,
-              failureHostReasons: progress.failureHostReasons,
-              failureSamples: progress.failureSamples,
-              drawFallbackReasons: progress.drawFallbackReasons,
-              drawFallbackHosts: progress.drawFallbackHosts,
-              drawFallbackSamples: progress.drawFallbackSamples,
-            }
-            setSocialCaptureProgress(latestCaptureProgress)
-          }
-        },
-      })
-      .then((blob) => {
-        const generatedAt = new Date().toISOString()
-        const stamp = generatedAt.replace(/[:.]/g, '-')
-        const pngFileName = `sigma-graph-${socialCaptureFormat}-${stamp}.png`
-        downloadBlob(blob, pngFileName)
-        if (isSocialCaptureDebugDownloadEnabled()) {
-          const debugPayload = buildSocialCaptureDebugPayload({
-            generatedAt,
-            format: socialCaptureFormat,
-            formatLabel: SOCIAL_CAPTURE_FORMAT_LABELS[socialCaptureFormat],
-            pngFileName,
-            progress: latestCaptureProgress,
-            browser: readSocialCaptureDebugBrowserSnapshot(),
-            location: readSocialCaptureDebugLocationSnapshot(),
-          })
-          downloadBlob(
-            new Blob([JSON.stringify(debugPayload, null, 2)], {
-              type: 'application/json',
-            }),
-            buildSocialCaptureDebugFilename(socialCaptureFormat, stamp),
-          )
-        }
-        const failedCount =
-          latestCaptureProgress?.fallbackWithPhoto ??
-          latestCaptureProgress?.failed ??
-          0
-        const summary = latestCaptureProgress
-          ? ` ${latestCaptureProgress.drawn ?? latestCaptureProgress.loaded}/${latestCaptureProgress.total} fotos reales${
-              latestCaptureProgress.missing
-                ? `; ${latestCaptureProgress.missing} sin foto`
-                : ''
-            }${
-              failedCount
-                ? `; ${failedCount} con foto fallida${
-                    latestCaptureProgress?.topFailureReason
-                      ? ` (${latestCaptureProgress.topFailureReason})`
-                      : ''
-                  }`
-                : ''
-            }${
-              latestCaptureProgress?.topFailureHost
-                ? `; host principal: ${latestCaptureProgress.topFailureHost}`
-                : ''
-            }${
-              latestCaptureProgress?.topFailureHostReason
-                ? `; patrón: ${latestCaptureProgress.topFailureHostReason}`
-                : ''
-            }${
-              latestCaptureProgress?.retried
-                ? `; ${latestCaptureProgress.retried} reintentos`
-                : ''
-            }${latestCaptureProgress?.timedOut ? '; timeout parcial' : ''}.`
-          : ''
-        setActionFeedback(
-          `Imagen ${SOCIAL_CAPTURE_FORMAT_LABELS[socialCaptureFormat]} generada.${summary}`,
-        )
-      })
-      .catch((error: unknown) => {
-        setActionFeedback(
-          error instanceof Error
-            ? `No se pudo generar la imagen: ${error.message}`
-            : 'No se pudo generar la imagen.',
-        )
-      })
-      .finally(() => {
-        setIsSocialCaptureBusy(false)
-        setSocialCapturePhase(null)
-        setSocialCaptureProgress(null)
-      })
-  }, [isSocialCaptureBusy, socialCaptureFormat])
-
-  const socialCaptureStatus = useMemo(() => {
-    if (!socialCapturePhase) {
-      return null
-    }
-    const label = SOCIAL_CAPTURE_PHASE_LABELS[socialCapturePhase]
-    if (
-      (socialCapturePhase === 'loading-avatars' ||
-        socialCapturePhase === 'generating-image' ||
-        socialCapturePhase === 'completed') &&
-      socialCaptureProgress
-    ) {
-      return `${label} ${socialCaptureProgress.drawn ?? socialCaptureProgress.loaded}/${socialCaptureProgress.total}`
-    }
-    if (socialCapturePhase !== 'loading-avatars' || !socialCaptureProgress) {
-      return label
-    }
-    return `${label} ${socialCaptureProgress.loaded}/${socialCaptureProgress.total}`
-  }, [socialCapturePhase, socialCaptureProgress])
-
   const railButtons: RailButton[] = useMemo(() => [
     {
       id: 'settings',
@@ -2850,22 +2800,11 @@ export default function GraphAppV2() {
       onClick: handleTogglePhysics,
     },
     {
-      id: 'avatar-photos',
-      tip: avatarPhotosEnabled
-        ? 'Desactivar fotos para ahorrar rendimiento'
-        : 'Activar fotos de avatares',
-      icon: <PhotoIcon disabled={!avatarPhotosEnabled} />,
-      active: avatarPhotosEnabled,
-      pressed: avatarPhotosEnabled,
-      onClick: handleToggleAvatarPhotos,
-    },
-    {
       id: 'zaps',
-      tip: showZaps ? 'Ocultar zaps' : 'Mostrar zaps',
+      tip: isZapsPanelOpen ? 'Cerrar panel de zaps' : 'Zaps',
       icon: <ZapIcon />,
-      active: showZaps,
-      pressed: showZaps,
-      onClick: handleToggleZaps,
+      active: isZapsPanelOpen,
+      onClick: handleOpenZapsPanel,
       dividerAfter: true,
     },
     {
@@ -2894,9 +2833,8 @@ export default function GraphAppV2() {
       onClick: handleOpenPersonSearch,
     },
   ], [
-    avatarPhotosEnabled,
     canUseRuntimeInspector,
-    handleToggleAvatarPhotos,
+    handleOpenZapsPanel,
     handleOpenPersonSearch,
     handleOpenNotifications,
     handleOpenRuntimeInspector,
@@ -2904,16 +2842,15 @@ export default function GraphAppV2() {
     handleRecenter,
     handleStaleRelays,
     handleTogglePhysics,
-    handleToggleZaps,
     isPersonSearchOpen,
     isNotificationsOpen,
     isRuntimeInspectorOpen,
     isSettingsOpen,
+    isZapsPanelOpen,
     notificationHistory.length,
     personSearchMatches.length,
     personSearchQuery,
     physicsEnabled,
-    showZaps,
     relayState.isGraphStale,
   ])
 
@@ -2990,23 +2927,34 @@ export default function GraphAppV2() {
 
   const renderSettingsContent = () => {
     switch (activeSettingsTab) {
-      case 'renderer':
+      case 'performance':
+        return (
+          <PerformanceOptionsPanel
+            avatarPhotosEnabled={avatarPhotosEnabled}
+            avatarRuntimeOptions={avatarRuntimeOptions}
+            capReached={runtimeInspectorStoreSnapshot.capReached}
+            devicePerformanceProfile={
+              runtimeInspectorStoreSnapshot.devicePerformanceProfile
+            }
+            hideConnectionsOnLowPerformance={hideConnectionsOnLowPerformance}
+            lowPerformanceConnectionStatusLabel={lowPerformanceConnectionStatusLabel}
+            maxNodes={runtimeInspectorStoreSnapshot.maxNodes}
+            nodeCount={runtimeInspectorStoreSnapshot.nodeCount}
+            onAvatarRuntimeOptionsChange={setAvatarRuntimeOptions}
+            onGraphMaxNodesChange={setGraphMaxNodes}
+            onToggleAvatarPhotos={handleToggleAvatarPhotos}
+            onToggleHideConnectionsOnLowPerformance={() => {
+              setHideConnectionsOnLowPerformance((current) => !current)
+            }}
+            recommendedMaxNodes={
+              runtimeInspectorStoreSnapshot.effectiveGraphCaps.maxNodes
+            }
+          />
+        )
+      case 'visuals':
         return (
           <div>
-            <GraphCapacityPanel
-              capReached={runtimeInspectorStoreSnapshot.capReached}
-              devicePerformanceProfile={
-                runtimeInspectorStoreSnapshot.devicePerformanceProfile
-              }
-              maxNodes={runtimeInspectorStoreSnapshot.maxNodes}
-              nodeCount={runtimeInspectorStoreSnapshot.nodeCount}
-              onChange={setGraphMaxNodes}
-              recommendedMaxNodes={
-                runtimeInspectorStoreSnapshot.effectiveGraphCaps.maxNodes
-              }
-            />
-            <RenderOptionsPanel
-              avatarPerfSnapshot={avatarPerfSnapshot}
+            <VisualOptionsPanel
               avatarRuntimeOptions={avatarRuntimeOptions}
               onAvatarRuntimeOptionsChange={setAvatarRuntimeOptions}
             />
@@ -3019,160 +2967,30 @@ export default function GraphAppV2() {
               isGraphStale={relayState.isGraphStale}
               onApply={handleApplyRelays}
               onRevert={handleRevertRelays}
-              overrideStatus={relayState.overrideStatus}
               relayUrls={relayState.urls}
             />
             <div className="sg-settings-section">
-              <h4>Zaps</h4>
-              <div className="sg-setting-block">
-                <div>
-                  <div className="sg-setting-row__lbl">Modo</div>
-                  <div className="sg-setting-row__desc">
-                    Live escucha eventos nuevos; ultima hora consulta y reproduce recibos recientes.
-                  </div>
-                </div>
-                <div className="sg-segmented-control" role="group" aria-label="Modo de zaps">
-                  <button
-                    aria-pressed={zapFeedMode === 'live'}
-                    className={`sg-segmented-control__btn${zapFeedMode === 'live' ? ' sg-segmented-control__btn--active' : ''}`}
-                    onClick={() => setZapFeedMode('live')}
-                    type="button"
-                  >
-                    Live
-                  </button>
-                  <button
-                    aria-pressed={zapFeedMode === 'recent-hour'}
-                    className={`sg-segmented-control__btn${zapFeedMode === 'recent-hour' ? ' sg-segmented-control__btn--active' : ''}`}
-                    onClick={() => setZapFeedMode('recent-hour')}
-                    type="button"
-                  >
-                    Ultima hora
-                  </button>
-                </div>
-              </div>
-              {zapFeedMode === 'recent-hour' ? (
-                <div className="sg-setting-block">
-                  <div className="sg-setting-row__desc">
-                    {recentZapReplay.message ??
-                      'Reproduce los zaps de la ultima hora para los nodos visibles.'}
-                    {recentZapReplay.truncatedTargetCount > 0
-                      ? ` Se omitieron ${formatInteger(recentZapReplay.truncatedTargetCount)} nodos por limite operativo.`
-                      : ''}
-                  </div>
-                  <div className="sg-zap-replay-progress" aria-label="Progreso de zaps de la ultima hora">
-                    {recentZapReplayStages.map((stage) => {
-                      const progressValue = formatProgressValue(stage.value)
-                      return (
-                        <div
-                          className={`sg-zap-replay-stage sg-zap-replay-stage--${stage.status}`}
-                          key={stage.id}
-                        >
-                          <div className="sg-zap-replay-stage__head">
-                            <span>{stage.label}</span>
-                            <span>{progressValue}%</span>
-                          </div>
-                          <div
-                            aria-label={stage.label}
-                            aria-valuemax={100}
-                            aria-valuemin={0}
-                            aria-valuenow={progressValue}
-                            className="sg-zap-replay-bar"
-                            role="progressbar"
-                          >
-                            <span
-                              className="sg-zap-replay-bar__fill"
-                              style={{ width: `${progressValue}%` }}
-                            />
-                          </div>
-                          <div className="sg-zap-replay-stage__detail">
-                            {stage.detail}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <div className="sg-zap-replay-timeline">
-                    <div className="sg-zap-replay-timeline__head">
-                      <span>Momento mostrado</span>
-                      <span>{formatZapReplayTime(recentZapReplay.currentZapCreatedAt)}</span>
-                    </div>
-                    <div
-                      aria-label="Avance dentro de la ultima hora"
-                      aria-valuemax={100}
-                      aria-valuemin={0}
-                      aria-valuenow={formatProgressValue(recentZapReplay.timelineProgress)}
-                      className="sg-zap-replay-timeline__rail"
-                      role="progressbar"
-                    >
-                      <span
-                        className="sg-zap-replay-timeline__fill"
-                        style={{
-                          width: formatProgressPercent(recentZapReplay.timelineProgress),
-                        }}
-                      />
-                      <span
-                        className="sg-zap-replay-timeline__marker"
-                        style={{
-                          left: formatProgressPercent(recentZapReplay.timelineProgress),
-                        }}
-                      />
-                    </div>
-                    <div className="sg-zap-replay-timeline__labels">
-                      <span>{formatZapReplayTime(recentZapReplay.windowStartAt)}</span>
-                      <span>{formatZapReplayTime(recentZapReplay.windowEndAt)}</span>
-                    </div>
-                  </div>
-                  <div className="sg-zap-replay-actions">
-                    <button
-                      className="sg-mini-action"
-                      disabled={
-                        recentZapReplay.phase === 'loading' ||
-                        recentZapReplay.phase === 'playing'
-                      }
-                      onClick={() => setRecentZapReplayRequest((current) => current + 1)}
-                      type="button"
-                    >
-                      Reproducir cache
-                    </button>
-                    <button
-                      className="sg-mini-action"
-                      disabled={
-                        recentZapReplay.phase === 'loading' ||
-                        recentZapReplay.phase === 'playing'
-                      }
-                      onClick={() => {
-                        setRecentZapReplayRefreshRequest((current) => current + 1)
-                      }}
-                      type="button"
-                    >
-                      Actualizar
-                    </button>
-                  </div>
-                </div>
-              ) : null}
+              <h4>Estado de relays</h4>
               <div className="sg-setting-row">
                 <div>
                   <div className="sg-setting-row__lbl">
-                    Pausar en escenas grandes
+                    {relayState.isGraphStale ? 'Relays personalizados' : 'Relays base'}
                   </div>
                   <div className="sg-setting-row__desc">
-                    Limita filtros de relay cuando hay mas de{' '}
-                    {MAX_ZAP_FILTER_PUBKEYS} nodos visibles
+                    {relayState.isGraphStale
+                      ? 'La sesion esta usando una lista personalizada.'
+                      : 'La sesion usa la configuracion base del explorador.'}
                   </div>
                 </div>
-                <button
-                  aria-pressed={pauseLiveZapsWhenSceneIsLarge}
-                  className={`sg-toggle${pauseLiveZapsWhenSceneIsLarge ? ' sg-toggle--on' : ''}`}
-                  onClick={() => {
-                    setPauseLiveZapsWhenSceneIsLarge((current) => !current)
-                  }}
-                  title={
-                    pauseLiveZapsWhenSceneIsLarge
-                      ? 'Desactivar limite de zaps live'
-                      : 'Activar pausa de zaps live en escenas grandes'
-                  }
-                  type="button"
-                />
+                {relayState.isGraphStale ? (
+                  <button
+                    className="sg-mini-action"
+                    onClick={handleStaleRelays}
+                    type="button"
+                  >
+                    Revertir
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -3200,39 +3018,7 @@ export default function GraphAppV2() {
                 </div>
               </div>
             ) : null}
-            {isDev ? (
-              <div className="sg-settings-section">
-                <h4>Render dev</h4>
-                <div className="sg-setting-row">
-                  <div>
-                    <div className="sg-setting-row__lbl">
-                      Ocultar conexiones si baja el rendimiento
-                    </div>
-                    <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 0' }}>
-                      Estado: {lowPerformanceConnectionHidingActive
-                        ? 'ocultando conexiones'
-                        : isLowPerformanceForConnections
-                          ? 'bajo rendimiento detectado'
-                          : 'rendimiento estable'}.
-                    </p>
-                  </div>
-                  <button
-                    aria-pressed={devHideConnectionsOnLowPerformance}
-                    className={`sg-toggle${devHideConnectionsOnLowPerformance ? ' sg-toggle--on' : ''}`}
-                    onClick={() => {
-                      setDevHideConnectionsOnLowPerformance((current) => !current)
-                    }}
-                    title={
-                      devHideConnectionsOnLowPerformance
-                        ? 'Desactivar LOD de conexiones por rendimiento'
-                        : 'Activar LOD de conexiones por rendimiento'
-                    }
-                    type="button"
-                  />
-                </div>
-              </div>
-            ) : null}
-            <RenderOptionsPanel
+            <AdvancedAvatarOptionsPanel
               avatarPerfSnapshot={avatarPerfSnapshot}
               avatarRuntimeOptions={avatarRuntimeOptions}
               onAvatarRuntimeOptionsChange={setAvatarRuntimeOptions}
@@ -3287,6 +3073,27 @@ export default function GraphAppV2() {
             {isDev ? (
               <div className="sg-settings-section">
                 <h4>Zaps dev</h4>
+                <div className="sg-setting-row">
+                  <div>
+                    <div className="sg-setting-row__lbl">Pausar live en escenas grandes</div>
+                    <div className="sg-setting-row__desc">
+                      Limita filtros de relay cuando hay mas de {MAX_ZAP_FILTER_PUBKEYS} nodos visibles.
+                    </div>
+                  </div>
+                  <button
+                    aria-pressed={pauseLiveZapsWhenSceneIsLarge}
+                    className={`sg-toggle${pauseLiveZapsWhenSceneIsLarge ? ' sg-toggle--on' : ''}`}
+                    onClick={() => {
+                      setPauseLiveZapsWhenSceneIsLarge((current) => !current)
+                    }}
+                    title={
+                      pauseLiveZapsWhenSceneIsLarge
+                        ? 'Desactivar limite de zaps live'
+                        : 'Activar pausa de zaps live en escenas grandes'
+                    }
+                    type="button"
+                  />
+                </div>
                 <button
                   className={`sg-btn${!simulationPair ? ' ' : ' sg-btn--primary'}`}
                   disabled={!simulationPair}
@@ -3307,6 +3114,160 @@ export default function GraphAppV2() {
   }
 
   // ── Detail panel content ───────────────────────────────────────────────────
+
+  const renderZapsContent = () => (
+    <div>
+      <div className="sg-settings-section">
+        <h4>Visualizacion</h4>
+        <div className="sg-setting-row">
+          <div>
+            <div className="sg-setting-row__lbl">Mostrar zaps en el grafo</div>
+            <div className="sg-setting-row__desc">
+              Controla si las conexiones y animaciones de zaps se dibujan sobre la escena.
+            </div>
+          </div>
+          <button
+            aria-pressed={showZaps}
+            className={`sg-toggle${showZaps ? ' sg-toggle--on' : ''}`}
+            onClick={handleToggleZaps}
+            title={showZaps ? 'Ocultar zaps' : 'Mostrar zaps'}
+            type="button"
+          />
+        </div>
+      </div>
+
+      <div className="sg-settings-section">
+        <h4>Fuente</h4>
+        <div className="sg-setting-block">
+          <div>
+            <div className="sg-setting-row__lbl">Modo</div>
+            <div className="sg-setting-row__desc">
+              Live escucha eventos nuevos; ultima hora consulta y reproduce recibos recientes.
+            </div>
+          </div>
+          <div className="sg-segmented-control" role="group" aria-label="Modo de zaps">
+            <button
+              aria-pressed={zapFeedMode === 'live'}
+              className={`sg-segmented-control__btn${zapFeedMode === 'live' ? ' sg-segmented-control__btn--active' : ''}`}
+              onClick={() => setZapFeedMode('live')}
+              type="button"
+            >
+              Live
+            </button>
+            <button
+              aria-pressed={zapFeedMode === 'recent-hour'}
+              className={`sg-segmented-control__btn${zapFeedMode === 'recent-hour' ? ' sg-segmented-control__btn--active' : ''}`}
+              onClick={() => setZapFeedMode('recent-hour')}
+              type="button"
+            >
+              Ultima hora
+            </button>
+          </div>
+        </div>
+        {zapFeedMode === 'recent-hour' ? (
+          <div className="sg-setting-block">
+            <div className="sg-setting-row__desc">
+              {recentZapReplay.message ??
+                'Reproduce los zaps de la ultima hora para los nodos visibles.'}
+              {recentZapReplay.truncatedTargetCount > 0
+                ? ` Se omitieron ${formatInteger(recentZapReplay.truncatedTargetCount)} nodos por limite operativo.`
+                : ''}
+            </div>
+            <div className="sg-zap-replay-progress" aria-label="Progreso de zaps de la ultima hora">
+              {recentZapReplayStages.map((stage) => {
+                const progressValue = formatProgressValue(stage.value)
+                return (
+                  <div
+                    className={`sg-zap-replay-stage sg-zap-replay-stage--${stage.status}`}
+                    key={stage.id}
+                  >
+                    <div className="sg-zap-replay-stage__head">
+                      <span>{stage.label}</span>
+                      <span>{progressValue}%</span>
+                    </div>
+                    <div
+                      aria-label={stage.label}
+                      aria-valuemax={100}
+                      aria-valuemin={0}
+                      aria-valuenow={progressValue}
+                      className="sg-zap-replay-bar"
+                      role="progressbar"
+                    >
+                      <span
+                        className="sg-zap-replay-bar__fill"
+                        style={{ width: `${progressValue}%` }}
+                      />
+                    </div>
+                    <div className="sg-zap-replay-stage__detail">
+                      {stage.detail}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="sg-zap-replay-timeline">
+              <div className="sg-zap-replay-timeline__head">
+                <span>Momento mostrado</span>
+                <span>{formatZapReplayTime(recentZapReplay.currentZapCreatedAt)}</span>
+              </div>
+              <div
+                aria-label="Avance dentro de la ultima hora"
+                aria-valuemax={100}
+                aria-valuemin={0}
+                aria-valuenow={formatProgressValue(recentZapReplay.timelineProgress)}
+                className="sg-zap-replay-timeline__rail"
+                role="progressbar"
+              >
+                <span
+                  className="sg-zap-replay-timeline__fill"
+                  style={{
+                    width: formatProgressPercent(recentZapReplay.timelineProgress),
+                  }}
+                />
+                <span
+                  className="sg-zap-replay-timeline__marker"
+                  style={{
+                    left: formatProgressPercent(recentZapReplay.timelineProgress),
+                  }}
+                />
+              </div>
+              <div className="sg-zap-replay-timeline__labels">
+                <span>{formatZapReplayTime(recentZapReplay.windowStartAt)}</span>
+                <span>{formatZapReplayTime(recentZapReplay.windowEndAt)}</span>
+              </div>
+            </div>
+            <div className="sg-zap-replay-actions">
+              <button
+                className="sg-mini-action"
+                disabled={
+                  recentZapReplay.phase === 'loading' ||
+                  recentZapReplay.phase === 'playing'
+                }
+                onClick={() => setRecentZapReplayRequest((current) => current + 1)}
+                type="button"
+              >
+                Reproducir cache
+              </button>
+              <button
+                className="sg-mini-action"
+                disabled={
+                  recentZapReplay.phase === 'loading' ||
+                  recentZapReplay.phase === 'playing'
+                }
+                onClick={() => {
+                  setRecentZapReplayRefreshRequest((current) => current + 1)
+                }}
+                type="button"
+              >
+                Actualizar
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+    </div>
+  )
 
   const renderNotificationsContent = () => (
     <div className="sg-notifications">
@@ -3607,11 +3568,15 @@ export default function GraphAppV2() {
     detail.node !== null &&
     !isRootSheetOpen &&
     !isSettingsOpen &&
+    !isZapsPanelOpen &&
     !isNotificationsOpen &&
     !isPersonSearchPanelOpen
   const handleCloseSidePanel = useCallback(() => {
     if (isSettingsOpen) {
       setIsSettingsOpen(false)
+    }
+    if (isZapsPanelOpen) {
+      setIsZapsPanelOpen(false)
     }
     if (isNotificationsOpen) {
       setIsNotificationsOpen(false)
@@ -3631,6 +3596,7 @@ export default function GraphAppV2() {
     isNotificationsOpen,
     isPersonSearchPanelOpen,
     isSettingsOpen,
+    isZapsPanelOpen,
   ])
 
   return (
@@ -3671,16 +3637,10 @@ export default function GraphAppV2() {
 
       {/* Top bar: root chip (left) + brand (right) */}
       <SigmaTopBar
-        canShare={hasRoot}
         onSwitchRoot={handleOpenRootSheet}
-        onShareFormatChange={setSocialCaptureFormat}
-        onShareImage={isDev ? handleShareImage : undefined}
         rootDisplayName={hasRoot ? (rootDisplayName ?? sceneState.rootPubkey?.slice(0, 10) ?? null) : null}
         rootNpub={rootNpubEncoded}
         rootPictureUrl={rootPictureUrl}
-        shareBusy={isSocialCaptureBusy}
-        shareFormat={socialCaptureFormat}
-        shareStatus={socialCaptureStatus}
       />
 
       {/* Filter bar + rail + HUD + minimap — only when a root is loaded */}
@@ -3734,17 +3694,19 @@ export default function GraphAppV2() {
         </RuntimeInspectorUiStateBridge>
       ) : null}
 
-      {(isSettingsOpen || isNotificationsOpen || isPersonSearchPanelOpen || isIdentityPanelOpen) &&
+      {(isSettingsOpen || isZapsPanelOpen || isNotificationsOpen || isPersonSearchPanelOpen || isIdentityPanelOpen) &&
         !isRuntimeInspectorOpen && (
         <SigmaSidePanel
           eyebrow={
             isSettingsOpen
               ? 'AJUSTES'
-              : isNotificationsOpen
-                ? 'NOTIFICACIONES'
-                : isPersonSearchPanelOpen
-                  ? 'BUSCAR PERSONA'
-                  : 'IDENTIDAD'
+              : isZapsPanelOpen
+                ? 'ZAPS'
+                : isNotificationsOpen
+                  ? 'NOTIFICACIONES'
+                  : isPersonSearchPanelOpen
+                    ? 'BUSCAR PERSONA'
+                    : 'IDENTIDAD'
           }
           onClose={handleCloseSidePanel}
           tabs={
@@ -3758,6 +3720,9 @@ export default function GraphAppV2() {
                     type="button"
                   >
                     {tab.label}
+                    {tab.id === 'dev' ? (
+                      <span className="sg-tab__badge">DEV</span>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -3766,6 +3731,8 @@ export default function GraphAppV2() {
         >
           {isSettingsOpen ? (
             renderSettingsContent()
+          ) : isZapsPanelOpen ? (
+            renderZapsContent()
           ) : isNotificationsOpen ? (
             renderNotificationsContent()
           ) : isPersonSearchPanelOpen ? (

@@ -19,6 +19,18 @@ const bucketForTier: Record<DeviceTier, ImageLodBucket> = {
   high: 256,
 }
 
+export const resolveFpsFromFrameMs = (
+  frameMs: number | null | undefined,
+) => {
+  if (frameMs === null || frameMs === undefined || !Number.isFinite(frameMs)) {
+    return null
+  }
+  if (frameMs <= 0) {
+    return null
+  }
+  return 1000 / frameMs
+}
+
 export interface PerfBudgetSnapshot {
   baseTier: DeviceTier
   tier: DeviceTier

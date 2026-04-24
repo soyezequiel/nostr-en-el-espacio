@@ -26,6 +26,10 @@ import {
   shouldReplaceProjection,
   toSortedUniqueStrings,
 } from '@/features/graph-runtime/db/utils'
+import {
+  logTerminalWarning,
+  summarizeHumanTerminalError,
+} from '@/features/graph-runtime/debug/humanTerminalLog'
 
 export class RawEventsRepository {
   private readonly db: NostrGraphDexie
@@ -593,7 +597,12 @@ export class ImageVariantRepository {
     })
 
     if (expiredKeys.length > 0) {
-      void this.db.imageVariants.bulkDelete(expiredKeys).catch(console.warn)
+      void this.db.imageVariants.bulkDelete(expiredKeys).catch((error) => {
+        logTerminalWarning('Imagenes', 'No se pudo limpiar cache vencido', {
+          cantidad: expiredKeys.length,
+          motivo: summarizeHumanTerminalError(error),
+        })
+      })
     }
 
     return validRecords

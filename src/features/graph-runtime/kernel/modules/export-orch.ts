@@ -4,6 +4,7 @@
 } from '@/features/graph-runtime/export/types'
 import type { KernelContext } from '@/features/graph-runtime/kernel/modules/context'
 import { transitionExportJob } from '@/features/graph-runtime/kernel/transitions/export-job'
+import { logTerminalWarning } from '@/features/graph-runtime/debug/humanTerminalLog'
 
 export function createExportModule(ctx: KernelContext) {
   function setExportPhase(
@@ -25,9 +26,10 @@ export function createExportModule(ctx: KernelContext) {
     const state = ctx.store.getState()
     const nextPhase = transitionExportJob(state.exportJob.phase, action)
     if (nextPhase === null) {
-      console.warn(
-        `Invalid transition: exportJob ${state.exportJob.phase} -> ${action}`,
-      )
+      logTerminalWarning('Exportacion', 'Transicion ignorada', {
+        desde: state.exportJob.phase,
+        hacia: action,
+      })
       return
     }
 

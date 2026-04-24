@@ -50,7 +50,8 @@
 [data-graph-v2].sg-app {
   position: relative;
   width: 100%;
-  height: calc(100vh - 4rem); /* subtract navbar height */
+  height: 100vh;
+  height: 100dvh;
   background:
     radial-gradient(
       ellipse at 50% 45%,
@@ -88,10 +89,15 @@
 
 [data-graph-v2] .sg-canvas-stage {
   z-index: 1;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: contain;
 }
 
 [data-graph-v2] .sg-canvas-stage canvas {
   background: transparent !important;
+  touch-action: none;
 }
 
 [data-graph-v2][data-graph-loading="true"] .sg-canvas-host {
@@ -280,6 +286,8 @@
   padding: 4px;
   max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
   background: var(--sg-bg-panel);
   backdrop-filter: blur(14px) saturate(1.1);
   -webkit-backdrop-filter: blur(14px) saturate(1.1);
@@ -620,6 +628,8 @@
 [data-graph-v2] .sg-panel__body {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   padding: 16px;
   scrollbar-width: thin;
   scrollbar-color: var(--sg-stroke) transparent;
@@ -637,6 +647,8 @@
   border-bottom: 1px solid var(--sg-stroke);
   padding: 0 8px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
   flex-shrink: 0;
 }
 
@@ -1813,6 +1825,32 @@
     top: 10px; left: 10px; right: 10px;
   }
 
+  /* Touch targets: 44px minimum (Apple HIG / WCAG AAA) */
+  [data-graph-v2] .sg-rail-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Hover tooltips don't work on touch — hide them */
+  [data-graph-v2] .sg-rail-btn::after {
+    display: none;
+  }
+
+  [data-graph-v2] .sg-filter-pill {
+    padding: 8px 14px 8px 12px;
+    font-size: 13px;
+  }
+
+  [data-graph-v2] .sg-tab {
+    padding: 12px 14px;
+    font-size: 12px;
+  }
+
+  [data-graph-v2] .sg-panel__close {
+    width: 36px;
+    height: 36px;
+  }
+
   [data-graph-v2] .sg-root-chip {
     min-width: 0;
     flex: 1;
@@ -1846,18 +1884,40 @@
   }
 
   [data-graph-v2] .sg-rail {
-    left: auto;
+    left: 10px;
     right: 10px;
     top: auto;
     bottom: 188px;
     transform: none;
     flex-direction: row;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    justify-content: flex-end;
+  }
+
+  [data-graph-v2] .sg-rail::-webkit-scrollbar { display: none; }
+
+  [data-graph-v2] .sg-rail-btn,
+  [data-graph-v2] .sg-rail-divider {
+    flex-shrink: 0;
   }
 
   [data-graph-v2] .sg-hud {
     left: 10px;
     right: 10px;
     bottom: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  [data-graph-v2] .sg-hud::-webkit-scrollbar { display: none; }
+
+  [data-graph-v2] .sg-hud-card {
+    flex-shrink: 0;
   }
 
   [data-graph-v2] .sg-minimap { display: none; }
@@ -1869,6 +1929,7 @@
     bottom: 10px;
     width: auto;
     height: 70vh;
+    height: 70dvh;
     animation: sg-panel-in-mobile 220ms ease;
   }
 
@@ -2103,6 +2164,8 @@
   backdrop-filter: blur(12px) saturate(0.72);
   -webkit-backdrop-filter: blur(12px) saturate(0.72);
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 [data-graph-v2] .sg-loader__ambient {
@@ -3144,6 +3207,8 @@
 [data-graph-v2] .sg-runtime__body {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   padding: 0 16px 16px;
   scrollbar-width: thin;
   scrollbar-color: var(--sg-stroke) transparent;
@@ -3549,6 +3614,7 @@
     bottom: 10px;
     width: auto;
     height: min(80vh, 780px);
+    height: min(80dvh, 780px);
     animation: sg-panel-in-mobile 220ms ease;
   }
 
@@ -3585,5 +3651,47 @@
 
   [data-graph-v2] .sg-runtime__summary-state {
     justify-self: start;
+  }
+}
+
+/* ── Safe-area insets (iPhone notch / home indicator) ────────────────────── */
+
+@supports (padding: env(safe-area-inset-top)) {
+  @media (max-width: 720px) {
+    [data-graph-v2] .sg-topbar {
+      top: max(10px, env(safe-area-inset-top));
+      left: max(10px, env(safe-area-inset-left));
+      right: max(10px, env(safe-area-inset-right));
+    }
+
+    [data-graph-v2] .sg-hud,
+    [data-graph-v2] .sg-panel {
+      bottom: max(10px, env(safe-area-inset-bottom));
+    }
+
+    [data-graph-v2] .sg-toasts {
+      left: max(10px, env(safe-area-inset-left));
+      right: max(10px, env(safe-area-inset-right));
+    }
+
+    [data-graph-v2] .sg-filter-stack {
+      bottom: calc(78px + env(safe-area-inset-bottom));
+      left: max(10px, env(safe-area-inset-left));
+      right: max(10px, env(safe-area-inset-right));
+    }
+
+    [data-graph-v2] .sg-rail {
+      bottom: calc(188px + env(safe-area-inset-bottom));
+      left: max(10px, env(safe-area-inset-left));
+      right: max(10px, env(safe-area-inset-right));
+    }
+  }
+
+  @media (max-width: 780px) {
+    [data-graph-v2] .sg-runtime {
+      bottom: max(10px, env(safe-area-inset-bottom));
+      left: max(10px, env(safe-area-inset-left));
+      right: max(10px, env(safe-area-inset-right));
+    }
   }
 }

@@ -69,10 +69,12 @@ body {
   transition: all 0.3s ease;
 }
 
-.lc-card:hover {
-  border-color: #3a3a3a;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .lc-card:hover {
+    border-color: #3a3a3a;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    transform: translateY(-1px);
+  }
 }
 
 /* Pill button style */
@@ -88,18 +90,20 @@ body {
   color: #0a0a0a;
 }
 
-.lc-pill-primary:hover {
-  background: #c5ff6e;
-  box-shadow: 0 0 20px rgba(180, 249, 83, 0.3);
-}
-
 .lc-pill-secondary {
   background: #262626;
   color: #fafafa;
 }
 
-.lc-pill-secondary:hover {
-  background: #333333;
+@media (hover: hover) and (pointer: fine) {
+  .lc-pill-primary:hover {
+    background: #c5ff6e;
+    box-shadow: 0 0 20px rgba(180, 249, 83, 0.3);
+  }
+
+  .lc-pill-secondary:hover {
+    background: #333333;
+  }
 }
 
 /* Animated gradient for banner */
@@ -254,8 +258,10 @@ body {
   border-radius: 3px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
+@media (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a3a3a;
+  }
 }
 
 /* Selection color */

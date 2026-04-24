@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import DevCacheButton from '@/components/DevCacheButton';
 import './globals.css';
@@ -12,6 +12,13 @@ export const metadata: Metadata = {
   title: 'Nostr Espacial',
   description:
     'Explorador visual para entender relaciones, relays y señales públicas de identidad en Nostr.',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#0a0a0a',
 };
 
 export default function RootLayout({

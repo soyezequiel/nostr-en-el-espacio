@@ -1313,21 +1313,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
   }
 
-  public mount(
-    container: HTMLElement,
-    initialScene: GraphSceneSnapshot,
-    callbacks: GraphInteractionCallbacks,
-  ) {
-    this.callbacks = callbacks
-    this.scene = initialScene
-    this.container = container
-    this.positionLedger = new NodePositionLedger()
-    this.renderStore = new RenderGraphStore(this.positionLedger)
-    this.physicsStore = new PhysicsGraphStore(this.positionLedger)
-    this.renderStore.applyScene(initialScene.render)
-    this.physicsStore.applyScene(initialScene.physics)
-    this.forceRuntime = new ForceAtlasRuntime(this.physicsStore.getGraph())
-    this.sigma = new Sigma(this.renderStore.getGraph(), container, {
+  private createSigmaSettings() {
+    return {
       renderEdgeLabels: false,
       hideEdgesOnMove: true,
       hideLabelsOnMove: true,
@@ -1343,6 +1330,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       defaultNodeColor: '#7dd3a7',
       minCameraRatio: 0.05,
       maxCameraRatio: 6,
+      enableCameraRotation: false,
       // Host + safeRefresh prevent intentional renders while collapsed.
       // This covers Sigma's own already-queued frames during transient layout.
       allowInvalidContainer: true,
@@ -1359,7 +1347,28 @@ export class SigmaRendererAdapter implements RendererAdapter {
       },
       nodeReducer: this.nodeReducer,
       edgeReducer: this.edgeReducer,
-    })
+    }
+  }
+
+  public mount(
+    container: HTMLElement,
+    initialScene: GraphSceneSnapshot,
+    callbacks: GraphInteractionCallbacks,
+  ) {
+    this.callbacks = callbacks
+    this.scene = initialScene
+    this.container = container
+    this.positionLedger = new NodePositionLedger()
+    this.renderStore = new RenderGraphStore(this.positionLedger)
+    this.physicsStore = new PhysicsGraphStore(this.positionLedger)
+    this.renderStore.applyScene(initialScene.render)
+    this.physicsStore.applyScene(initialScene.physics)
+    this.forceRuntime = new ForceAtlasRuntime(this.physicsStore.getGraph())
+    this.sigma = new Sigma(
+      this.renderStore.getGraph(),
+      container,
+      this.createSigmaSettings(),
+    )
 
     const sigma = this.sigma
     this.observeContainer(container)

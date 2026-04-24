@@ -64,6 +64,35 @@ test('avatar image toggle disables and re-enables the avatar budget', async () =
   }
 })
 
+test('sigma settings disable camera rotation while keeping regular camera controls available', async () => {
+  const originalWebGL2RenderingContext = globalThis.WebGL2RenderingContext
+  const originalWebGLRenderingContext = globalThis.WebGLRenderingContext
+  globalThis.WebGL2RenderingContext ??= class {} as typeof WebGL2RenderingContext
+  globalThis.WebGLRenderingContext ??= class {} as typeof WebGLRenderingContext
+
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+  try {
+    const adapter = new SigmaRendererAdapter() as unknown as {
+      createSigmaSettings: () => {
+        enableCameraRotation?: boolean
+        enableCameraPanning?: boolean
+        enableCameraZooming?: boolean
+      }
+    }
+
+    const settings = adapter.createSigmaSettings()
+
+    assert.equal(settings.enableCameraRotation, false)
+    assert.equal(settings.enableCameraPanning, undefined)
+    assert.equal(settings.enableCameraZooming, undefined)
+  } finally {
+    globalThis.WebGL2RenderingContext = originalWebGL2RenderingContext
+    globalThis.WebGLRenderingContext = originalWebGLRenderingContext
+  }
+})
+
 const installAnimationFrameStub = () => {
   const originalRequestAnimationFrame = globalThis.requestAnimationFrame
   const originalCancelAnimationFrame = globalThis.cancelAnimationFrame

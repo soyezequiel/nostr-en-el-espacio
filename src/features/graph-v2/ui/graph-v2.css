@@ -2387,7 +2387,7 @@
     max-height: calc(100vh - 100px);
     max-height: calc(100dvh - 100px);
     border-radius: 20px 20px 16px 16px;
-    touch-action: none;
+    touch-action: pan-y;
     transition: height 90ms linear;
     will-change: height;
   }
@@ -2408,6 +2408,11 @@
   }
 
   [data-graph-v2] .sg-panel__body {
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
+  }
+
+  [data-graph-v2] .sg-panel__header {
     touch-action: none;
   }
 

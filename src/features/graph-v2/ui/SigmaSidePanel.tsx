@@ -103,6 +103,14 @@ export const SigmaSidePanel = memo(function SigmaSidePanel({
   const handlePanelPointerDown = (event: PointerEvent<HTMLElement>) => {
     if (!event.isPrimary) return
     const target = event.target
+    const startedInsideScrollableBody =
+      target instanceof Node && bodyRef.current?.contains(target)
+
+    if (startedInsideScrollableBody) {
+      dragStartRef.current = null
+      return
+    }
+
     if (
       target instanceof Element &&
       target.closest('button, a, input, select, textarea, [data-panel-no-drag]')

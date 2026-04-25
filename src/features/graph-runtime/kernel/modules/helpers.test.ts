@@ -12,12 +12,106 @@ import type { EventsWorkerActionMap } from '@/features/graph-runtime/workers/eve
 import type { WorkerClient } from '@/features/graph-runtime/workers/shared/runtime'
 import {
   analyzeRelayUrlSetUsage,
+  collectFollowRelayLists,
   collectRelayEvents,
   collectAdditionalPaginatedInboundFollowerEvents,
   collectTargetedReciprocalFollowerEvidence,
   mapProfileRecordToNodeProfile,
   safeParseProfile,
 } from './helpers'
+
+test('collectFollowRelayLists ranks read relays by popularity across follow NIP-65 events and persists each kind:10002', async () => {
+  const followPubkeys = ['alice', 'bob', 'carol', 'dave']
+  const popularRelay = 'wss://popular.example'
+  const halfPopularRelay = 'wss://half-popular.example'
+  const oneOffRelay = 'wss://oneoff.example'
+  const writeOnlyRelay = 'wss://write-only.example'
+
+  const tagsByAuthor: Record<string, string[][]> = {
+    alice: [
+      ['r', popularRelay, 'read'],
+      ['r', halfPopularRelay, 'read'],
+      ['r', writeOnlyRelay, 'write'],
+    ],
+    bob: [
+      ['r', popularRelay, 'read'],
+      ['r', halfPopularRelay, 'read'],
+    ],
+    carol: [
+      ['r', popularRelay, 'read'],
+      ['r', oneOffRelay, 'read'],
+    ],
+    dave: [
+      ['r', popularRelay, 'read'],
+    ],
+  }
+
+  const adapter: RelayAdapterInstance = {
+    subscribe(filters) {
+      const filter = filters[0] as Filter | undefined
+      const authors = (filter?.authors as string[] | undefined) ?? []
+      return {
+        subscribe(observer) {
+          queueMicrotask(() => {
+            const envelopes: RelayEventEnvelope[] = authors
+              .filter((author) => tagsByAuthor[author])
+              .map((author) => ({
+                event: {
+                  id: `relay-list-${author}`,
+                  pubkey: author,
+                  kind: 10002,
+                  created_at: 1_000,
+                  tags: tagsByAuthor[author],
+                  content: '',
+                  sig: '',
+                } satisfies Event,
+                relayUrl: 'wss://relay.example',
+                receivedAtMs: 1_000,
+                attempt: 0,
+              }))
+            observer.nextBatch?.(envelopes)
+            observer.complete?.(createRelaySummary(filters))
+          })
+          return () => {}
+        },
+      }
+    },
+    count: async () => [],
+    getRelayHealth: () => ({}),
+    subscribeToRelayHealth: () => () => {},
+    close: () => {},
+  }
+
+  const persisted: string[] = []
+  const result = await collectFollowRelayLists({
+    adapter,
+    followPubkeys,
+    onPersist: async (envelope) => {
+      persisted.push(envelope.event.pubkey)
+    },
+  })
+
+  assert.equal(result.processedAuthorCount, 4)
+  assert.equal(result.partial, false)
+  assert.deepEqual(persisted.sort(), ['alice', 'bob', 'carol', 'dave'])
+
+  // Top read relays sorted by popularity desc, then alpha.
+  assert.deepEqual(result.topReadRelays.slice(0, 3), [
+    popularRelay,
+    halfPopularRelay,
+    oneOffRelay,
+  ])
+  assert.ok(
+    result.topReadRelays.includes(popularRelay),
+    'expected the most popular read relay to be selected',
+  )
+  // Write relays should be reported separately.
+  assert.deepEqual(result.topWriteRelays, [writeOnlyRelay])
+  assert.ok(
+    result.totalUniqueRelayCount >= 4,
+    `expected at least 4 unique relays tracked, got ${result.totalUniqueRelayCount}`,
+  )
+})
 
 test('analyzeRelayUrlSetUsage incluye relay hints del cache de contactos antes del baseline y respeta el cap', () => {
   const bootstrapRelays = ['wss://bootstrap.example']

@@ -25,6 +25,11 @@ import {
 } from '@/features/graph-runtime/nostr'
 import type { NodeDetailProfile } from '@/features/graph-runtime/kernel/runtime'
 import {
+  FOLLOW_RELAY_LIST_AUTHOR_CHUNK_SIZE,
+  FOLLOW_RELAY_LIST_KIND,
+  FOLLOW_RELAY_LIST_MAX_PAGES_PER_CHUNK,
+  FOLLOW_RELAY_LIST_QUERY_CONCURRENCY,
+  FOLLOW_RELAY_LIST_TOP_HINTS,
   MAX_SESSION_RELAYS,
   MAX_ZAP_RECEIPTS,
   NODE_EXPAND_INBOUND_PARSE_CONCURRENCY,
@@ -1202,6 +1207,170 @@ export async function collectAdditionalPaginatedInboundFollowerEvents({
     error: firstError,
     pageCount,
     relaySummaries: sortedRelaySummaries,
+  }
+}
+
+export interface FollowRelayListsResult {
+  topReadRelays: string[]
+  topWriteRelays: string[]
+  processedAuthorCount: number
+  totalUniqueRelayCount: number
+  partial: boolean
+}
+
+/**
+ * Fetches kind:10002 NIP-65 events for each follow pubkey in batches and
+ * aggregates the most popular read/write relays declared. Bounded by
+ * `FOLLOW_RELAY_LIST_*` constants. The returned `topReadRelays` are the
+ * relays declared by most follows, which are the highest-signal candidates
+ * for finding inbound followers (kind:3 events with `#p=root`) that the
+ * default relay set may not host.
+ */
+export async function collectFollowRelayLists({
+  adapter,
+  followPubkeys,
+  isStale = () => false,
+  onPersist,
+  topHints = FOLLOW_RELAY_LIST_TOP_HINTS,
+}: {
+  adapter: RelayAdapterInstance
+  followPubkeys: readonly string[]
+  isStale?: () => boolean
+  onPersist?: (envelope: RelayEventEnvelope) => void | Promise<void>
+  topHints?: number
+}): Promise<FollowRelayListsResult> {
+  const candidates = Array.from(
+    new Set(followPubkeys.map((pubkey) => pubkey.trim()).filter(Boolean)),
+  ).sort()
+
+  if (candidates.length === 0) {
+    return {
+      topReadRelays: [],
+      topWriteRelays: [],
+      processedAuthorCount: 0,
+      totalUniqueRelayCount: 0,
+      partial: false,
+    }
+  }
+
+  const collectedEnvelopes: RelayEventEnvelope[] = []
+  let partial = false
+
+  await runWithConcurrencyLimit(
+    chunkIntoBatches(candidates, FOLLOW_RELAY_LIST_AUTHOR_CHUNK_SIZE),
+    FOLLOW_RELAY_LIST_QUERY_CONCURRENCY,
+    async (authors) => {
+      const seenChunkEventIds = new Set<string>()
+      let until: number | null = null
+
+      for (
+        let pageIndex = 0;
+        pageIndex < FOLLOW_RELAY_LIST_MAX_PAGES_PER_CHUNK;
+        pageIndex += 1
+      ) {
+        if (isStale()) {
+          return
+        }
+
+        const limit = Math.max(50, authors.length)
+        const filter: Filter = {
+          authors,
+          kinds: [FOLLOW_RELAY_LIST_KIND],
+          limit,
+        }
+        if (until !== null) {
+          filter.until = until
+        }
+
+        const result = await collectRelayEvents(adapter, [filter])
+        if (result.error !== null) {
+          partial = true
+          break
+        }
+
+        let pageNewCount = 0
+        let oldestCreatedAt: number | null = null
+        for (const envelope of result.events) {
+          if (seenChunkEventIds.has(envelope.event.id)) {
+            continue
+          }
+          seenChunkEventIds.add(envelope.event.id)
+          if (envelope.event.kind !== FOLLOW_RELAY_LIST_KIND) {
+            continue
+          }
+          collectedEnvelopes.push(envelope)
+          pageNewCount += 1
+          if (
+            oldestCreatedAt === null ||
+            envelope.event.created_at < oldestCreatedAt
+          ) {
+            oldestCreatedAt = envelope.event.created_at
+          }
+        }
+
+        if (pageNewCount === 0) {
+          break
+        }
+        if (result.events.length < limit) {
+          break
+        }
+        if (oldestCreatedAt === null || oldestCreatedAt <= 0) {
+          break
+        }
+        until = oldestCreatedAt - 1
+      }
+    },
+  )
+
+  // Pick the most recent kind:10002 per author (replaceable semantics).
+  const latestEnvelopesByAuthor =
+    selectLatestReplaceableEventsByPubkey(collectedEnvelopes)
+
+  const readRelayCounts = new Map<string, number>()
+  const writeRelayCounts = new Map<string, number>()
+  const allRelays = new Set<string>()
+
+  for (const envelope of latestEnvelopesByAuthor) {
+    const parsed = parseRelayListEvent(envelope)
+    if (parsed.relays.length === 0) {
+      continue
+    }
+    for (const relayUrl of parsed.readRelays) {
+      readRelayCounts.set(relayUrl, (readRelayCounts.get(relayUrl) ?? 0) + 1)
+      allRelays.add(relayUrl)
+    }
+    for (const relayUrl of parsed.writeRelays) {
+      writeRelayCounts.set(relayUrl, (writeRelayCounts.get(relayUrl) ?? 0) + 1)
+      allRelays.add(relayUrl)
+    }
+    if (onPersist) {
+      try {
+        await onPersist(envelope)
+      } catch {
+        // Persist failures are non-fatal for discovery.
+      }
+    }
+  }
+
+  const sortByPopularity = (
+    counts: ReadonlyMap<string, number>,
+  ): string[] =>
+    Array.from(counts.entries())
+      .sort((left, right) => {
+        if (left[1] !== right[1]) {
+          return right[1] - left[1]
+        }
+        return left[0].localeCompare(right[0])
+      })
+      .slice(0, Math.max(0, Math.floor(topHints)))
+      .map(([relayUrl]) => relayUrl)
+
+  return {
+    topReadRelays: sortByPopularity(readRelayCounts),
+    topWriteRelays: sortByPopularity(writeRelayCounts),
+    processedAuthorCount: latestEnvelopesByAuthor.length,
+    totalUniqueRelayCount: allRelays.size,
+    partial,
   }
 }
 

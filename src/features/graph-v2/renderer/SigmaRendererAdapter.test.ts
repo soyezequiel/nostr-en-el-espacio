@@ -141,6 +141,58 @@ test('touch taps tolerate small finger drift when selecting nodes', async () => 
   }
 })
 
+test('touch camera movement drives Sigma hide-edges-on-move signal', async () => {
+  const originalWebGL2RenderingContext = globalThis.WebGL2RenderingContext
+  const originalWebGLRenderingContext = globalThis.WebGLRenderingContext
+  globalThis.WebGL2RenderingContext ??= class {} as typeof WebGL2RenderingContext
+  globalThis.WebGLRenderingContext ??= class {} as typeof WebGLRenderingContext
+
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+  try {
+    const mouseCaptor = { isMoving: false }
+    let renderCalls = 0
+    const adapter = new SigmaRendererAdapter() as unknown as {
+      sigma: {
+        getMouseCaptor: () => { isMoving: boolean }
+      }
+      safeRender: () => void
+      handleTouchMove: (event: {
+        touches: Array<{ x: number; y: number }>
+        previousTouches: Array<{ x: number; y: number }>
+        preventSigmaDefault: () => void
+      }) => void
+      touchCameraMotionClearTimer: ReturnType<typeof setTimeout> | null
+    }
+
+    adapter.sigma = {
+      getMouseCaptor: () => mouseCaptor,
+    }
+    adapter.safeRender = () => {
+      renderCalls += 1
+    }
+
+    adapter.handleTouchMove({
+      previousTouches: [{ x: 10, y: 10 }],
+      touches: [{ x: 20, y: 10 }],
+      preventSigmaDefault: () => {},
+    })
+
+    assert.equal(mouseCaptor.isMoving, true)
+    assert.equal(renderCalls, 0)
+
+    await wait(160)
+
+    assert.equal(mouseCaptor.isMoving, false)
+    assert.equal(renderCalls, 1)
+    assert.equal(adapter.touchCameraMotionClearTimer, null)
+  } finally {
+    globalThis.WebGL2RenderingContext = originalWebGL2RenderingContext
+    globalThis.WebGLRenderingContext = originalWebGLRenderingContext
+  }
+})
+
 test('graph updates do not fit the camera automatically', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'

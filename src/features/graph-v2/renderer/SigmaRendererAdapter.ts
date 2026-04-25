@@ -214,6 +214,10 @@ type EdgeVisualStyle = Pick<
   'color' | 'size' | 'zIndex' | 'hidden'
 >
 
+type SigmaMovementCaptorShim = {
+  isMoving: boolean
+}
+
 type SceneFocusTransition = {
   nodes: Map<string, NodeVisualStyle>
   edges: Map<string, EdgeVisualStyle>
@@ -409,6 +413,9 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private cameraMotionActive = false
 
   private cameraMotionClearTimer: ReturnType<typeof setTimeout> | null = null
+
+  private touchCameraMotionClearTimer: ReturnType<typeof setTimeout> | null =
+    null
 
   private readonly MOTION_RESUME_MS = 140
 
@@ -1401,7 +1408,12 @@ export class SigmaRendererAdapter implements RendererAdapter {
         TOUCH_TAP_MOVE_TOLERANCE_PX,
       ),
     })
-    touchCaptor.on('touchmove', this.handleNaturalTouchZoom)
+    touchCaptor.on('touchmove', this.handleTouchMove)
+  }
+
+  private readonly handleTouchMove = (event: TouchCoords) => {
+    this.markTouchCameraMovement()
+    this.handleNaturalTouchZoom(event)
   }
 
   private readonly handleNaturalTouchZoom = (event: TouchCoords) => {
@@ -1574,6 +1586,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
     this.cancelPendingFitCameraAfterPhysics()
     this.cancelPendingHoverFocus()
+    this.clearTouchCameraMovement()
     if (this.pendingContainerRefreshFrame !== null) {
       cancelAnimationFrame(this.pendingContainerRefreshFrame)
       this.pendingContainerRefreshFrame = null
@@ -1713,6 +1726,45 @@ export class SigmaRendererAdapter implements RendererAdapter {
       this.cameraMotionClearTimer = null
       this.safeRender()
     }, this.MOTION_RESUME_MS)
+  }
+
+  private markTouchCameraMovement() {
+    const sigma = this.sigma
+    if (!sigma) {
+      return
+    }
+
+    // Sigma 3's render-time `hideEdgesOnMove` check only reads the mouse
+    // captor, even for touch gestures. Bridge touch motion into that signal
+    // so mobile pan/pinch gets the same edge-hiding path as desktop.
+    const mouseCaptor =
+      sigma.getMouseCaptor() as unknown as SigmaMovementCaptorShim
+    mouseCaptor.isMoving = true
+
+    if (this.touchCameraMotionClearTimer !== null) {
+      clearTimeout(this.touchCameraMotionClearTimer)
+    }
+    this.touchCameraMotionClearTimer = setTimeout(() => {
+      mouseCaptor.isMoving = false
+      this.touchCameraMotionClearTimer = null
+      this.safeRender()
+    }, this.MOTION_RESUME_MS)
+  }
+
+  private clearTouchCameraMovement() {
+    if (this.touchCameraMotionClearTimer !== null) {
+      clearTimeout(this.touchCameraMotionClearTimer)
+      this.touchCameraMotionClearTimer = null
+    }
+
+    const sigma = this.sigma
+    if (!sigma) {
+      return
+    }
+
+    const mouseCaptor =
+      sigma.getMouseCaptor() as unknown as SigmaMovementCaptorShim
+    mouseCaptor.isMoving = false
   }
 
   private scheduleAvatarRevealRender() {

@@ -44,6 +44,7 @@ import {
 import {
   analyzeRelayUrlSetUsage,
   collectAdditionalPaginatedInboundFollowerEvents,
+  collectFollowRelayLists,
   collectInboundFollowerEvidence,
   collectRelayEvents,
   collectTargetedReciprocalFollowerEvidence,
@@ -51,6 +52,7 @@ import {
   mapProfileRecordToNodeProfile,
   mergeInboundFollowerEvidence,
   mergeRelayUrlSets,
+  parseRelayListEvent,
   type RelayCollectionResult,
   selectLatestReplaceableEvent,
   selectLatestReplaceableEventsByPubkey,
@@ -1071,6 +1073,83 @@ export function createRootLoaderModule(
             { motivo: summarizeHumanTerminalError(error) },
           )
         })
+      let followRelayListDiscoveryStarted = false
+      const scheduleFollowRelayListDiscovery = (
+        followPubkeys: readonly string[],
+      ) => {
+        if (followRelayListDiscoveryStarted) {
+          return
+        }
+        if (isStaleLoad(loadId)) {
+          return
+        }
+        if (followPubkeys.length === 0) {
+          return
+        }
+        followRelayListDiscoveryStarted = true
+
+        void (async () => {
+          try {
+            const result = await collectFollowRelayLists({
+              adapter,
+              followPubkeys,
+              isStale: () => isStaleLoad(loadId),
+              onPersist: async (envelope) => {
+                try {
+                  const parsed = parseRelayListEvent(envelope)
+                  if (parsed.relays.length === 0) {
+                    return
+                  }
+                  await ctx.repositories.relayLists.upsert({
+                    pubkey: envelope.event.pubkey,
+                    eventId: envelope.event.id,
+                    createdAt: envelope.event.created_at,
+                    fetchedAt: envelope.receivedAtMs,
+                    readRelays: parsed.readRelays,
+                    writeRelays: parsed.writeRelays,
+                    relays: parsed.relays,
+                  })
+                } catch (error) {
+                  logTerminalWarning(
+                    'Persistencia',
+                    'No se pudo guardar NIP-65 de follow del root',
+                    { motivo: summarizeHumanTerminalError(error) },
+                  )
+                }
+              },
+            })
+
+            if (isStaleLoad(loadId)) {
+              return
+            }
+
+            if (traceThisRoot) {
+              traceAccountFlow('rootLoader.followRelayLists.result', {
+                processedAuthorCount: result.processedAuthorCount,
+                totalUniqueRelayCount: result.totalUniqueRelayCount,
+                topReadRelayCount: result.topReadRelays.length,
+                topWriteRelayCount: result.topWriteRelays.length,
+                partial: result.partial,
+              })
+            }
+
+            const aggregatedRelayHints = Array.from(
+              new Set([...result.topReadRelays, ...result.topWriteRelays]),
+            )
+            if (aggregatedRelayHints.length === 0) {
+              return
+            }
+
+            scheduleSupplementaryInboundDiscovery(aggregatedRelayHints)
+          } catch (error) {
+            logTerminalWarning(
+              'Discovery',
+              'Fallo follow relay list discovery',
+              { motivo: summarizeHumanTerminalError(error) },
+            )
+          }
+        })()
+      }
       const applyFastContactListGraph = (
         envelope: RelayEventEnvelope,
         parsedContactList: ParseContactListResult,
@@ -1181,6 +1260,7 @@ export function createRootLoaderModule(
           parsedContactList.relayHints,
         )
         scheduleSupplementaryInboundDiscovery(parsedContactList.relayHints)
+        scheduleFollowRelayListDiscovery(parsedContactList.followPubkeys)
 
         return true
       }
@@ -1661,6 +1741,7 @@ export function createRootLoaderModule(
           parsedContactList.relayHints,
         )
         scheduleSupplementaryInboundDiscovery(parsedContactList.relayHints)
+        scheduleFollowRelayListDiscovery(parsedContactList.followPubkeys)
         if (traceThisRoot && traceConfig) {
           traceAccountFlow('rootLoader.finalTargetedEvidence.backgroundQueued', {
             hasTargetedReciprocalCandidates,

@@ -235,6 +235,18 @@ const readStoredAvatarPhotosEnabled = () => {
   }
 }
 
+const readStoredRuntimeInspectorButtonEnabled = () => {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  try {
+    return window.localStorage.getItem(RUNTIME_INSPECTOR_BUTTON_STORAGE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 interface LoadRootInput
   extends Omit<Pick<ValidRootIdentity, 'pubkey' | 'relays' | 'evidence'>, 'relays'> {
   relays?: string[]
@@ -257,6 +269,7 @@ const DEV_SIGMA_SETTINGS_TAB: { id: SigmaSettingsTab; label: string } = {
 
 const IDENTITY_FIRST_RUN_HELP_KEY = 'sigma.identityFirstRunHelpDismissed'
 const AVATAR_PHOTOS_ENABLED_STORAGE_KEY = 'sigma.avatarPhotosEnabled'
+const RUNTIME_INSPECTOR_BUTTON_STORAGE_KEY = 'sigma.runtimeInspectorButtonEnabled'
 const VISIBLE_PROFILE_WARMUP_BATCH_SIZE = 48
 const VISIBLE_PROFILE_WARMUP_COOLDOWN_MS = 2 * 60 * 1000
 
@@ -939,10 +952,13 @@ function PerformanceOptionsPanel({
   capReached,
   devicePerformanceProfile,
   hideConnectionsOnLowPerformance,
+  isRuntimeInspectorButtonLocked,
   lowPerformanceConnectionStatusLabel,
   maxNodes,
   nodeCount,
+  runtimeInspectorButtonVisible,
   recommendedMaxNodes,
+  onToggleRuntimeInspectorButton,
   onGraphMaxNodesChange,
   onToggleAvatarPhotos,
   onToggleHideConnectionsOnLowPerformance,
@@ -953,10 +969,13 @@ function PerformanceOptionsPanel({
   capReached: boolean
   devicePerformanceProfile: AppStore['devicePerformanceProfile']
   hideConnectionsOnLowPerformance: boolean
+  isRuntimeInspectorButtonLocked: boolean
   lowPerformanceConnectionStatusLabel: string
   maxNodes: number
   nodeCount: number
+  runtimeInspectorButtonVisible: boolean
   recommendedMaxNodes: number
+  onToggleRuntimeInspectorButton: () => void
   onGraphMaxNodesChange: (maxNodes: number) => void
   onToggleAvatarPhotos: () => void
   onToggleHideConnectionsOnLowPerformance: () => void
@@ -989,6 +1008,34 @@ function PerformanceOptionsPanel({
               hideConnectionsOnLowPerformance
                 ? 'Desactivar LOD de conexiones por rendimiento'
                 : 'Activar LOD de conexiones por rendimiento'
+            }
+            type="button"
+          />
+        </div>
+      </div>
+      <div className="sg-settings-section">
+        <h4>Diagnostico</h4>
+        <div className="sg-setting-row">
+          <div>
+            <div className="sg-setting-row__lbl">Inspector de runtime</div>
+            <div className="sg-setting-row__desc">
+              Muestra el boton para abrir snapshots del tiempo de ejecucion.
+              {isRuntimeInspectorButtonLocked
+                ? ' En desarrollo queda visible por defecto.'
+                : ' En produccion queda oculto hasta activarlo.'}
+            </div>
+          </div>
+          <button
+            aria-pressed={runtimeInspectorButtonVisible}
+            className={`sg-toggle${runtimeInspectorButtonVisible ? ' sg-toggle--on' : ''}`}
+            disabled={isRuntimeInspectorButtonLocked}
+            onClick={onToggleRuntimeInspectorButton}
+            title={
+              isRuntimeInspectorButtonLocked
+                ? 'Visible por defecto en desarrollo'
+                : runtimeInspectorButtonVisible
+                  ? 'Ocultar boton del inspector de runtime'
+                  : 'Mostrar boton del inspector de runtime'
             }
             type="button"
           />
@@ -1379,6 +1426,7 @@ export default function GraphAppV2() {
   const fixtureName = searchParams.get('fixture')
   const isTestMode = searchParams.get('testMode') === '1'
   const isFixtureMode = isTestMode && fixtureName === 'drag-local'
+  const isDev = process.env.NODE_ENV === 'development'
   const [bridge] = useState(() => new LegacyKernelBridge())
   const [loadFeedback, setLoadFeedback] = useState<string | null>(
     isFixtureMode ? 'Fixture drag-local cargado para Playwright.' : null,
@@ -1441,6 +1489,8 @@ export default function GraphAppV2() {
   const [avatarPhotosEnabled, setAvatarPhotosEnabled] = useState(
     readStoredAvatarPhotosEnabled,
   )
+  const [runtimeInspectorButtonEnabled, setRuntimeInspectorButtonEnabled] =
+    useState(() => isDev || readStoredRuntimeInspectorButtonEnabled())
   const [showZaps, setShowZaps] = useState(true)
   const [zapFeedMode, setZapFeedMode] = useState<ZapFeedMode>('live')
   const [recentZapReplayRequest, setRecentZapReplayRequest] = useState(0)
@@ -1539,6 +1589,21 @@ export default function GraphAppV2() {
   }, [avatarPhotosEnabled])
 
   useEffect(() => {
+    if (isDev) {
+      return
+    }
+
+    try {
+      window.localStorage.setItem(
+        RUNTIME_INSPECTOR_BUTTON_STORAGE_KEY,
+        runtimeInspectorButtonEnabled ? '1' : '0',
+      )
+    } catch {
+      // Persistence is best-effort; the runtime toggle still works.
+    }
+  }, [isDev, runtimeInspectorButtonEnabled])
+
+  useEffect(() => {
     setIsLowPerformanceForConnections((current) =>
       resolveLowPerformanceConnectionLodState(avatarPerfSnapshot, current),
     )
@@ -1574,8 +1639,7 @@ export default function GraphAppV2() {
     }
   }, [sceneState.rootPubkey, isFixtureMode])
 
-  const isDev = process.env.NODE_ENV === 'development'
-  const canUseRuntimeInspector = isDev
+  const canUseRuntimeInspector = isDev || runtimeInspectorButtonEnabled
 
   const appendNotification = useCallback(
     (source: NotificationSource, msg: string, tone: SigmaNotificationLogEntry['tone']) => {
@@ -2959,6 +3023,18 @@ export default function GraphAppV2() {
       badge: zapActivityLog.length,
       onClick: handleOpenZapsPanel,
     },
+    ...(canUseRuntimeInspector
+      ? [{
+          id: 'runtime',
+          label: 'Runtime',
+          tip: isRuntimeInspectorOpen
+            ? 'Cerrar inspector de runtime'
+            : 'Inspector de runtime',
+          icon: <PulseIcon />,
+          active: isRuntimeInspectorOpen,
+          onClick: handleOpenRuntimeInspector,
+        } satisfies MobileNavButton]
+      : []),
     {
       id: 'view',
       label: 'Vista',
@@ -2975,10 +3051,13 @@ export default function GraphAppV2() {
       onClick: handleOpenSettings,
     },
   ], [
+    canUseRuntimeInspector,
     handleOpenMobileUtilityPanel,
+    handleOpenRuntimeInspector,
     handleOpenZapsPanel,
     handleOpenSettings,
     isSettingsOpen,
+    isRuntimeInspectorOpen,
     isZapsPanelOpen,
     mobileUtilityPanel,
     handleFitView,
@@ -3068,11 +3147,15 @@ export default function GraphAppV2() {
               runtimeInspectorStoreSnapshot.devicePerformanceProfile
             }
             hideConnectionsOnLowPerformance={hideConnectionsOnLowPerformance}
+            isRuntimeInspectorButtonLocked={isDev}
             lowPerformanceConnectionStatusLabel={lowPerformanceConnectionStatusLabel}
             maxNodes={runtimeInspectorStoreSnapshot.maxNodes}
             nodeCount={runtimeInspectorStoreSnapshot.nodeCount}
             onAvatarRuntimeOptionsChange={setAvatarRuntimeOptions}
             onGraphMaxNodesChange={setGraphMaxNodes}
+            onToggleRuntimeInspectorButton={() => {
+              setRuntimeInspectorButtonEnabled((current) => !current)
+            }}
             onToggleAvatarPhotos={handleToggleAvatarPhotos}
             onToggleHideConnectionsOnLowPerformance={() => {
               setHideConnectionsOnLowPerformance((current) => !current)
@@ -3080,6 +3163,7 @@ export default function GraphAppV2() {
             recommendedMaxNodes={
               runtimeInspectorStoreSnapshot.effectiveGraphCaps.maxNodes
             }
+            runtimeInspectorButtonVisible={canUseRuntimeInspector}
           />
         )
       case 'visuals':

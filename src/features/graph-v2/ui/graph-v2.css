@@ -1999,6 +1999,11 @@
   flex-shrink: 0;
 }
 
+[data-graph-v2] .sg-toggle:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
 [data-graph-v2] .sg-toggle::after {
   content: '';
   position: absolute;
@@ -2425,7 +2430,7 @@
     bottom: 8px;
     z-index: 18;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
     gap: 3px;
     width: auto;
     min-height: 60px;

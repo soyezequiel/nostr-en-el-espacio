@@ -3958,7 +3958,7 @@ export default function GraphAppV2() {
                     : 'IDENTIDAD'
           }
           mobileSnap={mobilePanelSnap}
-          mobileSnapResetKey={isIdentityPanelOpen ? detail.pubkey : undefined}
+          mobileSnapResetKey={isIdentityPanelOpen ? (detail.pubkey ?? undefined) : undefined}
           onClose={handleCloseSidePanel}
           tabs={
             isSettingsOpen && settingsTabs.length > 1 ? (

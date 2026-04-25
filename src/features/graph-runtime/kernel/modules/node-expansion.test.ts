@@ -894,3 +894,135 @@ test('expandNode keeps multiple expanded-node relays when defaults already fill 
     ),
   )
 })
+
+test('expandNode inyecta relayHints del contact list en el adapter de enriquecimiento inbound', async () => {
+  const store = createExpandableStore()
+  const createdRelayUrlSets: string[][] = []
+
+  const createRelayAdapter = (options: { relayUrls: string[] }) => {
+    const relayUrls = options.relayUrls.slice()
+    createdRelayUrlSets.push(relayUrls)
+
+    return {
+      subscribe(filters: Array<Record<string, unknown>>) {
+        return {
+          subscribe(observer: {
+            next?: (value: unknown) => void
+            complete?: (summary: unknown) => void
+          }) {
+            queueMicrotask(() => {
+              const firstFilter = filters[0] ?? {}
+              const isContactList =
+                Array.isArray(firstFilter.authors) &&
+                Array.isArray(firstFilter.kinds) &&
+                (firstFilter.kinds as number[]).includes(3)
+              if (isContactList) {
+                observer.next?.({
+                  event: {
+                    id: 'contact-list-event',
+                    pubkey: 'target',
+                    kind: 3,
+                    created_at: 123,
+                    tags: [
+                      ['p', 'follow-a', 'wss://hint-from-target.example'],
+                      ['p', 'follow-b'],
+                    ],
+                  },
+                  relayUrl: 'wss://relay.example',
+                  receivedAtMs: 123,
+                })
+              }
+              observer.complete?.({ relayCount: relayUrls.length })
+            })
+            return () => {}
+          },
+        }
+      },
+      count: async () => [],
+      getRelayHealth: () => ({}),
+      subscribeToRelayHealth: () => () => {},
+      close: () => {},
+    }
+  }
+
+  let inboundCallRelayUrls: readonly string[] | null = null
+  const ctx = {
+    store,
+    repositories: {
+      contactLists: {
+        get: async () => null,
+      },
+      relayLists: createRelayListsRepositoryStub(),
+    },
+    eventsWorker: {
+      invoke: async (action: string, payload: { event: { tags: string[][] } }) => {
+        if (action !== 'PARSE_CONTACT_LIST') {
+          throw new Error(`unexpected action ${action}`)
+        }
+        const followPubkeys = payload.event.tags
+          .filter((tag) => tag[0] === 'p' && typeof tag[1] === 'string')
+          .map((tag) => tag[1] as string)
+        const relayHints = payload.event.tags
+          .filter(
+            (tag) =>
+              tag[0] === 'p' && typeof tag[2] === 'string' && tag[2].length > 0,
+          )
+          .map((tag) => tag[2] as string)
+        return {
+          followPubkeys: Array.from(new Set(followPubkeys)),
+          relayHints: Array.from(new Set(relayHints)),
+          diagnostics: [],
+        }
+      },
+    },
+    graphWorker: {
+      invoke: async () => {
+        throw new Error('graph worker should not be used in this test')
+      },
+      dispose: () => {},
+    },
+    createRelayAdapter,
+    defaultRelayUrls: ['wss://relay.example'],
+    now: (() => {
+      let now = 1_000
+      return () => ++now
+    })(),
+    emitter: createKernelEventEmitter(),
+  }
+
+  const expansion = createNodeExpansionModule(ctx, {
+    ...createBaseCollaborators(),
+    loadDirectInboundFollowerEvidence: async (input: {
+      adapter: unknown
+      pubkey: string
+    }) => {
+      const adapterAny = input.adapter as {
+        subscribe: (filters: unknown, opts?: unknown) => unknown
+      }
+      // Trigger a subscribe so the relay set is captured by the adapter factory
+      void adapterAny.subscribe([
+        { kinds: [3], '#p': [input.pubkey], limit: 250 },
+      ])
+      // We capture from the latest createdRelayUrlSets entry
+      inboundCallRelayUrls =
+        createdRelayUrlSets[createdRelayUrlSets.length - 1] ?? null
+      return {
+        followerPubkeys: [],
+        partial: false,
+      }
+    },
+  })
+
+  const result = await expansion.expandNode('target')
+  assert.equal(result.status, 'ready')
+  await flushMicrotasks()
+
+  assert.ok(
+    inboundCallRelayUrls,
+    'expected inbound enrichment to use a relay adapter',
+  )
+  assert.ok(
+    inboundCallRelayUrls.includes('wss://hint-from-target.example'),
+    `expected inbound enrichment relays to include the contact list hint, got ${JSON.stringify(inboundCallRelayUrls)}`,
+  )
+})

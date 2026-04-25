@@ -3,6 +3,7 @@
 
 import {
   memo,
+  type ComponentProps,
   type ReactNode,
   useCallback,
   startTransition,
@@ -100,7 +101,10 @@ import {
   SigmaLoadProgressHud,
   SigmaLoadingOverlay,
 } from '@/features/graph-v2/ui/SigmaLoadingOverlay'
-import { isRootLoadProgressActive } from '@/features/graph-v2/ui/rootLoadProgressViewModel'
+import {
+  buildRootLoadProgressViewModel,
+  isRootLoadProgressActive,
+} from '@/features/graph-v2/ui/rootLoadProgressViewModel'
 import { SigmaRootInput } from '@/features/graph-v2/ui/SigmaRootInput'
 import { SigmaSavedRootsPanel } from '@/features/graph-v2/ui/SigmaSavedRootsPanel'
 import { SigmaToasts, type SigmaToast } from '@/features/graph-v2/ui/SigmaToasts'
@@ -211,6 +215,10 @@ const NODE_EXPANSION_STATUS_LABELS: Record<
   empty: 'sin conexiones nuevas',
   error: 'error',
 }
+
+type SearchLoadProgress = NonNullable<
+  ComponentProps<typeof SigmaTopBar>['searchLoadProgress']
+>
 
 const DEVICE_PROFILE_LABELS: Record<
   AppStore['devicePerformanceProfile'],
@@ -397,6 +405,103 @@ const clampProgress = (value: number) => {
 
 const formatProgressValue = (value: number) => Math.round(clampProgress(value) * 100)
 const formatProgressPercent = (value: number) => `${formatProgressValue(value)}%`
+
+const clampPercentValue = (value: number) => {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, Math.round(value)))
+}
+
+const getNodeExpansionUpdatedAt = (node: CanonicalNode) => {
+  const expansionState = node.nodeExpansionState
+  if (!expansionState) return 0
+  return expansionState.updatedAt ?? expansionState.startedAt ?? 0
+}
+
+const getNodeExpansionLabel = (node: CanonicalNode) =>
+  node.label?.trim() || `${node.pubkey.slice(0, 10)}...`
+
+const buildNodeExpansionSearchProgress = (
+  node: CanonicalNode,
+): SearchLoadProgress | null => {
+  const expansionState = node.nodeExpansionState
+  if (!expansionState) return null
+
+  if (expansionState.status === 'loading') {
+    const step = expansionState.step
+    const totalSteps = expansionState.totalSteps
+    const rawPercent =
+      typeof step === 'number' &&
+      Number.isFinite(step) &&
+      typeof totalSteps === 'number' &&
+      Number.isFinite(totalSteps) &&
+      totalSteps > 0
+        ? clampPercentValue((step / totalSteps) * 100)
+        : 12
+    const percent = Math.min(96, Math.max(8, rawPercent))
+
+    return {
+      percent,
+      label: `${expansionState.message ?? 'Expandiendo conexiones de nodo'}. ${percent} por ciento.`,
+    }
+  }
+
+  if (
+    node.isExpanded &&
+    (expansionState.status === 'ready' ||
+      expansionState.status === 'partial' ||
+      expansionState.status === 'empty')
+  ) {
+    return {
+      percent: 100,
+      label: `Expansion de ${getNodeExpansionLabel(node)} completa. 100 por ciento.`,
+    }
+  }
+
+  return null
+}
+
+const resolveNodeExpansionSearchProgress = (
+  nodesByPubkey: CanonicalGraphSceneState['nodesByPubkey'],
+): SearchLoadProgress | null => {
+  let activeLoadingNode: CanonicalNode | null = null
+  let latestTerminalNode: CanonicalNode | null = null
+
+  for (const node of Object.values(nodesByPubkey)) {
+    const expansionState = node.nodeExpansionState
+    if (!expansionState) continue
+
+    if (expansionState.status === 'loading') {
+      if (
+        activeLoadingNode === null ||
+        getNodeExpansionUpdatedAt(node) > getNodeExpansionUpdatedAt(activeLoadingNode)
+      ) {
+        activeLoadingNode = node
+      }
+      continue
+    }
+
+    if (
+      node.isExpanded &&
+      (expansionState.status === 'ready' ||
+        expansionState.status === 'partial' ||
+        expansionState.status === 'empty') &&
+      (latestTerminalNode === null ||
+        getNodeExpansionUpdatedAt(node) > getNodeExpansionUpdatedAt(latestTerminalNode))
+    ) {
+      latestTerminalNode = node
+    }
+  }
+
+  if (activeLoadingNode) {
+    return buildNodeExpansionSearchProgress(activeLoadingNode)
+  }
+
+  if (latestTerminalNode) {
+    return buildNodeExpansionSearchProgress(latestTerminalNode)
+  }
+
+  return null
+}
 
 const formatZapReplayTime = (timestamp: number | null) => (
   timestamp === null
@@ -1398,6 +1503,71 @@ const SigmaRootLoadChrome = memo(function SigmaRootLoadChrome({
         />
       ) : null}
     </>
+  )
+})
+
+interface SigmaTopBarRootLoadBridgeProps
+  extends Omit<ComponentProps<typeof SigmaTopBar>, 'searchLoadProgress'> {
+  bridge: LegacyKernelBridge
+  displayNodeCount: number
+  fallbackMessage: string | null
+  identityLabel?: string | null
+  nodeExpansionLoadProgress?: SearchLoadProgress | null
+  rootLoadOverride?: RootLoadState | null
+}
+
+const SigmaTopBarRootLoadBridge = memo(function SigmaTopBarRootLoadBridge({
+  bridge,
+  displayNodeCount,
+  fallbackMessage,
+  identityLabel,
+  nodeExpansionLoadProgress = null,
+  rootLoadOverride,
+  ...topBarProps
+}: SigmaTopBarRootLoadBridgeProps) {
+  const subscribedRootLoad = useSyncExternalStore(
+    bridge.subscribeUi,
+    () => bridge.getUiState().rootLoad,
+    getServerRootLoadSnapshot,
+  )
+  const rootLoad = rootLoadOverride ?? subscribedRootLoad
+  const shouldPrioritizeRootLoad =
+    rootLoad.status !== 'ready' && isRootLoadProgressActive(rootLoad)
+  const shouldShowSearchLoadProgress =
+    shouldPrioritizeRootLoad ||
+    (rootLoad.status === 'ready' && !topBarProps.searchDisabled)
+  const rootSearchLoadProgress = useMemo(() => {
+    if (!shouldShowSearchLoadProgress) {
+      return null
+    }
+
+    const progress = buildRootLoadProgressViewModel({
+      rootLoad,
+      identityLabel,
+      nodeCount: displayNodeCount,
+      fallbackMessage,
+    })
+
+    return {
+      percent: progress.percent,
+      label: progress.ariaLabel,
+    }
+  }, [
+    displayNodeCount,
+    fallbackMessage,
+    identityLabel,
+    rootLoad,
+    shouldShowSearchLoadProgress,
+  ])
+  const searchLoadProgress = shouldPrioritizeRootLoad
+    ? rootSearchLoadProgress
+    : nodeExpansionLoadProgress ?? rootSearchLoadProgress
+
+  return (
+    <SigmaTopBar
+      {...topBarProps}
+      searchLoadProgress={searchLoadProgress}
+    />
   )
 })
 
@@ -2539,6 +2709,10 @@ export default function GraphAppV2() {
   // ── Derived values for UI components ───────────────────────────────────────
 
   const hasRoot = sceneState.rootPubkey !== null
+  const nodeExpansionLoadProgress = useMemo(
+    () => resolveNodeExpansionSearchProgress(sceneState.nodesByPubkey),
+    [sceneState.nodesByPubkey],
+  )
 
   // Saved-roots profile snapshot as fallback while the kernel is still
   // hydrating `currentRootNode` — prevents empty avatar / display name on
@@ -3950,10 +4124,16 @@ export default function GraphAppV2() {
       />
 
       {/* Top bar: search strip (left) + brand (right) */}
-      <SigmaTopBar
+      <SigmaTopBarRootLoadBridge
+        bridge={bridge}
+        displayNodeCount={displayScene.render.nodes.length}
+        fallbackMessage={loadFeedback}
+        identityLabel={rootDisplayName ?? sceneState.rootPubkey?.slice(0, 10) ?? null}
+        nodeExpansionLoadProgress={nodeExpansionLoadProgress}
         onSwitchRoot={handleOpenRootSheet}
         rootDisplayName={hasRoot ? (rootDisplayName ?? sceneState.rootPubkey?.slice(0, 10) ?? null) : null}
         rootNpub={rootNpubEncoded}
+        rootLoadOverride={fixtureUiState?.rootLoad ?? null}
         rootPictureUrl={rootPictureUrl}
         searchDisabled={!hasRoot}
         searchExpanded={isPersonSearchDropdownOpen}

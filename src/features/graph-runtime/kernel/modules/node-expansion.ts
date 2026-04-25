@@ -13,12 +13,14 @@ import {
   MAX_SESSION_RELAYS,
   NODE_EXPAND_CONNECT_TIMEOUT_MS,
   NODE_EXPAND_HARD_TIMEOUT_MS,
+  NODE_EXPAND_INBOUND_COUNT_TIMEOUT_MS,
   NODE_EXPAND_INBOUND_QUERY_LIMIT,
   NODE_EXPAND_PAGE_TIMEOUT_MS,
   NODE_EXPAND_RETRY_COUNT,
   NODE_EXPAND_STRAGGLER_GRACE_MS,
 } from '@/features/graph-runtime/kernel/modules/constants'
 import {
+  collectAdditionalPaginatedInboundFollowerEvents,
   collectInboundFollowerEvidence,
   collectRelayEvents,
   collectTargetedReciprocalFollowerEvidence,
@@ -77,6 +79,17 @@ export function createNodeExpansionModule(
   const loadDirectInboundFollowerEvidence =
     collaborators.loadDirectInboundFollowerEvidence ??
     (async ({ adapter, pubkey }) => {
+      const inboundCountResultsPromise = adapter
+        .count([
+          {
+            kinds: [3],
+            '#p': [pubkey],
+          } satisfies Filter & { '#p': string[] },
+        ], {
+          timeoutMs: NODE_EXPAND_INBOUND_COUNT_TIMEOUT_MS,
+          idPrefix: `node-inbound:${pubkey.slice(0, 8)}`,
+        })
+        .catch(() => [])
       const inboundFollowerResult = await collectRelayEvents(adapter, [
         {
           kinds: [3],
@@ -86,17 +99,51 @@ export function createNodeExpansionModule(
       ], {
         hardTimeoutMs: NODE_EXPAND_HARD_TIMEOUT_MS,
       })
+      const inboundCountResults = await inboundCountResultsPromise
 
+      const paginatedRelayUrlSet = new Set<string>()
+      for (const relayUrl of Object.keys(
+        inboundFollowerResult.summary?.relayHealth ?? {},
+      )) {
+        if (relayUrl) {
+          paginatedRelayUrlSet.add(relayUrl)
+        }
+      }
+      for (const result of inboundCountResults) {
+        if (result.relayUrl) {
+          paginatedRelayUrlSet.add(result.relayUrl)
+        }
+      }
+      for (const envelope of inboundFollowerResult.events) {
+        if (envelope.relayUrl) {
+          paginatedRelayUrlSet.add(envelope.relayUrl)
+        }
+      }
+      const paginatedInboundResult =
+        await collectAdditionalPaginatedInboundFollowerEvents({
+          adapter,
+          countResults: inboundCountResults,
+          relayUrls: Array.from(paginatedRelayUrlSet),
+          seedEnvelopes: inboundFollowerResult.events,
+          targetPubkey: pubkey,
+        })
+
+      const allEnvelopes = [
+        ...inboundFollowerResult.events,
+        ...paginatedInboundResult.events,
+      ]
       const inboundFollowerEvidence = await collectInboundFollowerEvidence(
         ctx.eventsWorker,
-        selectLatestReplaceableEventsByPubkey(inboundFollowerResult.events),
+        selectLatestReplaceableEventsByPubkey(allEnvelopes),
         pubkey,
       )
 
       return {
         followerPubkeys: inboundFollowerEvidence.followerPubkeys,
         partial:
-          inboundFollowerEvidence.partial || inboundFollowerResult.error !== null,
+          inboundFollowerEvidence.partial ||
+          inboundFollowerResult.error !== null ||
+          paginatedInboundResult.error !== null,
       }
     })
   const loadTargetedReciprocalFollowerEvidence =
@@ -433,6 +480,7 @@ export function createNodeExpansionModule(
     pubkey: string,
     followPubkeys: readonly string[],
     relayUrls: readonly string[],
+    extraRelayHints: readonly string[] = [],
   ) => {
     const candidatePubkeys = Array.from(
       new Set(
@@ -449,10 +497,16 @@ export function createNodeExpansionModule(
       return
     }
 
+    const reciprocalRelayUrls = mergeBoundedRelayUrlSets(
+      MAX_SESSION_RELAYS,
+      relayUrls,
+      extraRelayHints,
+    )
+
     let adapter: RelayAdapterInstance
     try {
       adapter = ctx.createRelayAdapter({
-        relayUrls: relayUrls.slice(),
+        relayUrls: reciprocalRelayUrls,
         connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
         pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
         retryCount: NODE_EXPAND_RETRY_COUNT,
@@ -477,7 +531,7 @@ export function createNodeExpansionModule(
           pubkey,
           reciprocalEvidence.followerPubkeys,
           {
-            relayUrls,
+            relayUrls: reciprocalRelayUrls,
           },
         )
       })
@@ -498,15 +552,22 @@ export function createNodeExpansionModule(
   const scheduleDirectInboundEnrichment = (
     pubkey: string,
     relayUrls: readonly string[],
+    extraRelayHints: readonly string[] = [],
   ) => {
     if (activeInboundEnrichmentRequests.has(pubkey)) {
       return
     }
 
+    const inboundRelayUrls = mergeBoundedRelayUrlSets(
+      MAX_SESSION_RELAYS,
+      relayUrls,
+      extraRelayHints,
+    )
+
     let adapter: RelayAdapterInstance
     try {
       adapter = ctx.createRelayAdapter({
-        relayUrls: relayUrls.slice(),
+        relayUrls: inboundRelayUrls,
         connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
         pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
         retryCount: NODE_EXPAND_RETRY_COUNT,
@@ -529,7 +590,7 @@ export function createNodeExpansionModule(
           pubkey,
           inboundEvidence.followerPubkeys,
           {
-            relayUrls,
+            relayUrls: inboundRelayUrls,
           },
         )
       })
@@ -689,8 +750,13 @@ export function createNodeExpansionModule(
           pubkey,
           cachedContactList.follows,
           relayUrls,
+          cachedContactList.relayHints,
         )
-        scheduleDirectInboundEnrichment(pubkey, relayUrls)
+        scheduleDirectInboundEnrichment(
+          pubkey,
+          relayUrls,
+          cachedContactList.relayHints,
+        )
         return result
       }
     }
@@ -792,8 +858,13 @@ export function createNodeExpansionModule(
             pubkey,
             cachedContactList.follows,
             relayUrls,
+            cachedContactList.relayHints,
           )
-          scheduleDirectInboundEnrichment(pubkey, relayUrls)
+          scheduleDirectInboundEnrichment(
+            pubkey,
+            relayUrls,
+            cachedContactList.relayHints,
+          )
           return result
         }
 
@@ -872,8 +943,13 @@ export function createNodeExpansionModule(
             pubkey,
             cachedContactList.follows,
             relayUrls,
+            cachedContactList.relayHints,
           )
-          scheduleDirectInboundEnrichment(pubkey, relayUrls)
+          scheduleDirectInboundEnrichment(
+            pubkey,
+            relayUrls,
+            cachedContactList.relayHints,
+          )
           return result
         }
 
@@ -966,8 +1042,13 @@ export function createNodeExpansionModule(
           pubkey,
           cachedContactListBeforePersist.follows,
           relayUrls,
+          cachedContactListBeforePersist.relayHints,
         )
-        scheduleDirectInboundEnrichment(pubkey, relayUrls)
+        scheduleDirectInboundEnrichment(
+          pubkey,
+          relayUrls,
+          cachedContactListBeforePersist.relayHints,
+        )
         return result
       }
 
@@ -996,11 +1077,16 @@ export function createNodeExpansionModule(
           authoredDiagnostics: parsedContactList.diagnostics,
         },
       )
-      scheduleDirectInboundEnrichment(pubkey, relayUrls)
+      scheduleDirectInboundEnrichment(
+        pubkey,
+        relayUrls,
+        parsedContactList.relayHints,
+      )
       scheduleReciprocalInboundEnrichment(
         pubkey,
         parsedContactList.followPubkeys,
         relayUrls,
+        parsedContactList.relayHints,
       )
       return result
     } catch (error) {

@@ -3,6 +3,7 @@
 import {
   memo,
   type ChangeEvent,
+  type CSSProperties,
   type KeyboardEvent,
   type RefObject,
 } from 'react'
@@ -15,6 +16,11 @@ import { CloseIcon, SearchIcon } from '@/features/graph-v2/ui/SigmaIcons'
 
 interface SearchMatch {
   pubkey: string
+  label: string
+}
+
+interface SearchLoadProgress {
+  percent: number
   label: string
 }
 
@@ -35,6 +41,7 @@ interface Props {
   onSearchSelect: (pubkey: string) => void
   onSearchSubmit: () => void
   searchInputRef: RefObject<HTMLInputElement | null>
+  searchLoadProgress?: SearchLoadProgress | null
   brandVersion?: string
 }
 
@@ -55,6 +62,7 @@ export const SigmaTopBar = memo(function SigmaTopBar({
   onSearchSelect,
   onSearchSubmit,
   searchInputRef,
+  searchLoadProgress = null,
   brandVersion = 'v0.3.2',
 }: Props) {
   const rootLabel = rootDisplayName ?? 'Identidad raiz'
@@ -74,6 +82,17 @@ export const SigmaTopBar = memo(function SigmaTopBar({
   const hasSearchQuery = trimmedSearchQuery.length > 0
   const visibleMatches = searchMatches.slice(0, 8)
   const hasMoreMatches = searchMatches.length > visibleMatches.length
+  const searchLoadProgressValue =
+    searchLoadProgress === null
+      ? null
+      : Math.min(100, Math.max(0, Math.round(searchLoadProgress.percent)))
+  const isSearchLoadComplete = searchLoadProgressValue === 100
+  const searchLoadProgressStyle =
+    searchLoadProgressValue === null
+      ? undefined
+      : ({
+          '--sg-search-load-progress': `${searchLoadProgressValue * 3.6}deg`,
+        } as CSSProperties)
   const searchStatus = !trimmedSearchQuery
     ? `Busca entre ${searchTotalNodeCount} nodos visibles.`
     : searchMatches.length === 0
@@ -94,8 +113,20 @@ export const SigmaTopBar = memo(function SigmaTopBar({
     <div className="sg-topbar">
       <div className="sg-top-search-wrap">
         <div
-          className={`sg-top-search${searchExpanded ? ' sg-top-search--expanded' : ''}${searchDisabled ? ' sg-top-search--disabled' : ''}`}
+          aria-busy={searchLoadProgressValue !== null ? true : undefined}
+          className={`sg-top-search${searchExpanded ? ' sg-top-search--expanded' : ''}${searchDisabled ? ' sg-top-search--disabled' : ''}${searchLoadProgressValue !== null ? ' sg-top-search--loading' : ''}${isSearchLoadComplete ? ' sg-top-search--loading-complete' : ''}`}
+          style={searchLoadProgressStyle}
         >
+          {searchLoadProgressValue !== null ? (
+            <span
+              aria-label={searchLoadProgress?.label ?? 'Progreso de carga del grafo'}
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={searchLoadProgressValue}
+              className="sg-top-search__load-status"
+              role="progressbar"
+            />
+          ) : null}
           <span className="sg-top-search__icon">
             <SearchIcon />
           </span>

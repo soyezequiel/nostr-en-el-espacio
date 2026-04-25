@@ -82,6 +82,7 @@ const HIGHLIGHT_TRANSITION_MS = 180
 const HOVER_FOCUS_DWELL_MS = 500
 const SCENE_FOCUS_TRANSITION_MS = 180
 const STAGE_CLICK_SUPPRESS_AFTER_DRAG_MS = 160
+const OUTSIDE_NODE_CLICK_DEDUP_MS = 500
 const PHYSICS_BRIDGE_BACKGROUND_SYNC_CAP = 96
 const PHYSICS_BRIDGE_VIEWPORT_PADDING_RATIO = 0.12
 const PHYSICS_AUTO_FIT_INTERVAL_MS = 120
@@ -315,6 +316,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private suppressedClick: SuppressedNodeClick | null = null
 
   private suppressedStageClickUntil = 0
+
+  private lastOutsideNodeFocusClearAt = 0
 
   private draggedNodePubkey: string | null = null
 
@@ -1913,11 +1916,19 @@ export class SigmaRendererAdapter implements RendererAdapter {
         return
       }
 
-      callbacks.onClearSelection()
+      this.clearOutsideNodeFocus('click')
+    })
+
+    sigma.on('downStage', () => {
+      this.clearOutsideNodeFocus('pointer-down')
     })
 
     sigma.on('clickEdge', () => {
-      callbacks.onClearSelection()
+      this.clearOutsideNodeFocus('click')
+    })
+
+    sigma.on('downEdge', () => {
+      this.clearOutsideNodeFocus('pointer-down')
     })
 
     sigma.on('enterNode', ({ node }) => {
@@ -2350,6 +2361,22 @@ export class SigmaRendererAdapter implements RendererAdapter {
     if (previousPubkey !== null && this.hoveredNodePubkey === null) {
       this.callbacks?.onNodeHover(null)
     }
+  }
+
+  private readonly clearOutsideNodeFocus = (
+    source: 'pointer-down' | 'click' = 'click',
+  ) => {
+    const now = Date.now()
+    if (
+      source === 'click' &&
+      now - this.lastOutsideNodeFocusClearAt < OUTSIDE_NODE_CLICK_DEDUP_MS
+    ) {
+      return
+    }
+
+    this.lastOutsideNodeFocusClearAt = now
+    this.clearHoveredNodeFocus()
+    this.callbacks?.onClearSelection()
   }
 
   // After releasing a drag, check what node (if any) sits under the last

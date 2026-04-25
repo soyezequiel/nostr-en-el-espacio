@@ -1809,6 +1809,81 @@ test('clicking an edge clears node selection because the pointer is outside node
   }
 })
 
+test('pressing outside nodes clears selection and local hover focus immediately', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const originalWindow = globalThis.window
+  const listeners = new Map<string, (event: unknown) => void>()
+  let clearSelectionCalls = 0
+  const hoverEvents: Array<string | null> = []
+
+  const adapter = new SigmaRendererAdapter() as unknown as {
+    sigma: {
+      on: (eventName: string, listener: (event: unknown) => void) => void
+      getCamera: () => {
+        on: (eventName: string, listener: (event: unknown) => void) => void
+      }
+    } | null
+    renderStore: Record<string, never> | null
+    physicsStore: Record<string, never> | null
+    callbacks: GraphInteractionCallbacks | null
+    hoveredNodePubkey: string | null
+    hoveredNeighbors: Set<string>
+    currentHoverFocus: { pubkey: string | null; neighbors: Set<string> }
+    startHighlightTransition: () => void
+    safeRender: () => void
+    bindEvents: () => void
+  }
+
+  globalThis.window = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as Window & typeof globalThis
+
+  try {
+    adapter.sigma = {
+      on: (eventName, listener) => {
+        listeners.set(eventName, listener)
+      },
+      getCamera: () => ({
+        on: () => {},
+      }),
+    }
+    adapter.renderStore = {}
+    adapter.physicsStore = {}
+    adapter.callbacks = {
+      ...createCallbacks(() => {}),
+      onClearSelection: () => {
+        clearSelectionCalls += 1
+      },
+      onNodeHover: (pubkey) => {
+        hoverEvents.push(pubkey)
+      },
+    }
+    adapter.hoveredNodePubkey = 'alice'
+    adapter.hoveredNeighbors = new Set(['bob'])
+    adapter.currentHoverFocus = {
+      pubkey: 'alice',
+      neighbors: new Set(['bob']),
+    }
+    adapter.startHighlightTransition = () => {}
+    adapter.safeRender = () => {}
+
+    adapter.bindEvents()
+
+    listeners.get('downStage')?.({})
+
+    assert.equal(clearSelectionCalls, 1)
+    assert.equal(adapter.hoveredNodePubkey, null)
+    assert.equal(adapter.currentHoverFocus.pubkey, null)
+    assert.deepEqual(hoverEvents, [null])
+  } finally {
+    globalThis.window = originalWindow
+  }
+})
+
 test('small pointer movement before click does not consume node clicks', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'

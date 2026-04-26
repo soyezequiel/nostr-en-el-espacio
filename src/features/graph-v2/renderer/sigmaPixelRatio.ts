@@ -17,7 +17,7 @@
  * debe alinearse con el canvas WebGL de Sigma.
  */
 
-const MOBILE_MAX_DPR = 1.5
+const MOBILE_MAX_DPR = 2
 const DESKTOP_MAX_DPR = 2
 
 const isDevEnv =

@@ -22,19 +22,17 @@ export const detectDeviceTier = ({
   const memory = navigator.deviceMemory ?? 8
   const effectiveType = navigator.connection?.effectiveType ?? '4g'
   const saveData = navigator.connection?.saveData === true
-  const ua = navigator.userAgent ?? ''
-  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua)
-
   if (saveData || effectiveType === '2g' || effectiveType === 'slow-2g') {
     return 'low'
   }
   if (cores <= 4 || memory <= 4) {
     return 'low'
   }
-  if (isMobile && (cores <= 6 || memory <= 6)) {
-    return 'low'
+  if (cores <= 6 && memory <= 6) {
+    // Treat 6-core/6GB devices fairly without explicit mobile checks
+    // We already covered <=4 above.
   }
-  if (isMobile || cores <= 8 || memory <= 8) {
+  if (cores <= 8 || memory <= 8) {
     return 'mid'
   }
   return 'high'

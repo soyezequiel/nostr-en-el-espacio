@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   DevicePerformanceProfile,
   EffectiveGraphCaps,
   EffectiveImageBudget,
@@ -26,15 +26,11 @@ const DESKTOP_GRAPH_CAPS: EffectiveGraphCaps = {
 }
 
 const MOBILE_GRAPH_CAPS: EffectiveGraphCaps = {
-  maxNodes: 600,
-  coldStartLayoutTicks: 45,
-  warmStartLayoutTicks: 22,
+  ...DESKTOP_GRAPH_CAPS,
 }
 
 const LOW_END_MOBILE_GRAPH_CAPS: EffectiveGraphCaps = {
-  maxNodes: 250,
-  coldStartLayoutTicks: 32,
-  warmStartLayoutTicks: 14,
+  ...DESKTOP_GRAPH_CAPS,
 }
 
 const DESKTOP_IMAGE_BUDGET: EffectiveImageBudget = {
@@ -48,23 +44,11 @@ const DESKTOP_IMAGE_BUDGET: EffectiveImageBudget = {
 }
 
 const MOBILE_IMAGE_BUDGET: EffectiveImageBudget = {
-  vramBytes: 32 * 1024 * 1024,
-  decodedBytes: 56 * 1024 * 1024,
-  compressedBytes: 18 * 1024 * 1024,
-  baseFetchConcurrency: 4,
-  boostedFetchConcurrency: 5,
-  allowHdTiers: false,
-  allowParallelDirectFallback: false,
+  ...DESKTOP_IMAGE_BUDGET,
 }
 
 const LOW_END_MOBILE_IMAGE_BUDGET: EffectiveImageBudget = {
-  vramBytes: 16 * 1024 * 1024,
-  decodedBytes: 32 * 1024 * 1024,
-  compressedBytes: 10 * 1024 * 1024,
-  baseFetchConcurrency: 2,
-  boostedFetchConcurrency: 3,
-  allowHdTiers: false,
-  allowParallelDirectFallback: false,
+  ...DESKTOP_IMAGE_BUDGET,
 }
 
 const DEVICE_PROFILE_DEFAULT_IMAGE_QUALITY_MODE: Record<
@@ -72,8 +56,8 @@ const DEVICE_PROFILE_DEFAULT_IMAGE_QUALITY_MODE: Record<
   ImageQualityMode
 > = {
   desktop: 'adaptive',
-  mobile: 'performance',
-  'low-end-mobile': 'performance',
+  mobile: 'adaptive',
+  'low-end-mobile': 'adaptive',
 }
 
 const normalizeOptionalPositiveNumber = (value: unknown) =>
@@ -146,9 +130,8 @@ export const getDefaultImageQualityModeForProfile = (
 export const clampImageQualityModeForProfile = (
   profile: DevicePerformanceProfile,
   mode: ImageQualityMode,
-  fallbackMode?: ImageQualityMode,
-): ImageQualityMode =>
-  profile === 'desktop' ? mode : fallbackMode ?? 'performance'
+  _fallbackMode?: ImageQualityMode,
+): ImageQualityMode => mode
 
 export const isMobileDevicePerformanceProfile = (
   profile: DevicePerformanceProfile,

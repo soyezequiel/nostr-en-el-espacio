@@ -142,6 +142,11 @@ export interface GraphInteractionCallbacks {
     options?: { pinNode?: boolean },
   ) => void
   onViewportChange: (viewport: GraphViewportState) => void
+  // Pointer/touch gesture lifecycle on the canvas (pan, pinch, node drag).
+  // Used by the bridge to suspend store-driven re-renders until the gesture
+  // finishes, keeping the drag responsive on mobile.
+  onCanvasGestureStart?: () => void
+  onCanvasGestureEnd?: () => void
 }
 
 export interface RendererAdapter {

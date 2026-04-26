@@ -394,6 +394,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private touchCameraMotionClearDeadlineMs = 0
 
+  private touchGestureActive = false
+
   private readonly MOTION_RESUME_MS = 140
 
   private hideAvatarsOnMove = false
@@ -1443,8 +1445,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     const touchCaptor = sigma.getTouchCaptor()
     touchCaptor.setSettings({
       dragTimeout: sigma.getSetting('dragTimeout'),
-      inertiaDuration: 0,
-      inertiaRatio: 0,
+      inertiaDuration: sigma.getSetting('inertiaDuration'),
+      inertiaRatio: sigma.getSetting('inertiaRatio'),
       doubleClickTimeout: sigma.getSetting('doubleClickTimeout'),
       doubleClickZoomingRatio: 1.7,
       doubleClickZoomingDuration: 180,
@@ -1454,6 +1456,20 @@ export class SigmaRendererAdapter implements RendererAdapter {
       ),
     })
     touchCaptor.on('touchmove', this.handleTouchMove)
+    touchCaptor.on('touchdown', this.handleTouchGestureStart)
+    touchCaptor.on('touchup', this.handleTouchGestureEnd)
+  }
+
+  private readonly handleTouchGestureStart = () => {
+    if (this.touchGestureActive) return
+    this.touchGestureActive = true
+    this.callbacks?.onCanvasGestureStart?.()
+  }
+
+  private readonly handleTouchGestureEnd = () => {
+    if (!this.touchGestureActive) return
+    this.touchGestureActive = false
+    this.callbacks?.onCanvasGestureEnd?.()
   }
 
   private readonly handleTouchMove = (event: TouchCoords) => {
@@ -1616,6 +1632,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
   }
 
   public dispose() {
+    this.handleTouchGestureEnd()
     this.releaseDrag()
     this.cancelPendingDragFrame()
     this.cancelPhysicsPositionBridge()

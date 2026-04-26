@@ -70,6 +70,19 @@ export class LegacyKernelBridge {
   private pendingCompatibilityEmitTimer: ReturnType<typeof setTimeout> | null =
     null
 
+  // Active touch/pointer gestures (canvas pan, pinch, node drag) coalesce
+  // store-driven re-renders into a single flush at gesture end. Without this,
+  // every Nostr event arriving mid-drag triggers a full GraphAppV2 re-render
+  // (~28ms on mobile), starving Sigma's render/touch loop and causing the
+  // canvas to jump between frames.
+  private gestureDepth = 0
+
+  private gestureSceneEmitDeferred = false
+
+  private gestureUiEmitDeferred = false
+
+  private gestureCompatibilityEmitDeferred = false
+
   private uiState: CanonicalGraphUiState
 
   private combinedState: CanonicalGraphState
@@ -126,6 +139,27 @@ export class LegacyKernelBridge {
     }
   }
 
+  public beginGesture = () => {
+    this.gestureDepth += 1
+  }
+
+  public endGesture = () => {
+    if (this.gestureDepth === 0) return
+    this.gestureDepth -= 1
+    if (this.gestureDepth > 0) return
+
+    const flushScene = this.gestureSceneEmitDeferred
+    const flushUi = this.gestureUiEmitDeferred
+    const flushCompatibility = this.gestureCompatibilityEmitDeferred
+    this.gestureSceneEmitDeferred = false
+    this.gestureUiEmitDeferred = false
+    this.gestureCompatibilityEmitDeferred = false
+
+    if (flushScene) this.scheduleSceneEmit()
+    if (flushUi) this.scheduleUiEmit()
+    if (flushCompatibility) this.scheduleCompatibilityEmit()
+  }
+
   public connect() {
     if (this.unsubscribeScene !== null || this.unsubscribeUi !== null) {
       return
@@ -155,6 +189,10 @@ export class LegacyKernelBridge {
     this.unsubscribeUi?.()
     this.unsubscribeScene = null
     this.unsubscribeUi = null
+    this.gestureDepth = 0
+    this.gestureSceneEmitDeferred = false
+    this.gestureUiEmitDeferred = false
+    this.gestureCompatibilityEmitDeferred = false
     this.cancelScheduledEmits()
   }
 
@@ -249,6 +287,11 @@ export class LegacyKernelBridge {
       return
     }
 
+    if (this.gestureDepth > 0) {
+      this.gestureSceneEmitDeferred = true
+      return
+    }
+
     if (
       this.pendingSceneEmitFrame !== null ||
       this.pendingSceneEmitTimer !== null
@@ -276,6 +319,11 @@ export class LegacyKernelBridge {
       return
     }
 
+    if (this.gestureDepth > 0) {
+      this.gestureUiEmitDeferred = true
+      return
+    }
+
     if (this.pendingUiEmitFrame !== null || this.pendingUiEmitTimer !== null) {
       return
     }
@@ -297,6 +345,11 @@ export class LegacyKernelBridge {
 
   private scheduleCompatibilityEmit() {
     if (this.compatibilityListeners.size === 0) {
+      return
+    }
+
+    if (this.gestureDepth > 0) {
+      this.gestureCompatibilityEmitDeferred = true
       return
     }
 

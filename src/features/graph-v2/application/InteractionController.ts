@@ -40,6 +40,12 @@ export class GraphInteractionController {
       onViewportChange: (viewport) => {
         this.lastViewport = viewport
       },
+      onCanvasGestureStart: () => {
+        this.bridge.beginGesture()
+      },
+      onCanvasGestureEnd: () => {
+        this.bridge.endGesture()
+      },
     }
   }
 

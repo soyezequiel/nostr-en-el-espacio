@@ -31,6 +31,7 @@ import type {
 import type {
   RootIdentityResolution,
 } from '@/features/graph-runtime/kernel/rootIdentity'
+import { getKernelNetworkTuning } from '@/features/graph-runtime/kernel/modules/constants'
 import { GraphInteractionController } from '@/features/graph-v2/application/InteractionController'
 import { LegacyKernelBridge } from '@/features/graph-v2/bridge/LegacyKernelBridge'
 import { GRAPH_V2_LAYERS } from '@/features/graph-v2/domain/invariants'
@@ -3832,6 +3833,7 @@ export default function GraphAppV2() {
                   : (controller.getLastViewport() ? `${controller.getLastViewport()?.ratio.toFixed(2)}×` : 'idle')],
                 ['Capa activa',  sceneState.activeLayer],
                 ['Root',         sceneState.rootPubkey ? 'cargado' : 'vacío'],
+                ['Tuning de red', `${getKernelNetworkTuning().nodeExpandConnectTimeoutMs}ms conn / ${getKernelNetworkTuning().nodeExpandPageTimeoutMs}ms page / ${getKernelNetworkTuning().nodeExpandHardTimeoutMs}ms max`],
               ].map(([k, v]) => (
                 <div className="sg-diag-row" key={k as string}>
                   <span className="sg-diag-row__k">{k}</span>

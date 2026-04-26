@@ -1195,6 +1195,8 @@ function PerformanceOptionsPanel({
   nodeCount,
   runtimeInspectorButtonVisible,
   recommendedMaxNodes,
+  rootPubkey,
+  rootLoadStatus,
   onClearSiteCache,
   onToggleRuntimeInspectorButton,
   onToggleMobileDegradedMode,
@@ -1202,6 +1204,7 @@ function PerformanceOptionsPanel({
   onToggleAvatarPhotos,
   onToggleHideConnectionsOnLowPerformance,
   onAvatarRuntimeOptionsChange,
+  onExpandRoot,
 }: {
   avatarPhotosEnabled: boolean
   avatarRuntimeOptions: AvatarRuntimeOptions
@@ -1218,6 +1221,8 @@ function PerformanceOptionsPanel({
   nodeCount: number
   runtimeInspectorButtonVisible: boolean
   recommendedMaxNodes: number
+  rootPubkey: string | null
+  rootLoadStatus: string
   onClearSiteCache: () => void
   onToggleRuntimeInspectorButton: () => void
   onToggleMobileDegradedMode: () => void
@@ -1225,7 +1230,9 @@ function PerformanceOptionsPanel({
   onToggleAvatarPhotos: () => void
   onToggleHideConnectionsOnLowPerformance: () => void
   onAvatarRuntimeOptionsChange: (options: AvatarRuntimeOptions) => void
+  onExpandRoot: () => void
 }) {
+  const isExpandingRoot = rootLoadStatus === 'loading'
   return (
     <div>
       <GraphCapacityPanel
@@ -1236,6 +1243,27 @@ function PerformanceOptionsPanel({
         onChange={onGraphMaxNodesChange}
         recommendedMaxNodes={recommendedMaxNodes}
       />
+      <div className="sg-settings-section">
+        <h4>Descubrimiento</h4>
+        <div className="sg-setting-row">
+          <div>
+            <div className="sg-setting-row__lbl">Buscar más nodos</div>
+            <div className="sg-setting-row__desc">
+              Vuelve a consultar relays y caché buscando nuevos seguidores del root.
+            </div>
+          </div>
+          <button
+            className="sg-btn sg-btn--secondary"
+            disabled={!rootPubkey || isExpandingRoot}
+            id="btn-expand-root"
+            onClick={onExpandRoot}
+            title={!rootPubkey ? 'Cargá un root primero' : isExpandingRoot ? 'Buscando...' : 'Buscar más nodos'}
+            type="button"
+          >
+            {isExpandingRoot ? '⟳' : '↓+'}
+          </button>
+        </div>
+      </div>
       <div className="sg-settings-section">
         <h4>Fluidez</h4>
         <div className="sg-setting-row">
@@ -1775,6 +1803,11 @@ export default function GraphAppV2() {
     () => bridge.getUiState().relayState,
     () => bridge.getUiState().relayState,
   )
+  const liveRootLoadStatus = useSyncExternalStore(
+    bridge.subscribeUi,
+    () => bridge.getUiState().rootLoad.status,
+    () => bridge.getUiState().rootLoad.status,
+  )
   const [fixtureState, setFixtureState] = useState<CanonicalGraphState | null>(
     () => (isFixtureMode ? createDragLocalFixture().state : null),
   )
@@ -2010,6 +2043,7 @@ export default function GraphAppV2() {
     [fixtureState],
   )
   const relayState = fixtureUiState?.relayState ?? liveRelayState
+  const rootLoadStatus = fixtureUiState?.rootLoad.status ?? liveRootLoadStatus
   const controller = useMemo(() => new GraphInteractionController(bridge), [bridge])
 
   useEffect(() => {
@@ -2891,6 +2925,16 @@ export default function GraphAppV2() {
     [bridge, isFixtureMode, upsertSavedRoot],
   )
 
+  const handleExpandRoot = useCallback(() => {
+    const rootPubkey = sceneState.rootPubkey
+    if (!rootPubkey || isFixtureMode) return
+    startTransition(() => {
+      void bridge.expandNode(rootPubkey).then((result) => {
+        setActionFeedback(result.message)
+      })
+    })
+  }, [bridge, isFixtureMode, sceneState.rootPubkey])
+
   const handleSelectSavedRoot = useCallback(
     (savedRoot: SavedRootEntry) => {
       loadRootFromPointer({
@@ -3682,6 +3726,9 @@ export default function GraphAppV2() {
               runtimeInspectorStoreSnapshot.effectiveGraphCaps.maxNodes
             }
             runtimeInspectorButtonVisible={canUseRuntimeInspector}
+            rootPubkey={sceneState.rootPubkey}
+            rootLoadStatus={rootLoadStatus}
+            onExpandRoot={handleExpandRoot}
           />
         )
       case 'visuals':

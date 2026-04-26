@@ -5,12 +5,19 @@ import { createStore } from 'zustand/vanilla'
 import type { GraphSlice } from '@/features/graph-runtime/app/store/types'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { createGraphSlice } = require('./graphSlice.ts')
+const { DEFAULT_MAX_GRAPH_NODES, createGraphSlice } = require('./graphSlice.ts')
 
 const createStoreForGraphSlice = () =>
   createStore<GraphSlice>()((...args) => ({
     ...createGraphSlice(...args),
   }))
+
+test('starts with the project graph node cap', () => {
+  const store = createStoreForGraphSlice()
+
+  assert.equal(DEFAULT_MAX_GRAPH_NODES, 10000)
+  assert.equal(store.getState().graphCaps.maxNodes, DEFAULT_MAX_GRAPH_NODES)
+})
 
 test('upsertNodes ignores undefined patch fields for existing nodes', () => {
   const store = createStoreForGraphSlice()

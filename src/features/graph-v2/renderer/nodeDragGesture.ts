@@ -9,6 +9,7 @@ export interface PointerCoordinates {
 export interface PendingNodeDragGesture {
   pubkey: string
   origin: PointerCoordinates
+  anchorOffset: { dx: number; dy: number }
 }
 
 export interface SuppressedNodeClick {
@@ -19,9 +20,11 @@ export interface SuppressedNodeClick {
 export const createPendingNodeDragGesture = (
   pubkey: string,
   origin: PointerCoordinates,
+  anchorOffset: { dx: number; dy: number } = { dx: 0, dy: 0 },
 ): PendingNodeDragGesture => ({
   pubkey,
   origin,
+  anchorOffset,
 })
 
 export const shouldStartNodeDrag = (

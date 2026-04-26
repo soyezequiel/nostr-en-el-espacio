@@ -314,6 +314,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private lastDragGraphPosition: { x: number; y: number } | null = null
 
+  // Desfase (en coords del grafo) entre donde el usuario tocó/clickeó y el
+  // centro del nodo arrastrado. Se aplica en cada frame para que el nodo no
+  // teletransporte al puntero al iniciar el drag (sobre todo en mobile).
+  private dragAnchorOffset: { dx: number; dy: number } = { dx: 0, dy: 0 }
+
   private lastDragFlushTimestamp: number | null = null
 
   private moveBodyCount = 0
@@ -1136,8 +1141,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.markMotion()
     this.flushCount += 1
     const draggedNodePubkey = this.draggedNodePubkey
-    const graphPosition = this.pendingGraphPosition ?? this.lastDragGraphPosition
     const shouldEmitDragMove = this.pendingGraphPosition !== null
+    const graphPosition = this.resolveCurrentDragGraphPosition()
     if (!graphPosition) {
       return
     }
@@ -1193,6 +1198,22 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
   }
 
+  private resolveCurrentDragGraphPosition() {
+    const pointerGraphPosition =
+      this.pendingGraphPosition ?? this.lastScheduledGraphPosition
+
+    if (pointerGraphPosition) {
+      // Aplicar el anchor offset (desfase del clic respecto al centro del nodo)
+      // para que el nodo siga al cursor sin teletransportarse al puntero.
+      return {
+        x: pointerGraphPosition.x + this.dragAnchorOffset.dx,
+        y: pointerGraphPosition.y + this.dragAnchorOffset.dy,
+      }
+    }
+
+    return this.lastDragGraphPosition
+  }
+
   private ensureDragFrame() {
     if (this.pendingDragFrame !== null) {
       return
@@ -1217,11 +1238,18 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.pendingGraphPosition = null
   }
 
-  private readonly startDrag = (pubkey: string) => {
+  private readonly startDrag = (
+    pubkey: string,
+    anchorOffset?: { dx: number; dy: number },
+  ) => {
     if (!this.renderStore || !this.physicsStore || !this.callbacks) {
       return
     }
 
+    this.dragAnchorOffset = anchorOffset
+      ? { dx: anchorOffset.dx, dy: anchorOffset.dy }
+      : { dx: 0, dy: 0 }
+    this.lastScheduledGraphPosition = null
     this.resumePhysicsAfterDrag = !(this.forceRuntime?.isSuspended() ?? false)
     this.draggedNodeFocus = this.createFocusSnapshot(pubkey, {
       requireNode: true,
@@ -1264,6 +1292,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
       this.dragHopDistances = new Map()
       this.dragInfluenceState = null
       this.lastDragGraphPosition = null
+      this.lastScheduledGraphPosition = null
+      this.dragAnchorOffset = { dx: 0, dy: 0 }
       this.draggedNodeFocus = this.createEmptyFocusSnapshot()
       this.shouldPinDraggedNodeOnRelease = false
       return
@@ -1292,6 +1322,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.dragHopDistances = new Map()
     this.dragInfluenceState = null
     this.lastDragGraphPosition = null
+    this.lastScheduledGraphPosition = null
+    this.dragAnchorOffset = { dx: 0, dy: 0 }
 
     this.draggedNodePubkey = null
     this.draggedNodeFocus = this.createEmptyFocusSnapshot()
@@ -1522,7 +1554,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
     const draggedNodePubkey = this.draggedNodePubkey
     const draggedNodePosition =
-      draggedNodePubkey !== null ? this.lastDragGraphPosition : null
+      draggedNodePubkey !== null ? this.resolveCurrentDragGraphPosition() : null
     this.scene = scene
     this.renderStore.applyScene(scene.render)
     this.syncSelectedSceneFocus()
@@ -2028,10 +2060,24 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
     sigma.on('downNode', ({ node, event }) => {
       this.setCameraLocked(true)
-      this.pendingDragGesture = createPendingNodeDragGesture(node, {
+      const nodePosition =
+        this.renderStore?.getNodePosition(node) ??
+        this.physicsStore?.getNodePosition(node) ??
+        null
+      const originGraph = sigma.viewportToGraph({
         x: event.x,
         y: event.y,
       })
+      const anchorOffset = nodePosition
+        ? {
+            dx: nodePosition.x - originGraph.x,
+            dy: nodePosition.y - originGraph.y,
+          }
+        : { dx: 0, dy: 0 }
+      this.pendingDragGesture = createPendingNodeDragGesture(node, {
+        x: event.x,
+        y: event.y,
+      }, anchorOffset)
     })
 
     sigma.on('moveBody', ({ event, preventSigmaDefault }) => {
@@ -2059,7 +2105,14 @@ export class SigmaRendererAdapter implements RendererAdapter {
         }
 
         preventSigmaDefault()
-        this.startDrag(pendingDragGesture.pubkey)
+        const currentGraphPosition = sigma.viewportToGraph({
+          x: event.x,
+          y: event.y,
+        })
+        this.startDrag(pendingDragGesture.pubkey, pendingDragGesture.anchorOffset)
+        this.pendingDragGesture = null
+        this.scheduleDragFrame(currentGraphPosition)
+        return
       } else {
         preventSigmaDefault()
       }

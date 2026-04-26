@@ -17,7 +17,7 @@ import {
 } from '@/features/graph-runtime/debug/avatarTrace'
 import { areGraphLinksEqual } from '@/features/graph-runtime/kernel/connections'
 
-export const DEFAULT_MAX_GRAPH_NODES = 3000
+export const DEFAULT_MAX_GRAPH_NODES = 10000
 
 const createInitialGraphCaps = (): GraphCaps => ({
   maxNodes: DEFAULT_MAX_GRAPH_NODES,

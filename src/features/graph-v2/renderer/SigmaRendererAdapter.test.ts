@@ -856,6 +856,8 @@ type DragHarness = {
   draggedNodePubkey: string | null
   lastDragGraphPosition: { x: number; y: number } | null
   pendingGraphPosition: { x: number; y: number } | null
+  lastScheduledGraphPosition: { x: number; y: number } | null
+  dragAnchorOffset: { dx: number; dy: number }
   dragInfluenceState: ReturnType<typeof createDragNeighborhoodInfluenceState> | null
   syncPhysicsPositionsToRender: () => boolean
   flushPendingDragFrame: () => void
@@ -984,6 +986,7 @@ test('continues local drag influence even when pointer movement pauses', async (
     adapter.draggedNodePubkey = 'A'
     adapter.lastDragGraphPosition = { x: 40, y: 0 }
     adapter.pendingGraphPosition = { x: 40, y: 0 }
+    adapter.lastScheduledGraphPosition = { x: 40, y: 0 }
     adapter.dragInfluenceState = createDragNeighborhoodInfluenceState(
       physicsStore,
       'A',
@@ -1029,6 +1032,155 @@ test('continues local drag influence even when pointer movement pauses', async (
   }
 })
 
+test('node drag preserves the original pointer anchor instead of snapping to cursor center', async () => {
+  const originalWebGL2RenderingContext = globalThis.WebGL2RenderingContext
+  const originalWebGLRenderingContext = globalThis.WebGLRenderingContext
+  globalThis.WebGL2RenderingContext ??= class {} as typeof WebGL2RenderingContext
+  globalThis.WebGLRenderingContext ??= class {} as typeof WebGLRenderingContext
+
+  try {
+    const { SigmaRendererAdapter } = await import(
+      '@/features/graph-v2/renderer/SigmaRendererAdapter'
+    )
+
+    const scene = createScene()
+    const ledger = new NodePositionLedger()
+    const renderStore = new RenderGraphStore(ledger)
+    const physicsStore = new PhysicsGraphStore(ledger)
+    renderStore.applyScene(scene.render)
+    physicsStore.applyScene(scene.physics)
+    renderStore.setNodePosition('A', 40, 10)
+    physicsStore.setNodePosition('A', 40, 10, true)
+
+    const dragMoves: Array<{ x: number; y: number }> = []
+    let renderCalls = 0
+    const adapter = new SigmaRendererAdapter() as unknown as DragHarness
+
+    adapter.sigma = {
+      refresh: () => {},
+      scheduleRender: () => {
+        renderCalls += 1
+      },
+    }
+    adapter.container = {
+      offsetWidth: 800,
+      offsetHeight: 600,
+    }
+    adapter.positionLedger = ledger
+    adapter.renderStore = renderStore
+    adapter.physicsStore = physicsStore
+    adapter.callbacks = createCallbacks((_pubkey, position) => {
+      dragMoves.push(position)
+    })
+    adapter.draggedNodePubkey = 'A'
+    adapter.lastDragGraphPosition = { x: 40, y: 10 }
+    adapter.pendingGraphPosition = { x: 47, y: 16 }
+    adapter.lastScheduledGraphPosition = { x: 47, y: 16 }
+    adapter.dragAnchorOffset = { dx: -5, dy: -2 }
+    adapter.dragInfluenceState = null
+    adapter.syncPhysicsPositionsToRender = () => false
+
+    adapter.flushPendingDragFrame()
+
+    assert.deepEqual(renderStore.getNodePosition('A'), { x: 42, y: 14 })
+    assert.deepEqual(physicsStore.getNodePosition('A'), { x: 42, y: 14 })
+    assert.deepEqual(adapter.lastDragGraphPosition, { x: 42, y: 14 })
+    assert.deepEqual(dragMoves, [{ x: 42, y: 14 }])
+    assert.equal(renderCalls, 1)
+  } finally {
+    globalThis.WebGL2RenderingContext = originalWebGL2RenderingContext
+    globalThis.WebGLRenderingContext = originalWebGLRenderingContext
+  }
+})
+
+test('scene updates preserve a pending node drag position instead of restoring the previous frame', async () => {
+  const originalWebGL2RenderingContext = globalThis.WebGL2RenderingContext
+  const originalWebGLRenderingContext = globalThis.WebGLRenderingContext
+  globalThis.WebGL2RenderingContext ??= class {} as typeof WebGL2RenderingContext
+  globalThis.WebGLRenderingContext ??= class {} as typeof WebGLRenderingContext
+
+  try {
+    const { SigmaRendererAdapter } = await import(
+      '@/features/graph-v2/renderer/SigmaRendererAdapter'
+    )
+
+    const scene = createScene()
+    const ledger = new NodePositionLedger()
+    const renderStore = new RenderGraphStore(ledger)
+    const physicsStore = new PhysicsGraphStore(ledger)
+    renderStore.applyScene(scene.render)
+    physicsStore.applyScene(scene.physics)
+    renderStore.setNodePosition('A', 40, 10)
+    physicsStore.setNodePosition('A', 40, 10, true)
+
+    let refreshCalls = 0
+    let syncCalls = 0
+    let bridgeEnsures = 0
+    let dirtyMarks = 0
+    const adapter = new SigmaRendererAdapter() as unknown as DragHarness & {
+      scene: GraphSceneSnapshot | null
+      forceRuntime: {
+        sync: (
+          _scene: GraphSceneSnapshot['physics'],
+          _options: { topologyChanged: boolean },
+        ) => void
+      }
+      nodeHitTester: { markDirty: () => void }
+      ensurePhysicsPositionBridge: () => void
+      safeRefresh: () => void
+      update: (_scene: GraphSceneSnapshot) => void
+    }
+
+    adapter.sigma = {
+      refresh: () => {},
+      scheduleRender: () => {},
+    }
+    adapter.container = {
+      offsetWidth: 800,
+      offsetHeight: 600,
+    }
+    adapter.scene = scene
+    adapter.positionLedger = ledger
+    adapter.renderStore = renderStore
+    adapter.physicsStore = physicsStore
+    adapter.callbacks = createCallbacks(() => {})
+    adapter.draggedNodePubkey = 'A'
+    adapter.lastDragGraphPosition = { x: 40, y: 10 }
+    adapter.pendingGraphPosition = { x: 47, y: 16 }
+    adapter.lastScheduledGraphPosition = { x: 47, y: 16 }
+    adapter.dragAnchorOffset = { dx: -5, dy: -2 }
+    adapter.dragInfluenceState = null
+    adapter.forceRuntime = {
+      sync: () => {
+        syncCalls += 1
+      },
+    }
+    adapter.nodeHitTester = {
+      markDirty: () => {
+        dirtyMarks += 1
+      },
+    }
+    adapter.ensurePhysicsPositionBridge = () => {
+      bridgeEnsures += 1
+    }
+    adapter.safeRefresh = () => {
+      refreshCalls += 1
+    }
+
+    adapter.update(scene)
+
+    assert.deepEqual(renderStore.getNodePosition('A'), { x: 42, y: 14 })
+    assert.deepEqual(physicsStore.getNodePosition('A'), { x: 42, y: 14 })
+    assert.equal(syncCalls, 1)
+    assert.equal(bridgeEnsures, 1)
+    assert.equal(refreshCalls, 1)
+    assert.equal(dirtyMarks, 2)
+  } finally {
+    globalThis.WebGL2RenderingContext = originalWebGL2RenderingContext
+    globalThis.WebGLRenderingContext = originalWebGLRenderingContext
+  }
+})
+
 test('releaseDrag keeps physics paused when drag started from a suspended runtime', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
@@ -1038,11 +1190,14 @@ test('releaseDrag keeps physics paused when drag started from a suspended runtim
   let bridgeEnsures = 0
   let bridgeCancels = 0
   let renderCalls = 0
-  const dragEnds: Array<{ x: number; y: number }> = []
+  const fixedUpdates: Array<{ pubkey: string; pinned: boolean }> = []
+  const dragEnds: Array<{
+    position: { x: number; y: number }
+    options?: { pinNode?: boolean }
+  }> = []
 
   const adapter = new SigmaRendererAdapter() as unknown as {
     draggedNodePubkey: string | null
-    shouldPinDraggedNodeOnRelease: boolean
     lastDragFlushTimestamp: number | null
     dragInfluenceState: null
     lastDragGraphPosition: null
@@ -1068,7 +1223,6 @@ test('releaseDrag keeps physics paused when drag started from a suspended runtim
   }
 
   adapter.draggedNodePubkey = 'alice'
-  adapter.shouldPinDraggedNodeOnRelease = false
   adapter.lastDragFlushTimestamp = null
   adapter.dragInfluenceState = null
   adapter.lastDragGraphPosition = null
@@ -1079,7 +1233,9 @@ test('releaseDrag keeps physics paused when drag started from a suspended runtim
     getNodePosition: () => ({ x: 10, y: 20 }),
   }
   adapter.physicsStore = {
-    setNodeFixed: () => {},
+    setNodeFixed: (pubkey, pinned) => {
+      fixedUpdates.push({ pubkey, pinned })
+    },
   }
   adapter.callbacks = {
     onNodeClick: () => {},
@@ -1088,8 +1244,8 @@ test('releaseDrag keeps physics paused when drag started from a suspended runtim
     onNodeHover: () => {},
     onNodeDragStart: () => {},
     onNodeDragMove: () => {},
-    onNodeDragEnd: (_pubkey, position) => {
-      dragEnds.push(position)
+    onNodeDragEnd: (_pubkey, position, options) => {
+      dragEnds.push({ position, options })
     },
     onViewportChange: () => {},
   }
@@ -1126,7 +1282,10 @@ test('releaseDrag keeps physics paused when drag started from a suspended runtim
   assert.equal(renderCalls, 1)
   assert.equal(adapter.draggedNodePubkey, null)
   assert.equal(adapter.resumePhysicsAfterDrag, true)
-  assert.deepEqual(dragEnds, [{ x: 10, y: 20 }])
+  assert.deepEqual(fixedUpdates, [{ pubkey: 'alice', pinned: false }])
+  assert.deepEqual(dragEnds, [
+    { position: { x: 10, y: 20 }, options: { pinNode: false } },
+  ])
 })
 
 test('node drag temporarily keeps Sigma edge rendering enabled for first-order connections', async () => {
@@ -1145,7 +1304,10 @@ test('node drag temporarily keeps Sigma edge rendering enabled for first-order c
   const hideEdgesOnMoveUpdates: boolean[] = []
   let customBBoxUpdates = 0
   let dragStarts = 0
-  const dragEnds: Array<{ x: number; y: number }> = []
+  const dragEnds: Array<{
+    position: { x: number; y: number }
+    options?: { pinNode?: boolean }
+  }> = []
   const adapter = new SigmaRendererAdapter() as unknown as {
     sigma: {
       getSetting: (key: 'hideEdgesOnMove') => boolean
@@ -1204,8 +1366,8 @@ test('node drag temporarily keeps Sigma edge rendering enabled for first-order c
       dragStarts += 1
     },
     onNodeDragMove: () => {},
-    onNodeDragEnd: (_pubkey, position) => {
-      dragEnds.push(position)
+    onNodeDragEnd: (_pubkey, position, options) => {
+      dragEnds.push({ position, options })
     },
     onViewportChange: () => {},
   }
@@ -1246,7 +1408,6 @@ test('releaseDrag clears node focus instead of restoring hover on mobile', async
 
   const adapter = new SigmaRendererAdapter() as unknown as {
     draggedNodePubkey: string | null
-    shouldPinDraggedNodeOnRelease: boolean
     lastDragFlushTimestamp: number | null
     dragInfluenceState: null
     lastDragGraphPosition: null
@@ -1290,7 +1451,6 @@ test('releaseDrag clears node focus instead of restoring hover on mobile', async
 
   try {
     adapter.draggedNodePubkey = 'alice'
-    adapter.shouldPinDraggedNodeOnRelease = false
     adapter.lastDragFlushTimestamp = null
     adapter.dragInfluenceState = null
     adapter.lastDragGraphPosition = null
@@ -1621,7 +1781,7 @@ test('renderer focus resolves through one priority path for drag hover and selec
   assert.equal(adapter.resolveRendererFocus().pubkey, null)
 })
 
-test('drag node focus bypasses transitions so unrelated nodes hide immediately', async () => {
+test('drag node focus bypasses transitions and keeps unrelated nodes visible', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
   )
@@ -1682,11 +1842,11 @@ test('drag node focus bypasses transitions so unrelated nodes hide immediately',
     durationMs: 180,
   }
 
-  const dimmed = adapter.nodeReducer('C', baseNode)
+  const visible = adapter.nodeReducer('C', baseNode)
 
-  assert.equal(dimmed.color, '#121a22')
-  assert.equal(dimmed.highlighted, false)
-  assert.ok(dimmed.zIndex < 0)
+  assert.equal(visible.color, baseNode.color)
+  assert.equal(visible.highlighted, false)
+  assert.equal(visible.zIndex, baseNode.zIndex)
 })
 
 test('highlight transition frame uses render-only scheduling', async () => {
@@ -2097,7 +2257,7 @@ test('keeps hovered neighbors on their base color while marking them highlighted
   assert.equal(hoveredNeighbor.zIndex, 8)
 })
 
-test('edge reducer hides non first-order edges while dragging a node', async () => {
+test('edge reducer keeps every edge visible while dragging a node', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
   )
@@ -2139,11 +2299,12 @@ test('edge reducer hides non first-order edges while dragging a node', async () 
   const unrelated = adapter.edgeReducer('C->D', baseEdge)
 
   assert.equal(firstOrder.hidden, false)
-  assert.ok(firstOrder.size > baseEdge.size)
-  assert.equal(unrelated.hidden, true)
+  assert.equal(firstOrder.size, baseEdge.size)
+  assert.equal(unrelated.hidden, false)
+  assert.equal(unrelated.size, baseEdge.size)
 })
 
-test('edge reducer hides dragged-node edges whose endpoint is not in drag focus neighbors', async () => {
+test('edge reducer preserves dragged-node edges outside drag focus neighbors', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
   )
@@ -2215,11 +2376,12 @@ test('edge reducer hides dragged-node edges whose endpoint is not in drag focus 
   const staleIncidentEdge = adapter.edgeReducer('A->Z', baseEdge)
 
   assert.equal(focusedNeighbor.hidden, false)
-  assert.ok(focusedNeighbor.size > baseEdge.size)
-  assert.equal(staleIncidentEdge.hidden, true)
+  assert.equal(focusedNeighbor.size, baseEdge.size)
+  assert.equal(staleIncidentEdge.hidden, false)
+  assert.equal(staleIncidentEdge.size, baseEdge.size)
 })
 
-test('edge reducer hides dragged-node edges whose neighbor is outside the viewport', async () => {
+test('edge reducer preserves dragged-node edges whose neighbor is outside the viewport', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
   )
@@ -2291,11 +2453,12 @@ test('edge reducer hides dragged-node edges whose neighbor is outside the viewpo
   const offscreenNeighbor = adapter.edgeReducer('A->Z', baseEdge)
 
   assert.equal(visibleNeighbor.hidden, false)
-  assert.ok(visibleNeighbor.size > baseEdge.size)
-  assert.equal(offscreenNeighbor.hidden, true)
+  assert.equal(visibleNeighbor.size, baseEdge.size)
+  assert.equal(offscreenNeighbor.hidden, false)
+  assert.equal(offscreenNeighbor.size, baseEdge.size)
 })
 
-test('edge reducer hides dragged-node edges whose neighbor sits just outside the viewport', async () => {
+test('edge reducer preserves dragged-node edges whose neighbor sits just outside the viewport', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
   )
@@ -2367,8 +2530,9 @@ test('edge reducer hides dragged-node edges whose neighbor sits just outside the
   const barelyOffscreenNeighbor = adapter.edgeReducer('A->Z', baseEdge)
 
   assert.equal(visibleNeighbor.hidden, false)
-  assert.ok(visibleNeighbor.size > baseEdge.size)
-  assert.equal(barelyOffscreenNeighbor.hidden, true)
+  assert.equal(visibleNeighbor.size, baseEdge.size)
+  assert.equal(barelyOffscreenNeighbor.hidden, false)
+  assert.equal(barelyOffscreenNeighbor.size, baseEdge.size)
 })
 
 test('edge reducer hides background edges during low-performance connection LOD', async () => {
@@ -2433,7 +2597,7 @@ test('edge reducer hides background edges during low-performance connection LOD'
   const visible = adapter.edgeReducer('A->B', baseEdge)
 
   assert.equal(draggedEdge.hidden, false)
-  assert.ok(draggedEdge.size > baseEdge.size)
+  assert.equal(draggedEdge.size, baseEdge.size)
   assert.equal(focused.hidden, true)
   assert.equal(focused.touchesFocus, true)
   assert.equal(hidden.hidden, true)
@@ -2919,14 +3083,15 @@ test('small pointer movement before click does not consume node clicks', async (
     sigma: {
       on: (eventName: string, listener: (event: unknown) => void) => void
       scheduleRender: () => void
+      viewportToGraph: (_point: { x: number; y: number }) => { x: number; y: number }
       getCamera: () => {
         on: (eventName: string, listener: (event: unknown) => void) => void
         disable: () => void
         enable: () => void
       }
     } | null
-    renderStore: Record<string, never> | null
-    physicsStore: Record<string, never> | null
+    renderStore: { getNodePosition: (_pubkey: string) => { x: number; y: number } | null } | null
+    physicsStore: { getNodePosition: (_pubkey: string) => { x: number; y: number } | null } | null
     callbacks: GraphInteractionCallbacks | null
     bindEvents: () => void
   }
@@ -2947,6 +3112,7 @@ test('small pointer movement before click does not consume node clicks', async (
         listeners.set(eventName, listener)
       },
       scheduleRender: () => {},
+      viewportToGraph: (point) => point,
       getCamera: () => ({
         on: () => {},
         disable: () => {
@@ -2957,8 +3123,12 @@ test('small pointer movement before click does not consume node clicks', async (
         },
       }),
     }
-    adapter.renderStore = {}
-    adapter.physicsStore = {}
+    adapter.renderStore = {
+      getNodePosition: () => ({ x: 20, y: 20 }),
+    }
+    adapter.physicsStore = {
+      getNodePosition: () => null,
+    }
     adapter.callbacks = {
       ...createCallbacks(() => {}),
       onNodeClick: (pubkey) => {
@@ -2991,6 +3161,154 @@ test('small pointer movement before click does not consume node clicks', async (
     globalThis.window = originalWindow
     globalThis.requestAnimationFrame = originalRequestAnimationFrame
     globalThis.cancelAnimationFrame = originalCancelAnimationFrame
+  }
+})
+
+test('node drag start keeps the down-node anchor and schedules with the pre-start viewport transform', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const originalWindow = globalThis.window
+  const listeners = new Map<string, (event: unknown) => void>()
+  const startDragCalls: Array<{ pubkey: string; anchorOffset?: { dx: number; dy: number } }> = []
+  const scheduledPositions: Array<{ x: number; y: number }> = []
+  let prevented = 0
+  let viewportScale = 1
+
+  const adapter = new SigmaRendererAdapter() as unknown as {
+    sigma: {
+      on: (eventName: string, listener: (event: unknown) => void) => void
+      viewportToGraph: (_point: { x: number; y: number }) => { x: number; y: number }
+      getCamera: () => {
+        on: (eventName: string, listener: (event: unknown) => void) => void
+        disable: () => void
+      }
+    } | null
+    renderStore: { getNodePosition: (_pubkey: string) => { x: number; y: number } | null } | null
+    physicsStore: { getNodePosition: (_pubkey: string) => { x: number; y: number } | null } | null
+    callbacks: GraphInteractionCallbacks | null
+    startDrag: (_pubkey: string, _anchorOffset?: { dx: number; dy: number }) => void
+    scheduleDragFrame: (_position: { x: number; y: number }) => void
+    bindEvents: () => void
+  }
+
+  globalThis.window = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as Window & typeof globalThis
+
+  try {
+    adapter.sigma = {
+      on: (eventName, listener) => {
+        listeners.set(eventName, listener)
+      },
+      viewportToGraph: (point) => ({
+        x: point.x * viewportScale,
+        y: point.y * viewportScale,
+      }),
+      getCamera: () => ({
+        on: () => {},
+        disable: () => {},
+      }),
+    }
+    adapter.renderStore = {
+      getNodePosition: () => ({ x: 100, y: 50 }),
+    }
+    adapter.physicsStore = {
+      getNodePosition: () => null,
+    }
+    adapter.callbacks = createCallbacks(() => {})
+    adapter.startDrag = (pubkey, anchorOffset) => {
+      startDragCalls.push({ pubkey, anchorOffset })
+      viewportScale = 100
+    }
+    adapter.scheduleDragFrame = (position) => {
+      scheduledPositions.push(position)
+    }
+
+    adapter.bindEvents()
+
+    listeners.get('downNode')?.({
+      node: 'alice',
+      event: { x: 20, y: 10, original: { ctrlKey: false } },
+    })
+    listeners.get('moveBody')?.({
+      event: { x: 25, y: 14, original: { ctrlKey: false } },
+      preventSigmaDefault: () => {
+        prevented += 1
+      },
+    })
+
+    assert.equal(prevented, 1)
+    assert.deepEqual(startDragCalls, [
+      { pubkey: 'alice', anchorOffset: { dx: 80, dy: 40 } },
+    ])
+    assert.deepEqual(scheduledPositions, [{ x: 25, y: 14 }])
+  } finally {
+    globalThis.window = originalWindow
+  }
+})
+
+test('node drag release does not request pinning unless control is pressed', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const originalWindow = globalThis.window
+  const listeners = new Map<string, (event: unknown) => void>()
+  const releaseCalls: Array<{ pinOnRelease?: boolean }> = []
+
+  const adapter = new SigmaRendererAdapter() as unknown as {
+    sigma: {
+      on: (eventName: string, listener: (event: unknown) => void) => void
+      getCamera: () => {
+        on: (eventName: string, listener: (event: unknown) => void) => void
+      }
+    } | null
+    renderStore: Record<string, never> | null
+    physicsStore: Record<string, never> | null
+    callbacks: GraphInteractionCallbacks | null
+    releaseDrag: (_options?: { pinOnRelease?: boolean }) => void
+    bindEvents: () => void
+  }
+
+  globalThis.window = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as Window & typeof globalThis
+
+  try {
+    adapter.sigma = {
+      on: (eventName, listener) => {
+        listeners.set(eventName, listener)
+      },
+      getCamera: () => ({
+        on: () => {},
+      }),
+    }
+    adapter.renderStore = {}
+    adapter.physicsStore = {}
+    adapter.callbacks = createCallbacks(() => {})
+    adapter.releaseDrag = (options) => {
+      releaseCalls.push(options ?? {})
+    }
+
+    adapter.bindEvents()
+
+    listeners.get('upNode')?.({
+      event: { x: 20, y: 10, original: { ctrlKey: false } },
+    })
+    listeners.get('upStage')?.({
+      event: { x: 20, y: 10, original: { ctrlKey: true } },
+    })
+
+    assert.deepEqual(releaseCalls, [
+      { pinOnRelease: false },
+      { pinOnRelease: true },
+    ])
+  } finally {
+    globalThis.window = originalWindow
   }
 })
 

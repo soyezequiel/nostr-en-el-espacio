@@ -807,10 +807,11 @@ export class AvatarOverlayRenderer {
         visiblePhotoCount += 1
       }
     }
+    const isDegraded = this.budget.snapshot().isDegraded
     const effectiveLoadConcurrency = resolveAvatarLoadConcurrency({
       baseConcurrency: budget.concurrency,
       visiblePhotoCount,
-      showAllVisibleImages: budget.showAllVisibleImages,
+      showAllVisibleImages: budget.showAllVisibleImages && !isDegraded,
     })
     const schedulerBudget = {
       ...budget,
@@ -820,7 +821,7 @@ export class AvatarOverlayRenderer {
       resolveAvatarCacheCap({
         baseCap: budget.lruCap,
         visiblePhotoCount,
-        showAllVisibleImages: budget.showAllVisibleImages,
+        showAllVisibleImages: budget.showAllVisibleImages && !isDegraded,
       }),
     )
     const selectedDrawItems = selectAvatarDrawItemsForFrame(
@@ -828,7 +829,7 @@ export class AvatarOverlayRenderer {
       resolveAvatarFrameDrawCap({
         baseCap: budget.maxAvatarDrawsPerFrame,
         visibleCount: resolvedDrawItems.length,
-        showAllVisibleImages: budget.showAllVisibleImages,
+        showAllVisibleImages: budget.showAllVisibleImages && !isDegraded,
       }),
       forcedAvatarPubkeys,
     )
@@ -846,7 +847,7 @@ export class AvatarOverlayRenderer {
     const maxImageDrawsPerFrame = resolveAvatarFrameDrawCap({
       baseCap: budget.maxImageDrawsPerFrame,
       visibleCount: visiblePhotoCount,
-      showAllVisibleImages: budget.showAllVisibleImages,
+      showAllVisibleImages: budget.showAllVisibleImages && !isDegraded,
     })
     let nodesWithPictureUrlCount = 0
     let selectedForImageCount = 0

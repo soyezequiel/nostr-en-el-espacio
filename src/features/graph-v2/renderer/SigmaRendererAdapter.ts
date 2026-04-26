@@ -381,12 +381,18 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private motionClearTimer: ReturnType<typeof setTimeout> | null = null
 
+  private motionClearDeadlineMs = 0
+
   private cameraMotionActive = false
 
   private cameraMotionClearTimer: ReturnType<typeof setTimeout> | null = null
 
+  private cameraMotionClearDeadlineMs = 0
+
   private touchCameraMotionClearTimer: ReturnType<typeof setTimeout> | null =
     null
+
+  private touchCameraMotionClearDeadlineMs = 0
 
   private readonly MOTION_RESUME_MS = 140
 
@@ -1706,10 +1712,12 @@ export class SigmaRendererAdapter implements RendererAdapter {
       clearTimeout(this.motionClearTimer)
       this.motionClearTimer = null
     }
+    this.motionClearDeadlineMs = 0
     if (this.cameraMotionClearTimer !== null) {
       clearTimeout(this.cameraMotionClearTimer)
       this.cameraMotionClearTimer = null
     }
+    this.cameraMotionClearDeadlineMs = 0
     this.motionActive = false
     this.cameraMotionActive = false
     this.avatarOverlay?.dispose()
@@ -1726,35 +1734,44 @@ export class SigmaRendererAdapter implements RendererAdapter {
     if (!this.avatarOverlay) {
       return
     }
-    this.motionActive = true
+    this.motionClearDeadlineMs = performance.now() + this.MOTION_RESUME_MS
     if (this.motionClearTimer !== null) {
-      clearTimeout(this.motionClearTimer)
+      return
     }
-    this.motionClearTimer = setTimeout(() => {
-      this.motionActive = false
-      this.motionClearTimer = null
-      this.safeRender()
-    }, this.MOTION_RESUME_MS)
+    this.motionActive = true
+    this.motionClearTimer = setTimeout(
+      this.flushMotionClear,
+      this.MOTION_RESUME_MS,
+    )
   }
 
   private markCameraMotion() {
     if (!this.avatarOverlay) {
       return
     }
-    this.cameraMotionActive = true
+    this.cameraMotionClearDeadlineMs =
+      performance.now() + this.MOTION_RESUME_MS
     if (this.cameraMotionClearTimer !== null) {
-      clearTimeout(this.cameraMotionClearTimer)
+      return
     }
-    this.cameraMotionClearTimer = setTimeout(() => {
-      this.cameraMotionActive = false
-      this.cameraMotionClearTimer = null
-      this.safeRender()
-    }, this.MOTION_RESUME_MS)
+    this.cameraMotionActive = true
+    this.cameraMotionClearTimer = setTimeout(
+      this.flushCameraMotionClear,
+      this.MOTION_RESUME_MS,
+    )
   }
 
   private markTouchCameraMovement() {
     const sigma = this.sigma
     if (!sigma) {
+      return
+    }
+
+    this.touchCameraMotionClearDeadlineMs =
+      performance.now() + this.MOTION_RESUME_MS
+    if (this.touchCameraMotionClearTimer !== null) {
+      // Gesture already in flight; extending the deadline is enough — skip
+      // the captor lookup/assignment that ran on every touchmove before.
       return
     }
 
@@ -1765,14 +1782,10 @@ export class SigmaRendererAdapter implements RendererAdapter {
       sigma.getMouseCaptor() as unknown as SigmaMovementCaptorShim
     mouseCaptor.isMoving = true
 
-    if (this.touchCameraMotionClearTimer !== null) {
-      clearTimeout(this.touchCameraMotionClearTimer)
-    }
-    this.touchCameraMotionClearTimer = setTimeout(() => {
-      mouseCaptor.isMoving = false
-      this.touchCameraMotionClearTimer = null
-      this.safeRender()
-    }, this.MOTION_RESUME_MS)
+    this.touchCameraMotionClearTimer = setTimeout(
+      this.flushTouchCameraMovementClear,
+      this.MOTION_RESUME_MS,
+    )
   }
 
   private clearTouchCameraMovement() {
@@ -1780,6 +1793,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       clearTimeout(this.touchCameraMotionClearTimer)
       this.touchCameraMotionClearTimer = null
     }
+    this.touchCameraMotionClearDeadlineMs = 0
 
     const sigma = this.sigma
     if (!sigma) {
@@ -1789,6 +1803,66 @@ export class SigmaRendererAdapter implements RendererAdapter {
     const mouseCaptor =
       sigma.getMouseCaptor() as unknown as SigmaMovementCaptorShim
     mouseCaptor.isMoving = false
+  }
+
+  private readonly flushMotionClear = () => {
+    const remainingMs = this.motionClearDeadlineMs - performance.now()
+    if (remainingMs > 0) {
+      this.motionClearTimer = setTimeout(this.flushMotionClear, remainingMs)
+      return
+    }
+
+    this.motionClearTimer = null
+    this.motionClearDeadlineMs = 0
+    if (!this.motionActive) {
+      return
+    }
+    this.motionActive = false
+    this.safeRender()
+  }
+
+  private readonly flushCameraMotionClear = () => {
+    const remainingMs = this.cameraMotionClearDeadlineMs - performance.now()
+    if (remainingMs > 0) {
+      this.cameraMotionClearTimer = setTimeout(
+        this.flushCameraMotionClear,
+        remainingMs,
+      )
+      return
+    }
+
+    this.cameraMotionClearTimer = null
+    this.cameraMotionClearDeadlineMs = 0
+    if (!this.cameraMotionActive) {
+      return
+    }
+    this.cameraMotionActive = false
+    this.safeRender()
+  }
+
+  private readonly flushTouchCameraMovementClear = () => {
+    const remainingMs =
+      this.touchCameraMotionClearDeadlineMs - performance.now()
+    if (remainingMs > 0) {
+      this.touchCameraMotionClearTimer = setTimeout(
+        this.flushTouchCameraMovementClear,
+        remainingMs,
+      )
+      return
+    }
+
+    this.touchCameraMotionClearTimer = null
+    this.touchCameraMotionClearDeadlineMs = 0
+
+    const sigma = this.sigma
+    if (!sigma) {
+      return
+    }
+
+    const mouseCaptor =
+      sigma.getMouseCaptor() as unknown as SigmaMovementCaptorShim
+    mouseCaptor.isMoving = false
+    this.safeRender()
   }
 
   private scheduleAvatarSettledRefresh() {

@@ -59,14 +59,10 @@ export const NODE_PROFILE_HYDRATION_BATCH_CONCURRENCY = 3
 export const NODE_PROFILE_PERSIST_CONCURRENCY = 8
 export const RELAY_HEALTH_FLUSH_DELAY_MS = 32
 
-// Tuning de red para el kernel.
-// Iteracion anterior: se intentaron dos perfiles (desktop agresivo / mobile laxo)
-// pero la deteccion del dispositivo resulto fragil y el celular a veces recibia
-// timeouts de desktop (1.5s/4s/10s), causando una regresion de 189→131 nodos.
-// Solucion actual: un unico tuning universal basado en los valores que dieron
-// paridad probada entre mobile y desktop (~189 nodos en ambos).
-// Cuando tengamos validacion de deteccion instrumentada, se puede re-introducir
-// la diferenciacion.
+// Tuning de red por perfil de dispositivo.
+// Desktop obtiene timeouts moderadamente mas ajustados que mobile.
+// Si la deteccion falla, se cae al perfil mobile (generoso) para evitar regresiones.
+// El log en consola permite verificar que perfil se aplico en cada dispositivo.
 export interface KernelNetworkTuning {
   nodeExpandConnectTimeoutMs: number
   nodeExpandPageTimeoutMs: number
@@ -79,7 +75,23 @@ export interface KernelNetworkTuning {
   followRelayListQueryConcurrency: number
 }
 
-const UNIVERSAL_KERNEL_TUNING: KernelNetworkTuning = {
+// Desktop: conexiones rapidas y estables permiten timeouts mas cortos.
+// No tan agresivo como 1.5s/4s/10s (que funciona pero no da margen).
+const DESKTOP_KERNEL_TUNING: KernelNetworkTuning = {
+  nodeExpandConnectTimeoutMs: 2_500,
+  nodeExpandPageTimeoutMs: 5_000,
+  nodeExpandHardTimeoutMs: 12_000,
+  nodeExpandRetryCount: 1,
+  nodeExpandStragglerGraceMs: 500,
+  nodeExpandInboundCountTimeoutMs: 2_000,
+  rootInboundDiscoveryPageConcurrency: 2,
+  targetedReciprocalQueryConcurrency: 2,
+  followRelayListQueryConcurrency: 2,
+}
+
+// Mobile: jitter de red requiere timeouts mas generosos. Valores probados
+// que dieron paridad con desktop (~189 nodos en ambos).
+const MOBILE_KERNEL_TUNING: KernelNetworkTuning = {
   nodeExpandConnectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
   nodeExpandPageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
   nodeExpandHardTimeoutMs: NODE_EXPAND_HARD_TIMEOUT_MS,
@@ -91,10 +103,47 @@ const UNIVERSAL_KERNEL_TUNING: KernelNetworkTuning = {
   followRelayListQueryConcurrency: FOLLOW_RELAY_LIST_QUERY_CONCURRENCY,
 }
 
+let cachedKernelTuning: KernelNetworkTuning | null = null
+
+function detectIsMobileForTuning(): boolean {
+  try {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      // SSR o entorno sin DOM: asumir mobile (generoso) como fallback seguro.
+      return true
+    }
+    const matchMedia =
+      typeof window.matchMedia === 'function' ? window.matchMedia : null
+    const isPointerCoarse = matchMedia?.('(pointer: coarse)')?.matches ?? false
+    const viewportWidth = window.innerWidth ?? 0
+    const isMobileByViewport = viewportWidth > 0 && viewportWidth <= 900
+    return isPointerCoarse || isMobileByViewport
+  } catch {
+    // Cualquier error de deteccion: asumir mobile (generoso).
+    return true
+  }
+}
+
 export function getKernelNetworkTuning(): KernelNetworkTuning {
-  return UNIVERSAL_KERNEL_TUNING
+  if (cachedKernelTuning) return cachedKernelTuning
+  const isMobile = detectIsMobileForTuning()
+  cachedKernelTuning = isMobile ? MOBILE_KERNEL_TUNING : DESKTOP_KERNEL_TUNING
+  // Log unico para diagnostico — permite verificar en DevTools del celular.
+  if (typeof console !== 'undefined') {
+    console.info(
+      `[kernel-tuning] Perfil de red: ${isMobile ? 'MOBILE' : 'DESKTOP'}`,
+      {
+        connectMs: cachedKernelTuning.nodeExpandConnectTimeoutMs,
+        pageMs: cachedKernelTuning.nodeExpandPageTimeoutMs,
+        hardMs: cachedKernelTuning.nodeExpandHardTimeoutMs,
+        retries: cachedKernelTuning.nodeExpandRetryCount,
+        viewport: typeof window !== 'undefined' ? window.innerWidth : 'N/A',
+      },
+    )
+  }
+  return cachedKernelTuning
 }
 
 export function resetKernelNetworkTuningCache(): void {
-  // No-op: tuning universal no usa cache. Se mantiene la firma para no romper tests.
+  cachedKernelTuning = null
 }
+

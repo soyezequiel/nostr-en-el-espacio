@@ -2,6 +2,7 @@ import Sigma from 'sigma'
 import type { Coordinates, TouchCoords } from 'sigma/types'
 
 import { hasRenderableSigmaContainer } from '@/features/graph-v2/renderer/containerDimensions'
+import { installSigmaPixelRatioCap } from '@/features/graph-v2/renderer/sigmaPixelRatio'
 import type {
   GraphInteractionCallbacks,
   GraphSceneSnapshot,
@@ -257,6 +258,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private container: HTMLElement | null = null
 
   private resizeObserver: ResizeObserver | null = null
+
+  private pixelRatioCapDispose: (() => void) | null = null
 
   private pendingContainerRefresh = false
 
@@ -1463,13 +1466,43 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private readonly handleTouchGestureStart = () => {
     if (this.touchGestureActive) return
     this.touchGestureActive = true
+    // Chrome (real touch devices and DevTools "mobile mode") fires both touch*
+    // events and synthetic mouse* compatibility events for the same gesture.
+    // Without this guard, Sigma's MouseCaptor would also process mousedown/
+    // mousemove and write `camera.setState` from its own `lastMouseX/Y` math
+    // while the TouchCaptor writes from `startTouchesPositions`. The two
+    // captors fight each frame and the camera visibly jumps between their
+    // computed positions.
+    this.suspendMouseCaptorForTouchGesture()
     this.callbacks?.onCanvasGestureStart?.()
   }
 
   private readonly handleTouchGestureEnd = () => {
     if (!this.touchGestureActive) return
     this.touchGestureActive = false
+    this.resumeMouseCaptorAfterTouchGesture()
     this.callbacks?.onCanvasGestureEnd?.()
+  }
+
+  private suspendMouseCaptorForTouchGesture() {
+    const sigma = this.sigma
+    if (!sigma) return
+    const mouseCaptor = sigma.getMouseCaptor()
+    mouseCaptor.enabled = false
+    // A synthetic mousedown may have arrived before the touchdown; clear any
+    // residual drag state so the captor doesn't resume a phantom pan when we
+    // re-enable it.
+    mouseCaptor.isMouseDown = false
+    mouseCaptor.isMoving = false
+    mouseCaptor.lastMouseX = null
+    mouseCaptor.lastMouseY = null
+    mouseCaptor.startCameraState = null
+  }
+
+  private resumeMouseCaptorAfterTouchGesture() {
+    const sigma = this.sigma
+    if (!sigma) return
+    sigma.getMouseCaptor().enabled = true
   }
 
   private readonly handleTouchMove = (event: TouchCoords) => {
@@ -1548,6 +1581,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.syncSelectedSceneFocus()
     this.physicsStore.applyScene(initialScene.physics)
     this.forceRuntime = new ForceAtlasRuntime(this.physicsStore.getGraph())
+    // Instalamos el cap de DPR ANTES de construir Sigma. Sigma lee
+    // window.devicePixelRatio en el constructor y en cada resize() vía un
+    // helper interno no expuesto, por lo que el override debe persistir
+    // durante todo el ciclo de vida del adapter.
+    this.pixelRatioCapDispose = installSigmaPixelRatioCap(container)
     this.sigma = new Sigma(
       this.renderStore.getGraph(),
       container,
@@ -1660,6 +1698,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.disposeAvatarPipeline()
     this.sigma?.kill()
     this.sigma = null
+    this.pixelRatioCapDispose?.()
+    this.pixelRatioCapDispose = null
     this.positionLedger = null
     this.renderStore = null
     this.physicsStore = null

@@ -1,4 +1,4 @@
-﻿import type { Filter } from 'nostr-tools'
+import type { Filter } from 'nostr-tools'
 
 import type {
   GraphLink,
@@ -694,72 +694,6 @@ export function createNodeExpansionModule(
       startedAt,
     )
 
-    const previewState = state.nodeStructurePreviewStates?.[pubkey]
-    const isRecentFallbackOrEmpty =
-      previewState &&
-      (previewState.status === 'partial' || previewState.status === 'empty') &&
-      !collaborators.nodeDetail.getActivePreviewRequest(pubkey)
-
-    if (isRecentFallbackOrEmpty) {
-      setLoadingState(
-        pubkey,
-        'fetching-structure',
-        2,
-        'Revisando evidencia local para acelerar la expansion...',
-        startedAt,
-      )
-      const cachedContactList = await getCachedContactList(pubkey)
-      if (cachedContactList) {
-        const cachePreviewMessage =
-          buildContactListPartialMessage({
-            discoveredFollowCount: cachedContactList.follows.length,
-            diagnostics: [],
-            rejectedPubkeyCount: 0,
-            loadedFromCache: true,
-          }) ??
-          buildDiscoveredMessage(cachedContactList.follows.length, true, true)
-
-        setLoadingState(
-          pubkey,
-          'merging',
-          4,
-          'Integrando follows recuperados desde cache local...',
-          startedAt,
-        )
-        const result = applyExpandedStructureEvidence(
-          pubkey,
-          cachedContactList.follows,
-          [],
-          {
-            relayUrls,
-            relayHints: mergeExpansionRelayHints(
-              expandedNodeRelayHints,
-              cachedContactList.relayHints,
-            ),
-            authoredHasPartialSignals: true,
-            inboundHasPartialSignals: false,
-            authoredDiagnostics: [],
-            authoredLoadedFromCache: true,
-            previewMessage:
-              cachedContactList.follows.length > 0
-                ? cachePreviewMessage
-                : `Sin lista de follows descubierta para ${pubkey.slice(0, 8)}...`,
-          },
-        )
-        scheduleReciprocalInboundEnrichment(
-          pubkey,
-          cachedContactList.follows,
-          relayUrls,
-          cachedContactList.relayHints,
-        )
-        scheduleDirectInboundEnrichment(
-          pubkey,
-          relayUrls,
-          cachedContactList.relayHints,
-        )
-        return result
-      }
-    }
 
     let adapter: RelayAdapterInstance | null = null
 

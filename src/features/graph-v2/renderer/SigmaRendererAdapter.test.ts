@@ -1304,6 +1304,7 @@ test('node drag temporarily keeps Sigma edge rendering enabled for first-order c
   const hideEdgesOnMoveUpdates: boolean[] = []
   let customBBoxUpdates = 0
   let dragStarts = 0
+  let renderCalls = 0
   const dragEnds: Array<{
     position: { x: number; y: number }
     options?: { pinNode?: boolean }
@@ -1333,6 +1334,8 @@ test('node drag temporarily keeps Sigma edge rendering enabled for first-order c
     startHighlightTransition: () => void
     startDrag: (pubkey: string) => void
     releaseDrag: () => void
+    hoveredNodePubkey: string | null
+    currentHoverFocus: { pubkey: string | null; neighbors: Set<string> }
   }
 
   adapter.sigma = {
@@ -1378,7 +1381,9 @@ test('node drag temporarily keeps Sigma edge rendering enabled for first-order c
     resume: () => {},
   }
   adapter.ensurePhysicsPositionBridge = () => {}
-  adapter.safeRender = () => {}
+  adapter.safeRender = () => {
+    renderCalls += 1
+  }
   adapter.flushPendingDragFrame = () => {}
   adapter.startHighlightTransition = () => {}
 
@@ -1387,6 +1392,9 @@ test('node drag temporarily keeps Sigma edge rendering enabled for first-order c
   assert.deepEqual(hideEdgesOnMoveUpdates, [false])
   assert.equal(customBBoxUpdates, 0)
   assert.equal(dragStarts, 1)
+  assert.equal(adapter.hoveredNodePubkey, 'A')
+  assert.equal(adapter.currentHoverFocus.pubkey, 'A')
+  assert.equal(renderCalls, 0)
 
   adapter.releaseDrag()
   assert.equal(hideEdgesOnMove, true)
@@ -1848,7 +1856,7 @@ test('renderer focus resolves through one priority path for drag hover and selec
   assert.equal(adapter.resolveRendererFocus().pubkey, null)
 })
 
-test('drag node focus bypasses transitions so unrelated nodes dim immediately', async () => {
+test('drag node visual state bypasses focus dimming while transitions are pending', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
   )
@@ -1909,11 +1917,11 @@ test('drag node focus bypasses transitions so unrelated nodes dim immediately', 
     durationMs: 180,
   }
 
-  const dimmed = adapter.nodeReducer('C', baseNode)
+  const stable = adapter.nodeReducer('C', baseNode)
 
-  assert.equal(dimmed.color, '#121a22')
-  assert.equal(dimmed.highlighted, false)
-  assert.ok(dimmed.zIndex < 0)
+  assert.equal(stable.color, baseNode.color)
+  assert.equal(stable.highlighted, false)
+  assert.equal(stable.zIndex, baseNode.zIndex)
 })
 
 test('highlight transition frame uses render-only scheduling', async () => {
@@ -2399,7 +2407,7 @@ test('keeps hovered neighbors on their base color while marking them highlighted
   assert.equal(hoveredNeighbor.zIndex, 8)
 })
 
-test('edge reducer dims non first-order edges while dragging a node', async () => {
+test('edge reducer hides non first-order edges while preserving dragged edges', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
   )
@@ -2441,13 +2449,13 @@ test('edge reducer dims non first-order edges while dragging a node', async () =
   const unrelated = adapter.edgeReducer('C->D', baseEdge)
 
   assert.equal(firstOrder.hidden, false)
-  assert.ok(firstOrder.size > baseEdge.size)
-  assert.equal(unrelated.hidden, false)
-  assert.equal(unrelated.color, '#10171f')
-  assert.ok(unrelated.zIndex < 0)
+  assert.equal(firstOrder.color, baseEdge.color)
+  assert.equal(firstOrder.size, baseEdge.size)
+  assert.equal(firstOrder.zIndex, baseEdge.zIndex)
+  assert.equal(unrelated.hidden, true)
 })
 
-test('edge reducer dims dragged-node edges whose endpoint is not in drag focus neighbors', async () => {
+test('edge reducer preserves dragged-node incident edges outside stale focus neighbors', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
   )
@@ -2519,14 +2527,15 @@ test('edge reducer dims dragged-node edges whose endpoint is not in drag focus n
   const staleIncidentEdge = adapter.edgeReducer('A->Z', baseEdge)
 
   assert.equal(focusedNeighbor.hidden, false)
-  assert.ok(focusedNeighbor.size > baseEdge.size)
+  assert.equal(focusedNeighbor.color, baseEdge.color)
+  assert.equal(focusedNeighbor.size, baseEdge.size)
   assert.equal(staleIncidentEdge.hidden, false)
-  assert.equal(staleIncidentEdge.color, '#f4fbff')
-  assert.ok(staleIncidentEdge.size > baseEdge.size)
-  assert.ok(staleIncidentEdge.zIndex > baseEdge.zIndex)
+  assert.equal(staleIncidentEdge.color, baseEdge.color)
+  assert.equal(staleIncidentEdge.size, baseEdge.size)
+  assert.equal(staleIncidentEdge.zIndex, baseEdge.zIndex)
 })
 
-test('edge reducer keeps dragged-node focus styling for neighbors outside the viewport', async () => {
+test('edge reducer keeps dragged-node edges stable for neighbors outside the viewport', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
   )
@@ -2598,12 +2607,14 @@ test('edge reducer keeps dragged-node focus styling for neighbors outside the vi
   const offscreenNeighbor = adapter.edgeReducer('A->Z', baseEdge)
 
   assert.equal(visibleNeighbor.hidden, false)
-  assert.ok(visibleNeighbor.size > baseEdge.size)
+  assert.equal(visibleNeighbor.color, baseEdge.color)
+  assert.equal(visibleNeighbor.size, baseEdge.size)
   assert.equal(offscreenNeighbor.hidden, false)
-  assert.ok(offscreenNeighbor.size > baseEdge.size)
+  assert.equal(offscreenNeighbor.color, baseEdge.color)
+  assert.equal(offscreenNeighbor.size, baseEdge.size)
 })
 
-test('edge reducer keeps dragged-node focus styling for neighbors just outside the viewport', async () => {
+test('edge reducer keeps dragged-node edges stable for neighbors just outside the viewport', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
   )
@@ -2675,9 +2686,11 @@ test('edge reducer keeps dragged-node focus styling for neighbors just outside t
   const barelyOffscreenNeighbor = adapter.edgeReducer('A->Z', baseEdge)
 
   assert.equal(visibleNeighbor.hidden, false)
-  assert.ok(visibleNeighbor.size > baseEdge.size)
+  assert.equal(visibleNeighbor.color, baseEdge.color)
+  assert.equal(visibleNeighbor.size, baseEdge.size)
   assert.equal(barelyOffscreenNeighbor.hidden, false)
-  assert.ok(barelyOffscreenNeighbor.size > baseEdge.size)
+  assert.equal(barelyOffscreenNeighbor.color, baseEdge.color)
+  assert.equal(barelyOffscreenNeighbor.size, baseEdge.size)
 })
 
 test('edge reducer hides background edges during low-performance connection LOD', async () => {
@@ -2742,7 +2755,8 @@ test('edge reducer hides background edges during low-performance connection LOD'
   const visible = adapter.edgeReducer('A->B', baseEdge)
 
   assert.equal(draggedEdge.hidden, false)
-  assert.ok(draggedEdge.size > baseEdge.size)
+  assert.equal(draggedEdge.color, baseEdge.color)
+  assert.equal(draggedEdge.size, baseEdge.size)
   assert.equal(focused.hidden, true)
   assert.equal(focused.touchesFocus, true)
   assert.equal(hidden.hidden, true)

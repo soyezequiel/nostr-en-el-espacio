@@ -16,10 +16,9 @@ import type {
 import { SigmaRendererAdapter } from '@/features/graph-v2/renderer/SigmaRendererAdapter'
 
 /**
- * Focus parity tests: verify that drag and selection produce identical
- * visual focus for the same node through the single resolveRendererFocus()
- * path. The only intentional difference is edge LOD: drag hides non-focus
- * edges for performance while selection dims them.
+ * Focus parity tests: verify that drag and selection share the same focus
+ * data path for consumers that need it, while drag keeps its own visual
+ * contract so focus/highlight styling does not leak into moving frames.
  */
 
 const createScene = (): GraphSceneSnapshot => ({
@@ -234,7 +233,7 @@ test('drag and selection resolve identical focus neighbors for the same node', (
   )
 })
 
-test('drag node reducer dims non-neighbors like selection focus', () => {
+test('drag node reducer bypasses selection focus styling', () => {
   const adapter = new SigmaRendererAdapter() as unknown as NodeReducerHarness
   adapter.sigma = { getCamera: () => ({ ratio: 1 }) }
   adapter.highlightTransition = null
@@ -272,7 +271,7 @@ test('drag node reducer dims non-neighbors like selection focus', () => {
     color: '#b29ecf',
   }
 
-  // Drag path: use the same focus language as selection.
+  // Drag path: keep focus data available without applying focus visuals.
   adapter.draggedNodePubkey = 'A'
   adapter.draggedNodeFocus = { pubkey: 'A', neighbors }
   adapter.currentHoverFocus = { pubkey: null, neighbors: new Set() }
@@ -281,15 +280,15 @@ test('drag node reducer dims non-neighbors like selection focus', () => {
   const dragNeighbor = adapter.nodeReducer('B', neighborNode)
   const dragOutsider = adapter.nodeReducer('X', outsiderNode)
 
-  // Focused and neighbor nodes stay readable; outsiders dim.
-  assert.equal(dragFocused.color, '#f4fbff')
+  assert.equal(dragFocused.color, baseNode.color)
   assert.equal(dragNeighbor.color, neighborNode.color)
-  assert.equal(dragOutsider.color, '#121a22')
-  assert.equal(dragFocused.highlighted, true)
-  assert.equal(dragNeighbor.highlighted, true)
+  assert.equal(dragOutsider.color, outsiderNode.color)
+  assert.equal(dragFocused.highlighted, false)
+  assert.equal(dragNeighbor.highlighted, false)
   assert.equal(dragOutsider.highlighted, false)
-  assert.ok(dragFocused.zIndex > dragNeighbor.zIndex)
-  assert.ok(dragOutsider.zIndex < 0)
+  assert.equal(dragFocused.zIndex, baseNode.zIndex)
+  assert.equal(dragNeighbor.zIndex, neighborNode.zIndex)
+  assert.equal(dragOutsider.zIndex, outsiderNode.zIndex)
 })
 
 test('update refreshes draggedNodeFocus so drag neighbors stay in sync with render graph', () => {
@@ -432,7 +431,7 @@ test('avatar overlay receives identical focus for drag and selection', () => {
   )
 })
 
-test('edge reducer: drag dims unrelated edges like selection focus', () => {
+test('edge reducer: drag hides unrelated edges without applying focus styling', () => {
   const edgeEndpoints = new Map<string, [string, string]>([
     ['A->B', ['A', 'B']],
     ['A->C', ['A', 'C']],
@@ -470,17 +469,15 @@ test('edge reducer: drag dims unrelated edges like selection focus', () => {
   assert.ok(selFocusEdge.size > baseEdge.size)
   assert.equal(selUnrelatedEdge.hidden, false)
 
-  // Drag path: focus edges brighten and unrelated edges dim.
+  // Drag path: incident edges keep their base style; unrelated edges disappear.
   adapter.draggedNodePubkey = 'A'
   adapter.draggedNodeFocus = { pubkey: 'A', neighbors }
   adapter.currentHoverFocus = { pubkey: 'A', neighbors }
   const dragFocusEdge = adapter.edgeReducer('A->B', baseEdge)
   const dragUnrelatedEdge = adapter.edgeReducer('X->Y', baseEdge)
 
-  // Drag keeps unrelated edges present, but visually pushed back.
   assert.equal(dragFocusEdge.hidden, false)
-  assert.ok(dragFocusEdge.size > baseEdge.size)
-  assert.equal(dragUnrelatedEdge.hidden, false)
-  assert.equal(dragUnrelatedEdge.color, '#10171f')
-  assert.ok(dragUnrelatedEdge.zIndex < 0)
+  assert.equal(dragFocusEdge.color, baseEdge.color)
+  assert.equal(dragFocusEdge.size, baseEdge.size)
+  assert.equal(dragUnrelatedEdge.hidden, true)
 })

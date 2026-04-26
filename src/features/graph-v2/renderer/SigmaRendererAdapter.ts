@@ -209,6 +209,11 @@ type HoverFocusSnapshot = {
   neighbors: Set<string>
 }
 
+const EMPTY_RENDERER_FOCUS: HoverFocusSnapshot = {
+  pubkey: null,
+  neighbors: EMPTY_HOVER_NEIGHBORS,
+}
+
 type HighlightTransition = {
   from: HoverFocusSnapshot
   to: HoverFocusSnapshot
@@ -1273,8 +1278,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.cancelPendingDragFrame()
     this.physicsStore.setNodeFixed(pubkey, true)
     this.forceRuntime?.suspend()
-    // Force-lock highlight on the dragged node regardless of pointer position.
-    this.setHoveredNode(pubkey, true)
+    this.cancelPendingHoverFocus()
+    this.applyHoverFocusSnapshot(pubkey, this.draggedNodeFocus)
     this.callbacks.onNodeDragStart(pubkey)
   }
 
@@ -2305,17 +2310,41 @@ export class SigmaRendererAdapter implements RendererAdapter {
     return { ...data, hidden: true }
   }
 
+  private resolveDragEdgeAttributes(
+    edge: string,
+    data: RenderEdgeAttributes,
+  ): RenderEdgeAttributes {
+    const draggedNodePubkey = this.draggedNodePubkey
+    if (!draggedNodePubkey) {
+      return data
+    }
+
+    const endpoints = this.getEdgeEndpoints(edge)
+    if (!endpoints) {
+      return data
+    }
+
+    if (
+      endpoints.source !== draggedNodePubkey &&
+      endpoints.target !== draggedNodePubkey
+    ) {
+      return data.hidden ? data : { ...data, hidden: true }
+    }
+
+    return data
+  }
+
   private readonly nodeReducer = (
     node: string,
     data: RenderNodeAttributes,
   ) => {
-    const focus = this.resolveRendererFocus()
     if (this.draggedNodePubkey) {
-      // Drag focus is immediate, like selection: the focused node and its
-      // first-order neighbors stay bright while the rest of the graph dims.
-      return this.resolveNodeHoverAttributes(node, data, focus)
+      // Drag owns the frame while it is active. Keep hover/focus styling out
+      // of this reducer so node movement and focus transitions cannot mix.
+      return this.resolveNodeHoverAttributes(node, data, EMPTY_RENDERER_FOCUS)
     }
 
+    const focus = this.resolveRendererFocus()
     if (this.highlightTransition) {
       const amount = this.getTransitionAmount(this.highlightTransition)
       const from = this.resolveNodeHoverAttributes(
@@ -2344,13 +2373,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
     edge: string,
     data: RenderEdgeAttributes,
   ) => {
-    const focus = this.resolveRendererFocus()
     if (this.draggedNodePubkey) {
-      // Match node focus during drag without blending through stale hover
-      // transitions.
-      return this.resolveEdgeHoverAttributes(edge, data, focus)
+      return this.resolveDragEdgeAttributes(edge, data)
     }
 
+    const focus = this.resolveRendererFocus()
     if (this.hideConnectionsForLowPerformance) {
       return this.resolveEdgeLodAttributes(edge, data, focus)
     }

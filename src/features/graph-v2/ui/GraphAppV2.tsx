@@ -4665,6 +4665,8 @@ export default function GraphAppV2() {
             />
           }
           onClose={() => setIsRootSheetOpen(false)}
+          onClearCache={handleClearSiteCache}
+          isClearingCache={cacheClearStatus === 'running'}
           sessionSlot={
             sessionIdentity.isConnected && sessionIdentity.profile ? (
               <button

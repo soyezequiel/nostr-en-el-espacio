@@ -11,6 +11,8 @@ interface Props {
   sessionSlot?: ReactNode
   title?: string
   copy?: string
+  onClearCache?: () => void
+  isClearingCache?: boolean
 }
 
 const SIGMA_LOADER_AMBIENT = (
@@ -47,6 +49,8 @@ export const SigmaRootLoader = memo(function SigmaRootLoader({
   sessionSlot,
   title = 'Cargar identidad',
   copy = 'Pega un npub, nprofile, NIP-05, hex o link. Sigma consultara relays y proyectara el vecindario.',
+  onClearCache,
+  isClearingCache,
 }: Props) {
   const titleId = useId()
 
@@ -77,16 +81,29 @@ export const SigmaRootLoader = memo(function SigmaRootLoader({
 
           {savedRootsSlot}
 
-          {canClose ? (
-            <div className="sg-loader__cancel">
-              <button
-                className="sg-btn sg-btn--ghost"
-                onClick={onClose}
-                style={{ flex: 'none' }}
-                type="button"
-              >
-                Cancelar
-              </button>
+          {(canClose || onClearCache) ? (
+            <div className="sg-loader__cancel" style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+              {onClearCache && (
+                <button
+                  className="sg-btn sg-btn--ghost"
+                  onClick={onClearCache}
+                  disabled={isClearingCache}
+                  style={{ flex: 'none', color: 'var(--nc-red-400)' }}
+                  type="button"
+                >
+                  {isClearingCache ? 'Borrando...' : 'Borrar caché'}
+                </button>
+              )}
+              {canClose && (
+                <button
+                  className="sg-btn sg-btn--ghost"
+                  onClick={onClose}
+                  style={{ flex: 'none' }}
+                  type="button"
+                >
+                  Cancelar
+                </button>
+              )}
             </div>
           ) : null}
         </div>

@@ -1,4 +1,4 @@
-﻿import Dexie from 'dexie'
+import Dexie from 'dexie'
 
 import { NostrGraphDexie } from '@/features/graph-runtime/db/database'
 import type {
@@ -215,15 +215,41 @@ export class InboundFollowerSnapshotsRepository {
   public async upsert(
     record: InboundFollowerSnapshotRecord,
   ): Promise<InboundFollowerSnapshotRecord> {
-    const normalizedRecord: InboundFollowerSnapshotRecord = {
-      ...record,
-      followerPubkeys: toSortedUniqueStrings(record.followerPubkeys),
-      relayUrls: toSortedUniqueStrings(record.relayUrls),
-      eventIds: toSortedUniqueStrings(record.eventIds),
+    const existing = await this.db.inboundFollowerSnapshots.get(record.rootPubkey)
+
+    if (!existing) {
+      const normalizedRecord: InboundFollowerSnapshotRecord = {
+        ...record,
+        followerPubkeys: toSortedUniqueStrings(record.followerPubkeys),
+        relayUrls: toSortedUniqueStrings(record.relayUrls),
+        eventIds: toSortedUniqueStrings(record.eventIds),
+      }
+      await this.db.inboundFollowerSnapshots.put(normalizedRecord)
+      return normalizedRecord
     }
 
-    await this.db.inboundFollowerSnapshots.put(normalizedRecord)
-    return normalizedRecord
+    const mergedRecord: InboundFollowerSnapshotRecord = {
+      ...existing,
+      ...record,
+      fetchedAt: Math.max(existing.fetchedAt, record.fetchedAt),
+      finalizedAt: Math.max(existing.finalizedAt, record.finalizedAt),
+      followerPubkeys: toSortedUniqueStrings([
+        ...existing.followerPubkeys,
+        ...record.followerPubkeys,
+      ]),
+      relayUrls: toSortedUniqueStrings([
+        ...existing.relayUrls,
+        ...record.relayUrls,
+      ]),
+      eventIds: toSortedUniqueStrings([
+        ...existing.eventIds,
+        ...record.eventIds,
+      ]),
+      completeness: record.completeness === 'final' ? 'final' : existing.completeness,
+    }
+
+    await this.db.inboundFollowerSnapshots.put(mergedRecord)
+    return mergedRecord
   }
 
   public async get(

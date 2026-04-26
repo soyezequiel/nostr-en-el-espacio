@@ -28,18 +28,16 @@ import {
   FOLLOW_RELAY_LIST_AUTHOR_CHUNK_SIZE,
   FOLLOW_RELAY_LIST_KIND,
   FOLLOW_RELAY_LIST_MAX_PAGES_PER_CHUNK,
-  FOLLOW_RELAY_LIST_QUERY_CONCURRENCY,
   FOLLOW_RELAY_LIST_TOP_HINTS,
   MAX_SESSION_RELAYS,
   MAX_ZAP_RECEIPTS,
   NODE_EXPAND_INBOUND_PARSE_CONCURRENCY,
   NODE_EXPAND_INBOUND_QUERY_LIMIT,
   ROOT_INBOUND_DISCOVERY_MAX_PAGES_PER_RELAY,
-  ROOT_INBOUND_DISCOVERY_PAGE_CONCURRENCY,
   ROOT_INBOUND_DISCOVERY_RELAY_LIMIT,
   TARGETED_RECIPROCAL_AUTHOR_CHUNK_SIZE,
   TARGETED_RECIPROCAL_MAX_PAGES_PER_CHUNK,
-  TARGETED_RECIPROCAL_QUERY_CONCURRENCY,
+  getKernelNetworkTuning,
 } from '@/features/graph-runtime/kernel/modules/constants'
 import type { RelayAdapterInstance } from '@/features/graph-runtime/kernel/modules/context'
 import type {
@@ -745,7 +743,7 @@ export async function collectTargetedReciprocalFollowerEvidence({
 
   await runWithConcurrencyLimit(
     chunkIntoBatches(candidatePubkeys, TARGETED_RECIPROCAL_AUTHOR_CHUNK_SIZE),
-    TARGETED_RECIPROCAL_QUERY_CONCURRENCY,
+    getKernelNetworkTuning().targetedReciprocalQueryConcurrency,
     async (authorPubkeys) => {
       const pageLimit = Math.min(
         NODE_EXPAND_INBOUND_QUERY_LIMIT,
@@ -935,7 +933,7 @@ export async function collectAdditionalPaginatedInboundFollowerEvents({
   isStale = () => false,
   maxPagesPerRelay = ROOT_INBOUND_DISCOVERY_MAX_PAGES_PER_RELAY,
   onPage,
-  pageConcurrency = ROOT_INBOUND_DISCOVERY_PAGE_CONCURRENCY,
+  pageConcurrency = getKernelNetworkTuning().rootInboundDiscoveryPageConcurrency,
   pageLimit = NODE_EXPAND_INBOUND_QUERY_LIMIT,
   relayLimit = ROOT_INBOUND_DISCOVERY_RELAY_LIMIT,
   relayUrls,
@@ -1258,7 +1256,7 @@ export async function collectFollowRelayLists({
 
   await runWithConcurrencyLimit(
     chunkIntoBatches(candidates, FOLLOW_RELAY_LIST_AUTHOR_CHUNK_SIZE),
-    FOLLOW_RELAY_LIST_QUERY_CONCURRENCY,
+    getKernelNetworkTuning().followRelayListQueryConcurrency,
     async (authors) => {
       const seenChunkEventIds = new Set<string>()
       let until: number | null = null

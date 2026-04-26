@@ -24,7 +24,7 @@ import {
   type RelayEventEnvelope,
 } from '@/features/graph-runtime/nostr'
 
-import { NODE_EXPAND_INBOUND_COUNT_TIMEOUT_MS } from '@/features/graph-runtime/kernel/modules/constants'
+import { getKernelNetworkTuning } from '@/features/graph-runtime/kernel/modules/constants'
 
 export const ROOT_RELAY_LIST_KIND = 10002
 
@@ -48,7 +48,9 @@ export function createFollowerDiscoveryModule(
           kinds: [ROOT_RELAY_LIST_KIND],
         } satisfies Filter,
       ], {
-        priority: 'background',
+        // PERF: relay list del root es camino critico para el discovery; usar
+        // prioridad interactiva para minimizar delay de flush (32ms vs 120ms).
+        priority: 'interactive',
       })
 
       if (isStale()) {
@@ -88,7 +90,7 @@ export function createFollowerDiscoveryModule(
           '#p': [rootPubkey],
         } satisfies Filter & { '#p': string[] },
       ], {
-        timeoutMs: NODE_EXPAND_INBOUND_COUNT_TIMEOUT_MS,
+        timeoutMs: getKernelNetworkTuning().nodeExpandInboundCountTimeoutMs,
         idPrefix: `inbound:${rootPubkey.slice(0, 8)}`,
       })
 

@@ -1,4 +1,4 @@
-﻿import type { Filter } from 'nostr-tools'
+import type { Filter } from 'nostr-tools'
 import type {
   GraphLink,
   GraphNode,
@@ -32,14 +32,11 @@ import type { KernelContext, RelayAdapterInstance } from '@/features/graph-runti
 import {
   COVERAGE_RECOVERY_MESSAGE,
   MAX_SESSION_RELAYS,
-  NODE_EXPAND_CONNECT_TIMEOUT_MS,
-  NODE_EXPAND_PAGE_TIMEOUT_MS,
-  NODE_EXPAND_RETRY_COUNT,
-  NODE_EXPAND_STRAGGLER_GRACE_MS,
   NODE_EXPAND_INBOUND_QUERY_LIMIT,
   ROOT_INBOUND_DISCOVERY_MAX_PAGES_PER_RELAY,
   ROOT_INBOUND_DISCOVERY_RELAY_LIMIT,
   ROOT_LOADING_MESSAGE,
+  getKernelNetworkTuning,
 } from '@/features/graph-runtime/kernel/modules/constants'
 import {
   analyzeRelayUrlSetUsage,
@@ -343,6 +340,7 @@ export function createRootLoaderModule(
       relayDiscoveryStats,
       bootstrapRelayUrls,
     )
+    const tuning = getKernelNetworkTuning()
     if (traceThisRoot && traceConfig) {
       traceAccountFlow('rootLoader.loadRoot.start', {
         loadId,
@@ -357,10 +355,10 @@ export function createRootLoaderModule(
           ROOT_INBOUND_DISCOVERY_MAX_PAGES_PER_RELAY,
         inboundPaginationRelayLimit: ROOT_INBOUND_DISCOVERY_RELAY_LIMIT,
         maxSessionRelays: MAX_SESSION_RELAYS,
-        nodeExpandConnectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
-        nodeExpandPageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
-        nodeExpandRetryCount: NODE_EXPAND_RETRY_COUNT,
-        nodeExpandStragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+        nodeExpandConnectTimeoutMs: tuning.nodeExpandConnectTimeoutMs,
+        nodeExpandPageTimeoutMs: tuning.nodeExpandPageTimeoutMs,
+        nodeExpandRetryCount: tuning.nodeExpandRetryCount,
+        nodeExpandStragglerGraceMs: tuning.nodeExpandStragglerGraceMs,
       })
     }
     ctx.emitter.emit({ type: 'root-load-started', pubkey: rootPubkey })
@@ -830,10 +828,10 @@ export function createRootLoaderModule(
         }
         const targetedAdapter = ctx.createRelayAdapter({
           relayUrls: targetedRelayUrls,
-          connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
-          pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
-          retryCount: NODE_EXPAND_RETRY_COUNT,
-          stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+          connectTimeoutMs: tuning.nodeExpandConnectTimeoutMs,
+          pageTimeoutMs: tuning.nodeExpandPageTimeoutMs,
+          retryCount: tuning.nodeExpandRetryCount,
+          stragglerGraceMs: tuning.nodeExpandStragglerGraceMs,
         })
 
         void collectTargetedReciprocalFollowerEvidence({
@@ -939,10 +937,10 @@ export function createRootLoaderModule(
         try {
           supplementaryAdapter = ctx.createRelayAdapter({
             relayUrls: supplementaryRelayUrls,
-            connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
-            pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
-            retryCount: NODE_EXPAND_RETRY_COUNT,
-            stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+            connectTimeoutMs: tuning.nodeExpandConnectTimeoutMs,
+            pageTimeoutMs: tuning.nodeExpandPageTimeoutMs,
+            retryCount: tuning.nodeExpandRetryCount,
+            stragglerGraceMs: tuning.nodeExpandStragglerGraceMs,
           })
         } catch (error) {
           logTerminalWarning(

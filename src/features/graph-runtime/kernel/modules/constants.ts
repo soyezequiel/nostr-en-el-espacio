@@ -1,3 +1,9 @@
+import {
+  detectDevicePerformance,
+  isMobileDevicePerformanceProfile,
+  type DevicePerformanceDetectionResult,
+} from '@/features/graph-runtime/devicePerformance'
+
 export const DEFAULT_SESSION_RELAY_URLS = [
   'wss://relay.damus.io',
   'wss://relay.nostr.band',
@@ -56,3 +62,77 @@ export const NODE_PROFILE_HYDRATION_BATCH_SIZE = 150
 export const NODE_PROFILE_HYDRATION_BATCH_CONCURRENCY = 3
 export const NODE_PROFILE_PERSIST_CONCURRENCY = 8
 export const RELAY_HEALTH_FLUSH_DELAY_MS = 32
+
+// Tuning de red dinamico por perfil de dispositivo.
+// El problema raiz no era "subir todos los timeouts": era que la PC y el celular
+// compartian las mismas constantes. La PC sufre con timeouts laxos (espera de
+// mas a relays caidos) y el celular sufre con timeouts agresivos (corta relays
+// que en mobile tardan un poco mas por el jitter de red). Ademas, en celular
+// conviene MAS concurrencia que menos: como cada query es individualmente mas
+// lenta, hacen falta mas en paralelo para llenar el presupuesto antes del hard
+// timeout. El navegador movil permite hasta ~6 sockets WS por origen.
+export interface KernelNetworkTuning {
+  nodeExpandConnectTimeoutMs: number
+  nodeExpandPageTimeoutMs: number
+  nodeExpandHardTimeoutMs: number
+  nodeExpandRetryCount: number
+  nodeExpandStragglerGraceMs: number
+  nodeExpandInboundCountTimeoutMs: number
+  rootInboundDiscoveryPageConcurrency: number
+  targetedReciprocalQueryConcurrency: number
+  followRelayListQueryConcurrency: number
+}
+
+const DESKTOP_KERNEL_TUNING: KernelNetworkTuning = {
+  nodeExpandConnectTimeoutMs: 1_500,
+  nodeExpandPageTimeoutMs: 4_000,
+  nodeExpandHardTimeoutMs: 10_000,
+  nodeExpandRetryCount: 1,
+  nodeExpandStragglerGraceMs: 400,
+  nodeExpandInboundCountTimeoutMs: 1_500,
+  rootInboundDiscoveryPageConcurrency: 2,
+  targetedReciprocalQueryConcurrency: 2,
+  followRelayListQueryConcurrency: 2,
+}
+
+const MOBILE_KERNEL_TUNING: KernelNetworkTuning = {
+  nodeExpandConnectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
+  nodeExpandPageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
+  nodeExpandHardTimeoutMs: NODE_EXPAND_HARD_TIMEOUT_MS,
+  nodeExpandRetryCount: NODE_EXPAND_RETRY_COUNT,
+  nodeExpandStragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+  nodeExpandInboundCountTimeoutMs: NODE_EXPAND_INBOUND_COUNT_TIMEOUT_MS,
+  rootInboundDiscoveryPageConcurrency: 4,
+  targetedReciprocalQueryConcurrency: 4,
+  followRelayListQueryConcurrency: 4,
+}
+
+let cachedKernelTuning: KernelNetworkTuning | null = null
+
+const detectKernelTuningProfile = (): DevicePerformanceDetectionResult => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return { profile: 'mobile', isPointerCoarse: false }
+  }
+  const matchMedia =
+    typeof window.matchMedia === 'function' ? window.matchMedia : null
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory
+  return detectDevicePerformance({
+    isPointerCoarse: matchMedia?.('(pointer: coarse)').matches ?? false,
+    viewportWidth: window.innerWidth ?? 0,
+    deviceMemory: typeof memory === 'number' ? memory : null,
+    hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+  })
+}
+
+export function getKernelNetworkTuning(): KernelNetworkTuning {
+  if (cachedKernelTuning) return cachedKernelTuning
+  const detected = detectKernelTuningProfile()
+  cachedKernelTuning = isMobileDevicePerformanceProfile(detected.profile)
+    ? MOBILE_KERNEL_TUNING
+    : DESKTOP_KERNEL_TUNING
+  return cachedKernelTuning
+}
+
+export function resetKernelNetworkTuningCache(): void {
+  cachedKernelTuning = null
+}

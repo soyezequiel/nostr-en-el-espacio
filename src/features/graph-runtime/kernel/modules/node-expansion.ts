@@ -11,13 +11,8 @@ import type { ExpandNodeResult } from '@/features/graph-runtime/kernel/runtime'
 import type { KernelContext, RelayAdapterInstance } from '@/features/graph-runtime/kernel/modules/context'
 import {
   MAX_SESSION_RELAYS,
-  NODE_EXPAND_CONNECT_TIMEOUT_MS,
-  NODE_EXPAND_HARD_TIMEOUT_MS,
-  NODE_EXPAND_INBOUND_COUNT_TIMEOUT_MS,
   NODE_EXPAND_INBOUND_QUERY_LIMIT,
-  NODE_EXPAND_PAGE_TIMEOUT_MS,
-  NODE_EXPAND_RETRY_COUNT,
-  NODE_EXPAND_STRAGGLER_GRACE_MS,
+  getKernelNetworkTuning,
 } from '@/features/graph-runtime/kernel/modules/constants'
 import {
   collectAdditionalPaginatedInboundFollowerEvents,
@@ -79,6 +74,7 @@ export function createNodeExpansionModule(
   const loadDirectInboundFollowerEvidence =
     collaborators.loadDirectInboundFollowerEvidence ??
     (async ({ adapter, pubkey }) => {
+      const tuning = getKernelNetworkTuning()
       const inboundCountResultsPromise = adapter
         .count([
           {
@@ -86,7 +82,7 @@ export function createNodeExpansionModule(
             '#p': [pubkey],
           } satisfies Filter & { '#p': string[] },
         ], {
-          timeoutMs: NODE_EXPAND_INBOUND_COUNT_TIMEOUT_MS,
+          timeoutMs: tuning.nodeExpandInboundCountTimeoutMs,
           idPrefix: `node-inbound:${pubkey.slice(0, 8)}`,
         })
         .catch(() => [])
@@ -97,7 +93,7 @@ export function createNodeExpansionModule(
           limit: NODE_EXPAND_INBOUND_QUERY_LIMIT,
         } satisfies Filter & { '#p': string[] },
       ], {
-        hardTimeoutMs: NODE_EXPAND_HARD_TIMEOUT_MS,
+        hardTimeoutMs: tuning.nodeExpandHardTimeoutMs,
       })
       const inboundCountResults = await inboundCountResultsPromise
 
@@ -260,7 +256,7 @@ export function createNodeExpansionModule(
         limit: 1,
       } satisfies Filter,
     ], {
-      hardTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
+      hardTimeoutMs: getKernelNetworkTuning().nodeExpandPageTimeoutMs,
     })
     const latestRelayListEvent = selectLatestReplaceableEvent(
       relayListResult.events,
@@ -503,14 +499,15 @@ export function createNodeExpansionModule(
       extraRelayHints,
     )
 
+    const tuning = getKernelNetworkTuning()
     let adapter: RelayAdapterInstance
     try {
       adapter = ctx.createRelayAdapter({
         relayUrls: reciprocalRelayUrls,
-        connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
-        pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
-        retryCount: NODE_EXPAND_RETRY_COUNT,
-        stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+        connectTimeoutMs: tuning.nodeExpandConnectTimeoutMs,
+        pageTimeoutMs: tuning.nodeExpandPageTimeoutMs,
+        retryCount: tuning.nodeExpandRetryCount,
+        stragglerGraceMs: tuning.nodeExpandStragglerGraceMs,
       })
     } catch (error) {
       logTerminalWarning('Expansion', 'No se pudo abrir consulta reciproca', {
@@ -564,14 +561,15 @@ export function createNodeExpansionModule(
       extraRelayHints,
     )
 
+    const tuning = getKernelNetworkTuning()
     let adapter: RelayAdapterInstance
     try {
       adapter = ctx.createRelayAdapter({
         relayUrls: inboundRelayUrls,
-        connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
-        pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
-        retryCount: NODE_EXPAND_RETRY_COUNT,
-        stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+        connectTimeoutMs: tuning.nodeExpandConnectTimeoutMs,
+        pageTimeoutMs: tuning.nodeExpandPageTimeoutMs,
+        retryCount: tuning.nodeExpandRetryCount,
+        stragglerGraceMs: tuning.nodeExpandStragglerGraceMs,
       })
     } catch (error) {
       logTerminalWarning('Expansion', 'No se pudo abrir consulta inbound', {
@@ -697,13 +695,14 @@ export function createNodeExpansionModule(
 
     let adapter: RelayAdapterInstance | null = null
 
+    const tuning = getKernelNetworkTuning()
     try {
       adapter = ctx.createRelayAdapter({
         relayUrls,
-        connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
-        pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
-        retryCount: NODE_EXPAND_RETRY_COUNT,
-        stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+        connectTimeoutMs: tuning.nodeExpandConnectTimeoutMs,
+        pageTimeoutMs: tuning.nodeExpandPageTimeoutMs,
+        retryCount: tuning.nodeExpandRetryCount,
+        stragglerGraceMs: tuning.nodeExpandStragglerGraceMs,
       })
       setLoadingState(
         pubkey,
@@ -728,16 +727,16 @@ export function createNodeExpansionModule(
         publishExpansionRelayUrls(relayUrls)
         adapter = ctx.createRelayAdapter({
           relayUrls,
-          connectTimeoutMs: NODE_EXPAND_CONNECT_TIMEOUT_MS,
-          pageTimeoutMs: NODE_EXPAND_PAGE_TIMEOUT_MS,
-          retryCount: NODE_EXPAND_RETRY_COUNT,
-          stragglerGraceMs: NODE_EXPAND_STRAGGLER_GRACE_MS,
+          connectTimeoutMs: tuning.nodeExpandConnectTimeoutMs,
+          pageTimeoutMs: tuning.nodeExpandPageTimeoutMs,
+          retryCount: tuning.nodeExpandRetryCount,
+          stragglerGraceMs: tuning.nodeExpandStragglerGraceMs,
         })
       }
       const contactListResult = await collectExpansionRelayEvents(adapter, [
         { authors: [pubkey], kinds: [3] } satisfies Filter,
       ], {
-        hardTimeoutMs: NODE_EXPAND_HARD_TIMEOUT_MS,
+        hardTimeoutMs: tuning.nodeExpandHardTimeoutMs,
       })
       const authoredRelayHadPartialSignals = contactListResult.error !== null
 

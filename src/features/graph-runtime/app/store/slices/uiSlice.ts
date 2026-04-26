@@ -178,6 +178,7 @@ export const createInitialUiSliceState = (): Pick<
     showSharedEmphasis: true,
     showAvatarQualityGuide: false,
     showImageResidencyDebug: false,
+    mobileDegradedMode: false,
     edgeColor: '#94a3b8',
     mutualEdgeColor: '#2dd4bf',
     colorProfile: 'monochrome',

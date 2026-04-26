@@ -59,6 +59,12 @@ import type {
   GraphViewportState,
 } from '@/features/graph-v2/renderer/contracts'
 import {
+  detectDevicePerformance,
+  getDefaultImageQualityModeForProfile,
+  getEffectiveGraphCapsForProfile,
+  getEffectiveImageBudgetForProfile,
+} from '@/features/graph-runtime/devicePerformance'
+import {
   DEFAULT_AVATAR_RUNTIME_OPTIONS,
   type AvatarRuntimeOptions,
 } from '@/features/graph-v2/renderer/avatar/types'
@@ -1203,12 +1209,15 @@ function PerformanceOptionsPanel({
   isClearingSiteCache: boolean
   isRuntimeInspectorButtonLocked: boolean
   lowPerformanceConnectionStatusLabel: string
+  mobileDegradedMode: boolean
+  isMobileViewport: boolean
   maxNodes: number
   nodeCount: number
   runtimeInspectorButtonVisible: boolean
   recommendedMaxNodes: number
   onClearSiteCache: () => void
   onToggleRuntimeInspectorButton: () => void
+  onToggleMobileDegradedMode: () => void
   onGraphMaxNodesChange: (maxNodes: number) => void
   onToggleAvatarPhotos: () => void
   onToggleHideConnectionsOnLowPerformance: () => void
@@ -1245,6 +1254,23 @@ function PerformanceOptionsPanel({
             type="button"
           />
         </div>
+        {isMobileViewport && (
+          <div className="sg-setting-row">
+            <div>
+              <div className="sg-setting-row__lbl">Modo celular degradado</div>
+              <div className="sg-setting-row__desc">
+                Reduce límites para optimizar el rendimiento en celulares.
+              </div>
+            </div>
+            <button
+              aria-pressed={mobileDegradedMode}
+              className={`sg-toggle${mobileDegradedMode ? ' sg-toggle--on' : ''}`}
+              onClick={onToggleMobileDegradedMode}
+              title={mobileDegradedMode ? 'Desactivar degradado' : 'Activar degradado'}
+              type="button"
+            />
+          </div>
+        )}
       </div>
       <div className="sg-settings-section">
         <h4>Diagnostico</h4>
@@ -1829,6 +1855,37 @@ export default function GraphAppV2() {
     useShallow(selectRuntimeInspectorStoreState),
   )
   const setGraphMaxNodes = useAppStore((state) => state.setGraphMaxNodes)
+  const renderConfig = useAppStore((state) => state.renderConfig)
+  const setRenderConfig = useAppStore((state) => state.setRenderConfig)
+  const applyDevicePerformanceProfile = useAppStore((state) => state.applyDevicePerformanceProfile)
+  const isMobileViewport = useMemo(() => isMobileGraphViewport(), [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const isCoarse = window.matchMedia('(pointer: coarse)').matches
+    const vpWidth = window.innerWidth
+    const memory = typeof navigator !== 'undefined' && 'deviceMemory' in navigator ? (navigator as Navigator & { deviceMemory?: number }).deviceMemory : null
+    const cores = navigator?.hardwareConcurrency ?? null
+    
+    const detection = detectDevicePerformance({
+      isPointerCoarse: isCoarse,
+      viewportWidth: vpWidth,
+      deviceMemory: memory,
+      hardwareConcurrency: cores,
+    })
+
+    const targetProfile = (renderConfig.mobileDegradedMode && (detection.profile === 'mobile' || detection.profile === 'low-end-mobile')) 
+      ? detection.profile 
+      : 'desktop'
+
+    applyDevicePerformanceProfile({
+      profile: targetProfile,
+      graphCaps: getEffectiveGraphCapsForProfile(targetProfile),
+      imageBudget: getEffectiveImageBudgetForProfile(targetProfile),
+      defaultImageQualityMode: getDefaultImageQualityModeForProfile(targetProfile),
+    })
+  }, [renderConfig.mobileDegradedMode, applyDevicePerformanceProfile])
+  
   const runtimeInspectorStoreState = useMemo(
     () => ({
       graphSummary: {
@@ -3595,12 +3652,15 @@ export default function GraphAppV2() {
             hideConnectionsOnLowPerformance={hideConnectionsOnLowPerformance}
             isClearingSiteCache={cacheClearStatus === 'running'}
             isRuntimeInspectorButtonLocked={isDev}
+            mobileDegradedMode={renderConfig.mobileDegradedMode ?? false}
+            isMobileViewport={isMobileViewport}
             lowPerformanceConnectionStatusLabel={lowPerformanceConnectionStatusLabel}
             maxNodes={runtimeInspectorStoreSnapshot.maxNodes}
             nodeCount={runtimeInspectorStoreSnapshot.nodeCount}
             onAvatarRuntimeOptionsChange={setAvatarRuntimeOptions}
             onClearSiteCache={handleClearSiteCache}
             onGraphMaxNodesChange={setGraphMaxNodes}
+            onToggleMobileDegradedMode={() => setRenderConfig({ mobileDegradedMode: !renderConfig.mobileDegradedMode })}
             onToggleRuntimeInspectorButton={() => {
               setRuntimeInspectorButtonEnabled((current) => !current)
             }}

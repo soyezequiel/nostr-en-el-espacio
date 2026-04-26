@@ -1,4 +1,4 @@
-﻿import type { StateCreator, StoreApi } from 'zustand'
+import type { StateCreator, StoreApi } from 'zustand'
 import type {
   DiscoveredGraphAnalysisResult,
   DiscoveredGraphAnalysisState,
@@ -370,6 +370,7 @@ export interface RenderConfig {
   showSharedEmphasis: boolean
   showAvatarQualityGuide?: boolean
   showImageResidencyDebug?: boolean
+  mobileDegradedMode?: boolean
   edgeColor?: string
   mutualEdgeColor?: string
   colorProfile?: string

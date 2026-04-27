@@ -875,7 +875,6 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  animation: sg-panel-in 220ms ease;
 }
 
 [data-graph-v2] .sg-panel__grabber {
@@ -2503,7 +2502,6 @@
     width: auto;
     height: 70vh;
     height: 70dvh;
-    animation: sg-panel-in-mobile 220ms ease;
   }
 
   [data-graph-v2] .sg-filter-stack,

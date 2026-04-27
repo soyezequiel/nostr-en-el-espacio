@@ -88,6 +88,9 @@ const MOBILE_GRAPH_INTERACTION_QUERY = '(max-width: 720px)'
 const PHYSICS_BRIDGE_BACKGROUND_SYNC_CAP = 96
 const PHYSICS_BRIDGE_VIEWPORT_PADDING_RATIO = 0.12
 const PHYSICS_AUTO_FIT_INTERVAL_MS = 120
+export const DEFAULT_INITIAL_CAMERA_ZOOM = 2.5
+export const MIN_INITIAL_CAMERA_ZOOM = 0.75
+export const MAX_INITIAL_CAMERA_ZOOM = 3
 const NODE_ZOOM_OUT_MIN_SCALE = 0.42
 const NODE_ZOOM_OUT_SCALE_EXPONENT = 0.55
 const AVATAR_MIN_SIZE_THRESHOLD = 4
@@ -411,6 +414,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private avatarRuntimeOptions: AvatarRuntimeOptions =
     DEFAULT_AVATAR_RUNTIME_OPTIONS
+
+  private initialCameraZoom = DEFAULT_INITIAL_CAMERA_ZOOM
 
   private readonly flushContainerRefresh = () => {
     this.pendingContainerRefreshFrame = null
@@ -1378,6 +1383,27 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
   }
 
+  public setInitialCameraZoom(zoom: number) {
+    this.initialCameraZoom = clampNumber(
+      zoom,
+      MIN_INITIAL_CAMERA_ZOOM,
+      MAX_INITIAL_CAMERA_ZOOM,
+    )
+  }
+
+  private applyDefaultCameraZoom() {
+    const camera = this.sigma?.getCamera()
+    if (!camera) {
+      return
+    }
+
+    const state = camera.getState()
+    camera.setState({
+      ...state,
+      ratio: camera.getBoundedRatio(1 / this.initialCameraZoom),
+    })
+  }
+
   private createSigmaSettings() {
     return {
       renderEdgeLabels: false,
@@ -1593,6 +1619,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       container,
       this.createSigmaSettings(),
     )
+    this.applyDefaultCameraZoom()
 
     const sigma = this.sigma
     this.configureTouchInteraction(sigma)

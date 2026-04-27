@@ -99,6 +99,99 @@ test('sigma settings disable camera rotation while keeping regular camera contro
   }
 })
 
+test('default camera zoom uses the configured zoom without moving the viewport', async () => {
+  const originalWebGL2RenderingContext = globalThis.WebGL2RenderingContext
+  const originalWebGLRenderingContext = globalThis.WebGLRenderingContext
+  globalThis.WebGL2RenderingContext ??= class {} as typeof WebGL2RenderingContext
+  globalThis.WebGLRenderingContext ??= class {} as typeof WebGLRenderingContext
+
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  try {
+    const cameraState = { x: 3, y: -2, ratio: 1, angle: 0.25 }
+    const appliedStates: Array<typeof cameraState> = []
+    const adapter = new SigmaRendererAdapter() as unknown as {
+      sigma: {
+        getCamera: () => {
+          getState: () => typeof cameraState
+          getBoundedRatio: (ratio: number) => number
+          setState: (state: typeof cameraState) => void
+        }
+      }
+      applyDefaultCameraZoom: () => void
+      setInitialCameraZoom: (zoom: number) => void
+    }
+
+    adapter.sigma = {
+      getCamera: () => ({
+        getState: () => cameraState,
+        getBoundedRatio: (ratio) => ratio,
+        setState: (state) => {
+          appliedStates.push(state)
+        },
+      }),
+    }
+
+    adapter.setInitialCameraZoom(3)
+    adapter.applyDefaultCameraZoom()
+
+    assert.equal(appliedStates.length, 1)
+    assert.equal(appliedStates[0]?.x, cameraState.x)
+    assert.equal(appliedStates[0]?.y, cameraState.y)
+    assert.equal(appliedStates[0]?.angle, cameraState.angle)
+    assert.equal(appliedStates[0]?.ratio, 1 / 3)
+  } finally {
+    globalThis.WebGL2RenderingContext = originalWebGL2RenderingContext
+    globalThis.WebGLRenderingContext = originalWebGLRenderingContext
+  }
+})
+
+test('default camera zoom starts at two and a half times zoom', async () => {
+  const originalWebGL2RenderingContext = globalThis.WebGL2RenderingContext
+  const originalWebGLRenderingContext = globalThis.WebGLRenderingContext
+  globalThis.WebGL2RenderingContext ??= class {} as typeof WebGL2RenderingContext
+  globalThis.WebGLRenderingContext ??= class {} as typeof WebGLRenderingContext
+
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  try {
+    const cameraState = { x: 0, y: 0, ratio: 1, angle: 0 }
+    const appliedStates: Array<typeof cameraState> = []
+    const adapter = new SigmaRendererAdapter() as unknown as {
+      sigma: {
+        getCamera: () => {
+          getState: () => typeof cameraState
+          getBoundedRatio: (ratio: number) => number
+          setState: (state: typeof cameraState) => void
+        }
+      }
+      applyDefaultCameraZoom: () => void
+    }
+
+    adapter.sigma = {
+      getCamera: () => ({
+        getState: () => cameraState,
+        getBoundedRatio: (ratio) => ratio,
+        setState: (state) => {
+          appliedStates.push(state)
+        },
+      }),
+    }
+
+    adapter.applyDefaultCameraZoom()
+
+    assert.equal(appliedStates.length, 1)
+    assert.equal(appliedStates[0]?.ratio, 1 / 2.5)
+  } finally {
+    globalThis.WebGL2RenderingContext = originalWebGL2RenderingContext
+    globalThis.WebGLRenderingContext = originalWebGLRenderingContext
+  }
+})
+
 test('forced node labels survive renderer hover and idle label pruning', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'

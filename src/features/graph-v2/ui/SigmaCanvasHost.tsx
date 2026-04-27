@@ -31,6 +31,7 @@ interface SigmaCanvasHostProps {
   avatarImagesEnabled?: boolean
   hideConnectionsForLowPerformance?: boolean
   avatarRuntimeOptions?: AvatarRuntimeOptions
+  initialCameraZoom?: number
   onAvatarPerfSnapshot?: (snapshot: PerfBudgetSnapshot | null) => void
 }
 
@@ -86,6 +87,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       avatarImagesEnabled = true,
       hideConnectionsForLowPerformance = false,
       avatarRuntimeOptions,
+      initialCameraZoom,
       onAvatarPerfSnapshot,
     },
     ref,
@@ -105,6 +107,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
     hideConnectionsForLowPerformance,
   )
   const avatarRuntimeOptionsRef = useRef(avatarRuntimeOptions)
+  const initialCameraZoomRef = useRef(initialCameraZoom)
   const lastAvatarPerfSnapshotKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -117,12 +120,14 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
     hideConnectionsForLowPerformanceRef.current =
       hideConnectionsForLowPerformance
     avatarRuntimeOptionsRef.current = avatarRuntimeOptions
+    initialCameraZoomRef.current = initialCameraZoom
   }, [
     avatarImagesEnabled,
     avatarRuntimeOptions,
     dragInfluenceTuning,
     hideConnectionsForLowPerformance,
     hideAvatarsOnMove,
+    initialCameraZoom,
     physicsAutoFreezeEnabled,
     physicsTuning,
     scene,
@@ -149,6 +154,9 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       }
 
       const nextAdapter = new SigmaRendererAdapter()
+      if (typeof initialCameraZoomRef.current === 'number') {
+        nextAdapter.setInitialCameraZoom(initialCameraZoomRef.current)
+      }
       nextAdapter.setAvatarImagesEnabled(avatarImagesEnabledRef.current)
       nextAdapter.mount(container, sceneRef.current, callbacks)
       nextAdapter.setDragInfluenceTuning(dragInfluenceTuningRef.current ?? {})

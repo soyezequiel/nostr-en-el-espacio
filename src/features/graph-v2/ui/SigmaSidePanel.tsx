@@ -9,6 +9,8 @@ import { CloseIcon } from '@/features/graph-v2/ui/SigmaIcons'
 
 export type SigmaPanelSnap = 'peek' | 'mid' | 'full'
 
+const MOBILE_PANEL_QUERY = '(max-width: 720px)'
+
 interface Props {
   eyebrow: string
   title?: ReactNode
@@ -87,6 +89,9 @@ export const SigmaSidePanel = memo(function SigmaSidePanel({
   mobileSnapResetKey,
 }: Props) {
   const bodyRef = useRef<HTMLDivElement | null>(null)
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia(MOBILE_PANEL_QUERY).matches : false,
+  )
   const [mobileHeightPx, setMobileHeightPx] = useState<number | null>(() => {
     if (typeof window === 'undefined') return null
     return resolveInitialPanelHeight(mobileSnap, window.innerHeight)
@@ -98,6 +103,13 @@ export const SigmaSidePanel = memo(function SigmaSidePanel({
     bodyScrollTop: number | null
   } | null>(null)
   const suppressClickRef = useRef(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_PANEL_QUERY)
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   useEffect(() => {
     const syncInitialHeight = () => {
@@ -222,9 +234,15 @@ export const SigmaSidePanel = memo(function SigmaSidePanel({
         '--sg-panel-mobile-height': `${mobileHeightPx}px`,
       } as CSSProperties)
 
+  const panelInitial = isMobile ? { opacity: 0, y: 30 } : { opacity: 0, x: 14 }
+  const panelAnimate = isMobile ? { opacity: 1, y: 0 } : { opacity: 1, x: 0 }
+
   return (
     <motion.aside
       className="sg-panel"
+      animate={panelAnimate}
+      initial={panelInitial}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
       data-mobile-dragging={isPanelDragging ? 'true' : undefined}
       data-mobile-snap={mobileSnap}
       onClickCapture={(event) => {

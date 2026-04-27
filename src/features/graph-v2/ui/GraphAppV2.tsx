@@ -70,6 +70,11 @@ import {
   type AvatarRuntimeOptions,
 } from '@/features/graph-v2/renderer/avatar/types'
 import {
+  DEFAULT_INITIAL_CAMERA_ZOOM,
+  MAX_INITIAL_CAMERA_ZOOM,
+  MIN_INITIAL_CAMERA_ZOOM,
+} from '@/features/graph-v2/renderer/SigmaRendererAdapter'
+import {
   PERF_BUDGET_DOWNGRADE_MS,
   resolveFpsFromFrameMs,
   type PerfBudgetSnapshot,
@@ -315,8 +320,32 @@ const IDENTITY_FIRST_RUN_HELP_KEY = 'sigma.identityFirstRunHelpDismissed'
 const AVATAR_PHOTOS_ENABLED_STORAGE_KEY = 'sigma.avatarPhotosEnabled'
 const RUNTIME_INSPECTOR_BUTTON_STORAGE_KEY = 'sigma.runtimeInspectorButtonEnabled'
 const VISIBLE_EDGE_COUNT_LABELS_STORAGE_KEY = 'sigma.visibleEdgeCountLabels'
+const INITIAL_CAMERA_ZOOM_STORAGE_KEY = 'sigma.initialCameraZoom'
 const VISIBLE_PROFILE_WARMUP_BATCH_SIZE = 48
 const VISIBLE_PROFILE_WARMUP_COOLDOWN_MS = 2 * 60 * 1000
+
+const clampInitialCameraZoom = (value: number) =>
+  Number.isFinite(value)
+    ? Math.min(
+        Math.max(value, MIN_INITIAL_CAMERA_ZOOM),
+        MAX_INITIAL_CAMERA_ZOOM,
+      )
+    : DEFAULT_INITIAL_CAMERA_ZOOM
+
+const readStoredInitialCameraZoom = () => {
+  if (typeof window === 'undefined') {
+    return DEFAULT_INITIAL_CAMERA_ZOOM
+  }
+
+  try {
+    const stored = window.localStorage.getItem(INITIAL_CAMERA_ZOOM_STORAGE_KEY)
+    return stored === null
+      ? DEFAULT_INITIAL_CAMERA_ZOOM
+      : clampInitialCameraZoom(Number.parseFloat(stored))
+  } catch {
+    return DEFAULT_INITIAL_CAMERA_ZOOM
+  }
+}
 
 const createDefaultPhysicsTuningForViewport = (): ForceAtlasPhysicsTuning => {
   if (typeof window === 'undefined' || !window.matchMedia(MOBILE_PHYSICS_QUERY).matches) {
@@ -1124,17 +1153,43 @@ function DragTuningPanel({
 
 function VisualOptionsPanel({
   avatarRuntimeOptions,
+  initialCameraZoom,
   showVisibleEdgeCountLabels,
   onAvatarRuntimeOptionsChange,
+  onInitialCameraZoomChange,
   onToggleVisibleEdgeCountLabels,
 }: {
   avatarRuntimeOptions: AvatarRuntimeOptions
+  initialCameraZoom: number
   showVisibleEdgeCountLabels: boolean
   onAvatarRuntimeOptionsChange: (options: AvatarRuntimeOptions) => void
+  onInitialCameraZoomChange: (zoom: number) => void
   onToggleVisibleEdgeCountLabels: () => void
 }) {
   return (
     <div>
+      <div className="sg-settings-section">
+        <h4>Camara</h4>
+        <div className="sg-slider-row">
+          <div className="sg-slider-row__head">
+            <span className="sg-slider-row__lbl">Zoom inicial (acercamiento)</span>
+            <span className="sg-slider-row__val">{initialCameraZoom.toFixed(2)}x</span>
+          </div>
+          <input
+            className="sg-slider"
+            max={MAX_INITIAL_CAMERA_ZOOM}
+            min={MIN_INITIAL_CAMERA_ZOOM}
+            onChange={(event) => {
+              onInitialCameraZoomChange(
+                Number.parseFloat(event.target.value),
+              )
+            }}
+            step={0.05}
+            type="range"
+            value={initialCameraZoom}
+          />
+        </div>
+      </div>
       <div className="sg-settings-section">
         <h4>Etiquetas</h4>
         <div className="sg-setting-row">
@@ -1835,6 +1890,9 @@ export default function GraphAppV2() {
   ] = useState(false)
   const [avatarRuntimeOptions, setAvatarRuntimeOptions] =
     useState<AvatarRuntimeOptions>(DEFAULT_AVATAR_RUNTIME_OPTIONS)
+  const [initialCameraZoom, setInitialCameraZoom] = useState(
+    readStoredInitialCameraZoom,
+  )
   const [avatarPerfSnapshot, setAvatarPerfSnapshot] = useState<PerfBudgetSnapshot | null>(null)
   const [activeSettingsTab, setActiveSettingsTab] = useState<SigmaSettingsTab>('performance')
   const [cacheClearStatus, setCacheClearStatus] =
@@ -2022,6 +2080,17 @@ export default function GraphAppV2() {
       // Non-critical preference persistence.
     }
   }, [showVisibleEdgeCountLabels])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        INITIAL_CAMERA_ZOOM_STORAGE_KEY,
+        initialCameraZoom.toString(),
+      )
+    } catch {
+      // Non-critical preference persistence.
+    }
+  }, [initialCameraZoom])
 
   useEffect(() => {
     setIsLowPerformanceForConnections((current) =>
@@ -2847,6 +2916,9 @@ export default function GraphAppV2() {
   const updatePhysicsTuning = useCallback(function updatePhysicsTuning<K extends keyof ForceAtlasPhysicsTuning>(
     key: K, value: ForceAtlasPhysicsTuning[K],
   ) { setPhysicsTuning((current) => ({ ...current, [key]: value })) }, [])
+  const handleInitialCameraZoomChange = useCallback((zoom: number) => {
+    setInitialCameraZoom(clampInitialCameraZoom(zoom))
+  }, [])
 
   const handleApplyRelays = useCallback(async (relayUrls: string[]) => {
     if (isFixtureMode) {
@@ -3744,7 +3816,9 @@ export default function GraphAppV2() {
           <div>
             <VisualOptionsPanel
               avatarRuntimeOptions={avatarRuntimeOptions}
+              initialCameraZoom={initialCameraZoom}
               onAvatarRuntimeOptionsChange={setAvatarRuntimeOptions}
+              onInitialCameraZoomChange={handleInitialCameraZoomChange}
               onToggleVisibleEdgeCountLabels={() => {
                 setShowVisibleEdgeCountLabels((current) => !current)
               }}
@@ -4506,6 +4580,7 @@ export default function GraphAppV2() {
         enableDebugProbe={isTestMode}
         hideConnectionsForLowPerformance={lowPerformanceConnectionHidingActive}
         hideAvatarsOnMove={stableAvatarRuntimeOptions.hideImagesOnFastNodes}
+        initialCameraZoom={initialCameraZoom}
         onAvatarPerfSnapshot={handleAvatarPerfSnapshot}
         physicsAutoFreezeEnabled={isDev ? devPhysicsAutoFreezeEnabled : true}
         physicsTuning={physicsTuning}

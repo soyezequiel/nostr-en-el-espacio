@@ -241,26 +241,14 @@ export function createNodeExpansionModule(
     }
   }
 
-  const refreshExpandedNodeRelayList = async (
-    adapter: RelayAdapterInstance,
-    pubkey: string,
+  const resolveExpandedNodeRelayListFromEvents = async (
+    relayListEnvelopes: RelayEventEnvelope[],
     relayUrls: readonly string[],
   ): Promise<{
     relayUrls: string[]
     relayHints: string[]
   }> => {
-    const relayListResult = await collectExpansionRelayEvents(adapter, [
-      {
-        authors: [pubkey],
-        kinds: [NODE_RELAY_LIST_KIND],
-        limit: 1,
-      } satisfies Filter,
-    ], {
-      hardTimeoutMs: getKernelNetworkTuning().nodeExpandPageTimeoutMs,
-    })
-    const latestRelayListEvent = selectLatestReplaceableEvent(
-      relayListResult.events,
-    )
+    const latestRelayListEvent = selectLatestReplaceableEvent(relayListEnvelopes)
 
     if (!latestRelayListEvent) {
       return {
@@ -733,20 +721,49 @@ export function createNodeExpansionModule(
         'Consultando relays activos y relays declarados del nodo...',
         startedAt,
       )
-      const relayListResolution = await refreshExpandedNodeRelayList(
-        adapter,
-        pubkey,
+      // Optimización: pedimos kind:3 (contact list) y kind:10002 (relay list)
+      // en una sola consulta REQ contra los relays iniciales. Esto elimina un
+      // round-trip secuencial completo y evita reabrir el adapter (reconexión
+      // a 7+ relays). Los timeouts no cambian: cada relay aún tiene el mismo
+      // hardTimeoutMs para responder.
+      const combinedStructureResult = await collectExpansionRelayEvents(adapter, [
+        {
+          authors: [pubkey],
+          kinds: [3, NODE_RELAY_LIST_KIND],
+        } satisfies Filter,
+      ], {
+        hardTimeoutMs: tuning.nodeExpandHardTimeoutMs,
+      })
+      const relayListEnvelopes = combinedStructureResult.events.filter(
+        (envelope) => envelope.event.kind === NODE_RELAY_LIST_KIND,
+      )
+      const contactListEnvelopes = combinedStructureResult.events.filter(
+        (envelope) => envelope.event.kind === 3,
+      )
+      const relayListResolution = await resolveExpandedNodeRelayListFromEvents(
+        relayListEnvelopes,
         relayUrls,
       )
       expandedNodeRelayHints = mergeExpansionRelayHints(
         expandedNodeRelayHints,
         relayListResolution.relayHints,
       )
-      if (!relayUrlListsEqual(relayUrls, relayListResolution.relayUrls)) {
-        adapter.close()
-        adapter = null
+      const relayUrlsChanged = !relayUrlListsEqual(
+        relayUrls,
+        relayListResolution.relayUrls,
+      )
+      if (relayUrlsChanged) {
         relayUrls = relayListResolution.relayUrls
         publishExpansionRelayUrls(relayUrls)
+      }
+      // Fallback: si no obtuvimos contact list (kind:3) en el fetch combinado
+      // pero el kind:10002 trajo relays personales nuevos, reintentamos kind:3
+      // contra el set ampliado. Solo se paga el round-trip extra en el caso raro
+      // de un nodo que sólo publica su contact list en relays propios.
+      let supplementalContactEnvelopes: RelayEventEnvelope[] = []
+      let supplementalError: Error | null = null
+      if (contactListEnvelopes.length === 0 && relayUrlsChanged) {
+        adapter.close()
         adapter = ctx.createRelayAdapter({
           relayUrls,
           connectTimeoutMs: tuning.nodeExpandConnectTimeoutMs,
@@ -754,12 +771,19 @@ export function createNodeExpansionModule(
           retryCount: tuning.nodeExpandRetryCount,
           stragglerGraceMs: tuning.nodeExpandStragglerGraceMs,
         })
+        const supplementalResult = await collectExpansionRelayEvents(adapter, [
+          { authors: [pubkey], kinds: [3] } satisfies Filter,
+        ], {
+          hardTimeoutMs: tuning.nodeExpandHardTimeoutMs,
+        })
+        supplementalContactEnvelopes = supplementalResult.events
+        supplementalError = supplementalResult.error
       }
-      const contactListResult = await collectExpansionRelayEvents(adapter, [
-        { authors: [pubkey], kinds: [3] } satisfies Filter,
-      ], {
-        hardTimeoutMs: tuning.nodeExpandHardTimeoutMs,
-      })
+      const contactListResult = {
+        events: [...contactListEnvelopes, ...supplementalContactEnvelopes],
+        summary: combinedStructureResult.summary,
+        error: combinedStructureResult.error ?? supplementalError,
+      }
       const authoredRelayHadPartialSignals = contactListResult.error !== null
 
       setLoadingState(

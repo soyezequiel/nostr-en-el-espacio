@@ -19,6 +19,7 @@ import type {
 } from '@/features/graph-v2/testing/browserDebug'
 import { ZapElectronOverlay } from '@/features/graph-v2/zaps/zapElectronOverlay'
 import type { ParsedZap } from '@/features/graph-v2/zaps/zapParser'
+import { resolveZapOverlayCssPosition } from '@/features/graph-v2/ui/zapOverlayPosition'
 
 interface SigmaCanvasHostProps {
   scene: GraphSceneSnapshot
@@ -174,19 +175,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       adapterRef.current = nextAdapter
 
       const nextOverlay = new ZapElectronOverlay(container, (pubkey) => {
-        const currentAdapter = adapter
-        const viewportPosition = currentAdapter?.getViewportPosition(pubkey)
-        const canvas = container.querySelector('canvas') as HTMLCanvasElement | null
-        if (!viewportPosition || !canvas) {
-          return null
-        }
-        const canvasRect = canvas.getBoundingClientRect()
-        const scaleX = canvas.width > 0 ? canvasRect.width / canvas.width : 1
-        const scaleY = canvas.height > 0 ? canvasRect.height / canvas.height : 1
-        return {
-          x: viewportPosition.x * scaleX,
-          y: viewportPosition.y * scaleY,
-        }
+        return resolveZapOverlayCssPosition(adapter, pubkey)
       })
       overlay = nextOverlay
       overlayRef.current = nextOverlay
@@ -331,25 +320,16 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       getViewportPosition: (pubkey) => {
         const viewportPosition = adapterRef.current?.getViewportPosition(pubkey)
         const rect = containerRef.current?.getBoundingClientRect()
-        const canvas = containerRef.current?.querySelector('canvas')
 
         if (!viewportPosition || !rect) {
           return null
         }
 
-        const canvasRect = canvas?.getBoundingClientRect() ?? rect
-        const scaleX =
-          canvas && canvas.width > 0 ? canvasRect.width / canvas.width : 1
-        const scaleY =
-          canvas && canvas.height > 0 ? canvasRect.height / canvas.height : 1
-        const cssX = viewportPosition.x * scaleX
-        const cssY = viewportPosition.y * scaleY
-
         return {
-          x: cssX,
-          y: cssY,
-          clientX: canvasRect.left + cssX,
-          clientY: canvasRect.top + cssY,
+          x: viewportPosition.x,
+          y: viewportPosition.y,
+          clientX: rect.left + viewportPosition.x,
+          clientY: rect.top + viewportPosition.y,
         }
       },
       getNeighborGroups: (pubkey) => adapterRef.current?.getNeighborGroups(pubkey) ?? null,

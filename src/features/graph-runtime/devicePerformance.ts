@@ -130,7 +130,6 @@ export const getDefaultImageQualityModeForProfile = (
 export const clampImageQualityModeForProfile = (
   profile: DevicePerformanceProfile,
   mode: ImageQualityMode,
-  _fallbackMode?: ImageQualityMode,
 ): ImageQualityMode => mode
 
 export const isMobileDevicePerformanceProfile = (

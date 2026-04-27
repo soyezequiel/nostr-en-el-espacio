@@ -1,7 +1,6 @@
 import type {
   AppStateCreator,
   DevicePerformanceProfile,
-  ImageQualityMode,
   SavedRootEntry,
   SavedRootProfileSnapshot,
   UiSlice,
@@ -11,7 +10,6 @@ import {
   DEFAULT_EFFECTIVE_GRAPH_CAPS,
   DEFAULT_EFFECTIVE_IMAGE_BUDGET,
   clampImageQualityModeForProfile,
-  getDefaultImageQualityModeForProfile,
 } from '@/features/graph-runtime/devicePerformance'
 import {
   DEFAULT_AVATAR_FULL_HD_ZOOM_THRESHOLD,
@@ -109,7 +107,6 @@ const normalizeRenderConfig = (
   profile: DevicePerformanceProfile,
   currentRenderConfig: UiSlice['renderConfig'],
   configPatch: Partial<UiSlice['renderConfig']>,
-  fallbackImageQualityMode?: ImageQualityMode,
 ) => {
   const nextRenderConfig = {
     ...currentRenderConfig,
@@ -125,7 +122,6 @@ const normalizeRenderConfig = (
     imageQualityMode: clampImageQualityModeForProfile(
       profile,
       requestedImageQualityMode,
-      fallbackImageQualityMode,
     ),
   }
 }
@@ -336,7 +332,6 @@ export const createUiSlice: AppStateCreator<UiSlice> = (set) => ({
           profile,
           state.renderConfig,
           { imageQualityMode: defaultImageQualityMode },
-          getDefaultImageQualityModeForProfile(profile),
         ),
         graphCaps: {
           ...state.graphCaps,

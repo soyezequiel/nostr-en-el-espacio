@@ -1177,12 +1177,12 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
     if (renderCanSetPosition && renderHasPosition) {
       changed =
-        this.renderStore.setNodePosition(pubkey, position.x, position.y) ||
+        this.renderStore!.setNodePosition(pubkey, position.x, position.y) ||
         changed
     }
     if (physicsCanSetPosition && physicsHasPosition) {
       changed =
-        this.physicsStore.setNodePosition(
+        this.physicsStore!.setNodePosition(
           pubkey,
           position.x,
           position.y,

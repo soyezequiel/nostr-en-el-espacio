@@ -2096,6 +2096,108 @@ export class SigmaRendererAdapter implements RendererAdapter {
     return preservedViewport
   }
 
+  /**
+   * Remap the camera across a BBox unlock transition.
+   *
+   * While the graph bounds are locked the camera lives in normalised [0,1]²
+   * space (the customBBox).  When we unlock, Sigma switches to the real
+   * node-extent BBox.  If we just unlock without touching the camera, Sigma
+   * re-interprets the same camera.x/y/ratio in the new BBox space which
+   * produces a wildly different viewport (usually an extreme zoom-in because
+   * the real BBox is hundreds of units wide).
+   *
+   * This method:
+   *  1. Reads camera state + old BBox while still locked.
+   *  2. Calls setGraphBoundsLocked(false) → Sigma adopts the real BBox.
+   *  3. Reads the new BBox and remaps camera.x / camera.y / camera.ratio
+   *     so that the same graph region remains visible.
+   */
+  private remapCameraAcrossBBoxUnlock(): boolean {
+    const sigma = this.sigma as (Sigma<
+      RenderNodeAttributes,
+      RenderEdgeAttributes
+    > & {
+      getBBox?: () => SigmaGraphExtent
+    }) | null
+
+    if (!sigma || typeof sigma.getBBox !== 'function') {
+      this.setGraphBoundsLocked(false)
+      return false
+    }
+
+    const camera = sigma.getCamera()
+    if (
+      !camera ||
+      typeof camera.getState !== 'function' ||
+      typeof camera.setState !== 'function'
+    ) {
+      this.setGraphBoundsLocked(false)
+      return false
+    }
+
+    // 1. Capture state in old (locked) BBox space
+    const oldState = camera.getState()
+    const oldBBox = sigma.getBBox()
+
+    // 2. Unlock → Sigma recalculates BBox from real node extents
+    this.setGraphBoundsLocked(false)
+
+    const newBBox = sigma.getBBox()
+
+    // 3. Remap camera coordinates
+    //
+    // Sigma's camera coordinates are normalised: (0.5, 0.5) is the center of
+    // the BBox, and `ratio` is the fraction of the BBox visible on screen.
+    // To preserve the same graph-space viewport across a BBox change we map:
+    //
+    //   graphCenter = oldBBox.center + (cam.x - 0.5) * oldBBox.size
+    //   newCam.x    = 0.5 + (graphCenter - newBBox.center) / newBBox.size
+    //   newCam.ratio = oldCam.ratio * (oldBBox.maxDim / newBBox.maxDim)
+    //
+    // where size = max(width, height) to match Sigma's internal normalisation.
+
+    const oldWidth = Math.max(oldBBox.x[1] - oldBBox.x[0], 1)
+    const oldHeight = Math.max(oldBBox.y[1] - oldBBox.y[0], 1)
+    const oldMaxDim = Math.max(oldWidth, oldHeight)
+    const oldCenterX = (oldBBox.x[0] + oldBBox.x[1]) / 2
+    const oldCenterY = (oldBBox.y[0] + oldBBox.y[1]) / 2
+
+    const newWidth = Math.max(newBBox.x[1] - newBBox.x[0], 1)
+    const newHeight = Math.max(newBBox.y[1] - newBBox.y[0], 1)
+    const newMaxDim = Math.max(newWidth, newHeight)
+    const newCenterX = (newBBox.x[0] + newBBox.x[1]) / 2
+    const newCenterY = (newBBox.y[0] + newBBox.y[1]) / 2
+
+    // Graph-space center that was at the camera viewport center
+    const graphCenterX = oldCenterX + (oldState.x - 0.5) * oldMaxDim
+    const graphCenterY = oldCenterY + (oldState.y - 0.5) * oldMaxDim
+
+    // Remap to new normalised space
+    const newX = 0.5 + (graphCenterX - newCenterX) / newMaxDim
+    const newY = 0.5 + (graphCenterY - newCenterY) / newMaxDim
+    const rawRatio = oldState.ratio * (oldMaxDim / newMaxDim)
+    const newRatio =
+      typeof camera.getBoundedRatio === 'function'
+        ? camera.getBoundedRatio(rawRatio)
+        : rawRatio
+
+    camera.setState({
+      ...oldState,
+      x: newX,
+      y: newY,
+      ratio: newRatio,
+    })
+
+    this.traceRendererEvent('remapCameraAcrossBBoxUnlock', {
+      oldBBox,
+      newBBox,
+      oldState,
+      newState: { x: newX, y: newY, ratio: newRatio },
+      graphCenter: { x: graphCenterX, y: graphCenterY },
+    })
+    return true
+  }
+
   private refreshAfterGraphBoundsUnlock() {
     if (!this.sigma) {
       return false
@@ -2175,12 +2277,21 @@ export class SigmaRendererAdapter implements RendererAdapter {
       return
     }
 
-    const viewportGraphBounds = this.captureCurrentViewportGraphBounds()
-    this.setGraphBoundsLocked(false)
+    // Capture camera state and old BBox *before* unlocking so we can remap
+    // the camera into the new coordinate space.  The previous approach used
+    // captureCurrentViewportGraphBounds() which called viewportToGraph while
+    // the customBBox [0,1] was still active — producing bounds in [0,1] scale.
+    // After setGraphBoundsLocked(false) replaced the BBox with the real one
+    // (~1920 units wide), preserveCameraForGraphBounds normalised those tiny
+    // bounds against the large BBox and computed a microscopic ratio, causing
+    // an extreme zoom-in (camera ratio clamped to minCameraRatio = 0.05).
+    //
+    // The fix: capture the camera + old BBox, unlock, read the new BBox, and
+    // linearly remap camera.x/y/ratio between the two BBox spaces so the
+    // viewport stays identical.
+    const preservedViewport = this.remapCameraAcrossBBoxUnlock()
     this.graphBoundsUnlockStartedAtMs = null
     this.graphBoundsUnlockDeferredCount = 0
-    const preservedViewport =
-      this.preserveCameraForGraphBounds(viewportGraphBounds)
 
     const syncedVisible =
       releaseSyncPubkeys.length > 0

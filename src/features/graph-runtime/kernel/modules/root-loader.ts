@@ -1223,6 +1223,10 @@ export function createRootLoaderModule(
             persistProfileEvent: collaborators.persistence.persistProfileEvent,
           },
         )
+        void collaborators.zapLayer.prefetchZapLayer(
+          collaborators.zapLayer.getZapTargetPubkeys(),
+          relayUrls,
+        )
 
         const now = ctx.now()
         if (firstFastContactListAppliedAt === null) {

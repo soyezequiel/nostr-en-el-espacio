@@ -6,6 +6,7 @@ import test from 'node:test'
 import {
   RECENT_ZAP_REPLAY_DEFAULT_LOOKBACK_HOURS,
   buildRecentZapReplayCollectionViewModel,
+  clearRecentZapReplayCoverageStorage,
   clampRecentZapReplayLookbackHours,
   findZapReplaySeekIndex,
   formatRecentZapReplayWindowLabel,
@@ -37,6 +38,32 @@ test('rejects non-integer or non-finite recent zap replay lookback values', () =
 test('formats recent zap replay window labels in singular and plural', () => {
   assert.equal(formatRecentZapReplayWindowLabel(1), 'ultima hora')
   assert.equal(formatRecentZapReplayWindowLabel(24), 'ultimas 24 horas')
+})
+
+test('clears only recent zap replay coverage metadata', () => {
+  const keys = [
+    'sigma.recentZapReplayCoverage.v1:abc',
+    'sigma.initialCameraZoom',
+    'sigma.recentZapReplayCoverage.v1:def',
+  ]
+  const removed: string[] = []
+  const storage = {
+    get length() {
+      return keys.length
+    },
+    key(index: number) {
+      return keys[index] ?? null
+    },
+    removeItem(key: string) {
+      removed.push(key)
+    },
+  }
+
+  assert.equal(clearRecentZapReplayCoverageStorage(storage), 2)
+  assert.deepEqual(removed, [
+    'sigma.recentZapReplayCoverage.v1:abc',
+    'sigma.recentZapReplayCoverage.v1:def',
+  ])
 })
 
 test('tracks the applied lookback hours in the replay effect dependencies', () => {

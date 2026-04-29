@@ -157,6 +157,7 @@ import {
   RECENT_ZAP_REPLAY_MAX_LOOKBACK_HOURS,
   RECENT_ZAP_REPLAY_MIN_LOOKBACK_HOURS,
   buildRecentZapReplayCollectionViewModel,
+  clearRecentZapReplayCache,
   clampRecentZapReplayLookbackHours,
   formatRecentZapReplayWindowLabel,
   useRecentZapReplay,
@@ -3187,11 +3188,32 @@ export default function GraphAppV2() {
       profile,
       profileFetchedAt,
     }: LoadRootInput) => {
+      const isChangingRoot = sceneState.rootPubkey !== pubkey
       setLoadFeedback('Cargando root...')
       setIsRootSheetOpen(false)
       setIsRootLoadScreenOpen(true)
       setIsZapsPanelOpen(false)
       setIsRuntimeInspectorOpen(false)
+      if (isChangingRoot && !isFixtureMode) {
+        setZapFeedMode('live')
+        setRecentZapReplayPlaybackPaused(false)
+        setRecentZapReplayScrubProgress(null)
+        setRecentZapReplayRequest((current) => current + 1)
+        setRecentZapReplayRefreshRequest((current) => current + 1)
+        setRecentZapReplaySeekRequest((current) => ({
+          key: current.key + 1,
+          progress: 0,
+        }))
+        setZapActivityLog([])
+        setZapActorLabelsByPubkey({})
+        zapActorProfileAttemptedRef.current.clear()
+        zapActorProfileInflightRef.current.clear()
+        setLiveZapFeedFeedback(null)
+        setZapFeedback(null)
+        window.setTimeout(() => {
+          void clearRecentZapReplayCache()
+        }, 0)
+      }
       startTransition(() => {
         if (isFixtureMode) {
           setLoadFeedback('El fixture no admite cargar roots manuales.')
@@ -3226,7 +3248,7 @@ export default function GraphAppV2() {
           })
       })
     },
-    [bridge, isFixtureMode, upsertSavedRoot],
+    [bridge, isFixtureMode, sceneState.rootPubkey, upsertSavedRoot],
   )
 
   const handleExpandRoot = useCallback(() => {

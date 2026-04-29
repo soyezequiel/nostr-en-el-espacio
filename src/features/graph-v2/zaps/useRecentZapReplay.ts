@@ -236,6 +236,56 @@ function buildCoverageKey(targetSignature: string): string {
   return `${RECENT_ZAP_REPLAY_COVERAGE_PREFIX}${hashTargetSignature(targetSignature)}`
 }
 
+export interface RecentZapReplayCacheClearSummary {
+  coverageKeys: number
+  zapRecordsCleared: boolean
+}
+
+interface ReplayCoverageStorage {
+  readonly length: number
+  key(index: number): string | null
+  removeItem(key: string): void
+}
+
+export function clearRecentZapReplayCoverageStorage(
+  storage: ReplayCoverageStorage,
+): number {
+  const keysToRemove: string[] = []
+
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index)
+    if (key?.startsWith(RECENT_ZAP_REPLAY_COVERAGE_PREFIX)) {
+      keysToRemove.push(key)
+    }
+  }
+
+  for (const key of keysToRemove) {
+    storage.removeItem(key)
+  }
+
+  return keysToRemove.length
+}
+
+export async function clearRecentZapReplayCache(): Promise<RecentZapReplayCacheClearSummary> {
+  let coverageKeys = 0
+
+  if (typeof window !== 'undefined') {
+    try {
+      coverageKeys = clearRecentZapReplayCoverageStorage(window.localStorage)
+    } catch {
+      coverageKeys = 0
+    }
+  }
+
+  try {
+    const repositories = await getZapReplayRepositories()
+    await repositories.zaps.clear()
+    return { coverageKeys, zapRecordsCleared: true }
+  } catch {
+    return { coverageKeys, zapRecordsCleared: false }
+  }
+}
+
 function isCoverageForTargets(
   coverage: RecentZapReplayCoverage,
   targets: readonly string[],

@@ -563,6 +563,10 @@ export class ZapsRepository {
       .filter((record) => targetSet.has(record.toPubkey))
       .sortBy('createdAt')
   }
+
+  public async clear(): Promise<void> {
+    await this.db.zaps.clear()
+  }
 }
 
 export class ImageVariantRepository {

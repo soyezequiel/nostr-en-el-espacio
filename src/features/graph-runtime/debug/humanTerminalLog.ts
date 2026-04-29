@@ -117,19 +117,3 @@ export function logTerminalWarning(
 ): void {
   writeHumanTerminalLog({ level: 'aviso', area, message, fields })
 }
-
-export function logTerminalError(
-  area: string,
-  message: string,
-  fields?: HumanTerminalFields,
-): void {
-  writeHumanTerminalLog({ level: 'error', area, message, fields })
-}
-
-export function logTerminalDetail(
-  area: string,
-  message: string,
-  fields?: HumanTerminalFields,
-): void {
-  writeHumanTerminalLog({ level: 'detalle', area, message, fields })
-}

@@ -715,26 +715,3 @@ export async function fetchUserNotes(pubkey: string, limit = 20): Promise<NDKEve
   }
 }
 
-// Format pubkey for display
-export function formatPubkey(pubkey: string): string {
-  const npub = nip19.npubEncode(pubkey);
-  return `${npub.slice(0, 8)}...${npub.slice(-4)}`;
-}
-
-// Format timestamp
-export function formatTimestamp(timestamp: number): string {
-  const date = new Date(timestamp * 1000);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m`;
-  if (hours < 24) return `${hours}h`;
-  if (days < 7) return `${days}d`;
-
-  return date.toLocaleDateString();
-}

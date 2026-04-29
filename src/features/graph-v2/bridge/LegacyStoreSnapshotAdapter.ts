@@ -542,6 +542,3 @@ export class LegacyStoreSnapshotAdapter {
     return this.previousSceneExpandedNodePubkeysSignature
   }
 }
-
-export const adaptLegacyStoreSnapshot = (state: AppStore): CanonicalGraphState =>
-  new LegacyStoreSnapshotAdapter().adapt(state)

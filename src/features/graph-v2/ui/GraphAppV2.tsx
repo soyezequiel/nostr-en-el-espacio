@@ -4,6 +4,8 @@
 import {
   memo,
   type ComponentProps,
+  type KeyboardEvent,
+  type PointerEvent,
   type ReactNode,
   useCallback,
   startTransition,
@@ -98,7 +100,9 @@ import {
   ExternalLinkIcon,
   FilterIcon,
   GearIcon,
+  PauseIcon,
   PinIcon,
+  PlayIcon,
   PulseIcon,
   TargetIcon,
   ZapIcon,
@@ -152,6 +156,7 @@ import {
   RECENT_ZAP_REPLAY_DEFAULT_LOOKBACK_HOURS,
   RECENT_ZAP_REPLAY_MAX_LOOKBACK_HOURS,
   RECENT_ZAP_REPLAY_MIN_LOOKBACK_HOURS,
+  buildRecentZapReplayCollectionViewModel,
   clampRecentZapReplayLookbackHours,
   formatRecentZapReplayWindowLabel,
   useRecentZapReplay,
@@ -330,6 +335,7 @@ const VISIBLE_EDGE_COUNT_LABELS_STORAGE_KEY = 'sigma.visibleEdgeCountLabels'
 const INITIAL_CAMERA_ZOOM_STORAGE_KEY = 'sigma.initialCameraZoom'
 const RECENT_ZAP_REPLAY_LOOKBACK_STORAGE_KEY = 'sigma.recentZapReplayLookbackHours'
 const RECENT_ZAP_REPLAY_LOOKBACK_DEBOUNCE_MS = 350
+const ZAP_REPLAY_KEYBOARD_SEEK_STEP = 0.05
 const VISIBLE_PROFILE_WARMUP_BATCH_SIZE = 48
 const VISIBLE_PROFILE_WARMUP_COOLDOWN_MS = 2 * 60 * 1000
 const ZAP_ACTOR_PROFILE_BATCH_SIZE = 6
@@ -669,22 +675,18 @@ const formatZapReplayTime = (timestamp: number | null) => (
     : ZAP_REPLAY_TIME_FORMATTER.format(new Date(timestamp * 1000))
 )
 
-type ZapReplayStageStatus = 'pending' | 'active' | 'done' | 'error'
-
-interface ZapReplayStageRow {
-  id: string
-  label: string
-  detail: string
-  value: number
-  status: ZapReplayStageStatus
-}
-
 const getZapReplayStatusLabel = (replay: RecentZapReplaySnapshot) => {
+  if (replay.playbackPaused) {
+    return replay.stage === 'collecting' || replay.stage === 'decoding'
+      ? 'Replay pausado al terminar'
+      : 'Replay pausado'
+  }
+
   switch (replay.stage) {
     case 'collecting':
       return 'Consultando relays'
     case 'decoding':
-      return 'Preparando replay'
+      return 'Cerrando recoleccion'
     case 'playing':
       return 'Reproduciendo timeline'
     case 'done':
@@ -695,89 +697,6 @@ const getZapReplayStatusLabel = (replay: RecentZapReplaySnapshot) => {
     default:
       return 'Replay en espera'
   }
-}
-
-function buildZapReplayStageRows(
-  replay: RecentZapReplaySnapshot,
-): ZapReplayStageRow[] {
-  const hasCollected =
-    replay.stage === 'decoding' ||
-    replay.stage === 'playing' ||
-    replay.stage === 'done'
-  const hasDecoded = replay.stage === 'playing' || replay.stage === 'done'
-  const hasPlayed = replay.stage === 'done'
-  const completedPlayback = replay.playedCount + replay.droppedCount
-
-  const collectionValue =
-    replay.batchCount > 0
-      ? replay.completedBatchCount / replay.batchCount
-      : hasCollected
-        ? 1
-        : 0
-  const decodeValue =
-    hasDecoded
-      ? 1
-      : replay.stage === 'decoding'
-        ? 0.5
-        : 0
-  const playValue =
-    replay.playableCount > 0
-      ? completedPlayback / replay.playableCount
-      : hasPlayed
-        ? 1
-        : 0
-
-  const collectionStatus: ZapReplayStageStatus =
-    replay.stage === 'error'
-      ? 'error'
-      : hasCollected
-        ? 'done'
-        : replay.stage === 'collecting'
-          ? 'active'
-          : 'pending'
-  const decodeStatus: ZapReplayStageStatus =
-    replay.stage === 'error' && hasCollected
-      ? 'error'
-      : hasDecoded
-        ? 'done'
-        : replay.stage === 'decoding'
-          ? 'active'
-          : 'pending'
-  const playStatus: ZapReplayStageStatus =
-    replay.stage === 'error' && hasDecoded
-      ? 'error'
-      : hasPlayed
-        ? 'done'
-        : replay.stage === 'playing'
-          ? 'active'
-          : 'pending'
-
-  return [
-    {
-      id: 'collect',
-      label: 'Recoleccion',
-      detail:
-        replay.batchCount > 0
-          ? `${formatInteger(replay.completedBatchCount)}/${formatInteger(replay.batchCount)} batches - ${formatInteger(replay.cachedCount)} cache - ${formatInteger(replay.fetchedCount)} nuevos`
-          : `${formatInteger(replay.cachedCount)} zaps en cache`,
-      value: collectionValue,
-      status: collectionStatus,
-    },
-    {
-      id: 'decode',
-      label: 'Preparacion',
-      detail: `${formatInteger(replay.decodedCount)} validos para replay`,
-      value: decodeValue,
-      status: decodeStatus,
-    },
-    {
-      id: 'play',
-      label: 'Reproduccion',
-      detail: `${formatInteger(replay.playedCount)} visibles - ${formatInteger(replay.droppedCount)} descartados`,
-      value: playValue,
-      status: playStatus,
-    },
-  ]
 }
 
 const getInitials = (value: string | null) => {
@@ -1977,6 +1896,12 @@ export default function GraphAppV2() {
   ] = useState(readStoredRecentZapReplayLookbackHours)
   const [recentZapReplayRequest, setRecentZapReplayRequest] = useState(0)
   const [recentZapReplayRefreshRequest, setRecentZapReplayRefreshRequest] = useState(0)
+  const [recentZapReplaySeekRequest, setRecentZapReplaySeekRequest] =
+    useState({ key: 0, progress: 0 })
+  const [recentZapReplayScrubProgress, setRecentZapReplayScrubProgress] =
+    useState<number | null>(null)
+  const [recentZapReplayPlaybackPaused, setRecentZapReplayPlaybackPaused] =
+    useState(false)
   const [pauseLiveZapsWhenSceneIsLarge, setPauseLiveZapsWhenSceneIsLarge] =
     useState(false)
   const [zapActivityLog, setZapActivityLog] = useState<ZapActivityLogEntry[]>([])
@@ -2956,6 +2881,8 @@ export default function GraphAppV2() {
     appendZapActivity(zap, 'recent', played)
     return played
   }, [appendZapActivity, handleZap])
+  const isRecentZapReplayPlaybackHeld =
+    recentZapReplayPlaybackPaused || recentZapReplayScrubProgress !== null
   useLiveZapFeed({
     visiblePubkeys,
     enabled: shouldEnableLiveZapFeed,
@@ -2972,32 +2899,169 @@ export default function GraphAppV2() {
     lookbackHours: appliedRecentZapReplayLookbackHours,
     replayKey: recentZapReplayRequest,
     refreshKey: recentZapReplayRefreshRequest,
+    playbackPaused: isRecentZapReplayPlaybackHeld,
+    seekKey: recentZapReplaySeekRequest.key,
+    seekProgress: recentZapReplaySeekRequest.progress,
     onZap: handleRecentZapReplay,
   })
-  const recentZapReplayStages = useMemo(
-    () => buildZapReplayStageRows(recentZapReplay),
+  const recentZapReplayCollection = useMemo(
+    () => buildRecentZapReplayCollectionViewModel(recentZapReplay),
     [recentZapReplay],
   )
   const recentZapReplayWorking =
     shouldEnableRecentZapReplay &&
     (recentZapReplay.phase === 'loading' || recentZapReplay.phase === 'playing')
   const recentZapReplayStatusLabel = getZapReplayStatusLabel(recentZapReplay)
-  const activeRecentZapReplayStage =
-    recentZapReplayStages.find((stage) => stage.status === 'active') ??
-    recentZapReplayStages.find((stage) => stage.status === 'pending') ??
-    recentZapReplayStages.at(-1)
-  const recentZapReplayWorkProgress =
-    recentZapReplay.phase === 'playing'
-      ? recentZapReplay.timelineProgress
-      : recentZapReplay.phase === 'done'
-        ? 1
-        : activeRecentZapReplayStage?.value ?? 0
-  const recentZapReplayProgressValue = formatProgressValue(recentZapReplayWorkProgress)
+  const recentZapReplayCollectionProgressValue = formatProgressValue(
+    recentZapReplayCollection.progress,
+  )
+  const recentZapReplayPlaybackProgress =
+    recentZapReplay.phase === 'done' ? 1 : recentZapReplay.timelineProgress
+  const recentZapReplayPlaybackProgressValue = formatProgressValue(
+    recentZapReplayPlaybackProgress,
+  )
   const recentZapReplayStatusDetail =
     recentZapReplay.message ??
     `Ventana activa: ${appliedZapReplayWindowLabel}.`
+  const displayedZapReplayProgress =
+    recentZapReplayScrubProgress ?? recentZapReplay.timelineProgress
+  const displayedZapReplayCreatedAt =
+    recentZapReplayScrubProgress !== null &&
+    recentZapReplay.windowStartAt !== null &&
+    recentZapReplay.windowEndAt !== null
+      ? recentZapReplay.windowStartAt +
+        Math.round(
+          (recentZapReplay.windowEndAt - recentZapReplay.windowStartAt) *
+            recentZapReplayScrubProgress,
+        )
+      : recentZapReplay.currentZapCreatedAt
+  const displayedZapReplayProgressValue = formatProgressValue(displayedZapReplayProgress)
   const recentZapReplayCurrentTimeLabel = formatZapReplayTime(
-    recentZapReplay.currentZapCreatedAt,
+    displayedZapReplayCreatedAt,
+  )
+  const recentZapReplayWindowStartLabel = formatZapReplayTime(
+    recentZapReplay.windowStartAt,
+  )
+  const recentZapReplayWindowEndLabel = formatZapReplayTime(
+    recentZapReplay.windowEndAt,
+  )
+  const canSeekRecentZapReplay =
+    recentZapReplay.windowStartAt !== null &&
+    recentZapReplay.windowEndAt !== null &&
+    recentZapReplay.windowEndAt > recentZapReplay.windowStartAt &&
+    recentZapReplay.playableCount > 0
+
+  useEffect(() => {
+    sigmaHostRef.current?.setZapOverlayPaused(
+      shouldEnableRecentZapReplay && isRecentZapReplayPlaybackHeld,
+    )
+  }, [isRecentZapReplayPlaybackHeld, shouldEnableRecentZapReplay])
+
+  const recentZapReplayTimelineClassName = `sg-zap-replay-timeline__rail${
+    recentZapReplayScrubProgress !== null ? ' sg-zap-replay-timeline__rail--scrubbing' : ''
+  }`
+
+  const resolveZapReplayPointerProgress = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const bounds = event.currentTarget.getBoundingClientRect()
+      if (bounds.width <= 0) {
+        return 0
+      }
+      return clampProgress((event.clientX - bounds.left) / bounds.width)
+    },
+    [],
+  )
+
+  const commitZapReplaySeek = useCallback((progress: number) => {
+    const nextProgress = clampProgress(progress)
+    setRecentZapReplaySeekRequest((current) => ({
+      key: current.key + 1,
+      progress: nextProgress,
+    }))
+    setRecentZapReplayScrubProgress(null)
+  }, [])
+
+  const handleZapReplayTimelinePointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (!canSeekRecentZapReplay) {
+        return
+      }
+
+      event.preventDefault()
+      const progress = resolveZapReplayPointerProgress(event)
+      event.currentTarget.setPointerCapture(event.pointerId)
+      setRecentZapReplayScrubProgress(progress)
+    },
+    [canSeekRecentZapReplay, resolveZapReplayPointerProgress],
+  )
+
+  const handleZapReplayTimelinePointerMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (
+        !canSeekRecentZapReplay ||
+        !event.currentTarget.hasPointerCapture(event.pointerId)
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      setRecentZapReplayScrubProgress(resolveZapReplayPointerProgress(event))
+    },
+    [canSeekRecentZapReplay, resolveZapReplayPointerProgress],
+  )
+
+  const handleZapReplayTimelinePointerUp = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (!canSeekRecentZapReplay) {
+        setRecentZapReplayScrubProgress(null)
+        return
+      }
+
+      event.preventDefault()
+      const progress = resolveZapReplayPointerProgress(event)
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      }
+      commitZapReplaySeek(progress)
+    },
+    [canSeekRecentZapReplay, commitZapReplaySeek, resolveZapReplayPointerProgress],
+  )
+
+  const handleZapReplayTimelinePointerCancel = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      }
+      setRecentZapReplayScrubProgress(null)
+    },
+    [],
+  )
+
+  const handleZapReplayTimelineKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (!canSeekRecentZapReplay) {
+        return
+      }
+
+      let nextProgress: number | null = null
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+        nextProgress = displayedZapReplayProgress - ZAP_REPLAY_KEYBOARD_SEEK_STEP
+      } else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+        nextProgress = displayedZapReplayProgress + ZAP_REPLAY_KEYBOARD_SEEK_STEP
+      } else if (event.key === 'Home') {
+        nextProgress = 0
+      } else if (event.key === 'End') {
+        nextProgress = 1
+      }
+
+      if (nextProgress === null) {
+        return
+      }
+
+      event.preventDefault()
+      commitZapReplaySeek(nextProgress)
+    },
+    [canSeekRecentZapReplay, commitZapReplaySeek, displayedZapReplayProgress],
   )
 
   useEffect(() => {
@@ -4157,170 +4221,6 @@ export default function GraphAppV2() {
       </div>
 
       <div className="sg-settings-section">
-        <h4>Fuente</h4>
-        <div className="sg-setting-block">
-          <div>
-            <div className="sg-setting-row__lbl">Modo</div>
-            <div className="sg-setting-row__desc">
-              Live escucha eventos nuevos; replay consulta y reproduce recibos recientes.
-            </div>
-          </div>
-          <div className="sg-segmented-control" role="group" aria-label="Modo de zaps">
-            <button
-              aria-pressed={zapFeedMode === 'live'}
-              className={`sg-segmented-control__btn${zapFeedMode === 'live' ? ' sg-segmented-control__btn--active' : ''}`}
-              onClick={() => setZapFeedMode('live')}
-              type="button"
-            >
-              Live
-            </button>
-            <button
-              aria-pressed={zapFeedMode === 'recent'}
-              className={`sg-segmented-control__btn${zapFeedMode === 'recent' ? ' sg-segmented-control__btn--active' : ''}`}
-              onClick={() => setZapFeedMode('recent')}
-              type="button"
-            >
-              Replay
-            </button>
-          </div>
-        </div>
-        {zapFeedMode === 'recent' ? (
-          <div className="sg-setting-block">
-            <div className="sg-slider-row">
-              <div className="sg-slider-row__head">
-                <span className="sg-slider-row__lbl">Ventana historica</span>
-                <span className="sg-slider-row__val">{selectedZapReplayWindowLabel}</span>
-              </div>
-              <input
-                aria-label="Horas de zaps recientes"
-                className="sg-slider"
-                max={RECENT_ZAP_REPLAY_MAX_LOOKBACK_HOURS}
-                min={RECENT_ZAP_REPLAY_MIN_LOOKBACK_HOURS}
-                onChange={(event) => {
-                  setRecentZapReplayLookbackHours(
-                    clampRecentZapReplayLookbackHours(
-                      Number.parseInt(event.target.value, 10),
-                    ),
-                  )
-                }}
-                step={1}
-                type="range"
-                value={recentZapReplayLookbackHours}
-              />
-            </div>
-            <div className="sg-setting-row__desc">
-              {recentZapReplay.message ??
-                `Reproduce los zaps de ${appliedZapReplayWindowText} para los nodos visibles.`}
-              {recentZapReplay.truncatedTargetCount > 0
-                ? ` Se omitieron ${formatInteger(recentZapReplay.truncatedTargetCount)} nodos por limite operativo.`
-                : ''}
-            </div>
-            <div className="sg-zap-replay-progress" aria-label={`Progreso de zaps de ${appliedZapReplayWindowText}`}>
-              {recentZapReplayStages.map((stage) => {
-                const progressValue = formatProgressValue(stage.value)
-                return (
-                  <div
-                    className={`sg-zap-replay-stage sg-zap-replay-stage--${stage.status}`}
-                    key={stage.id}
-                  >
-                    <div className="sg-zap-replay-stage__head">
-                      <span>{stage.label}</span>
-                      <span>{progressValue}%</span>
-                    </div>
-                    <div
-                      aria-label={stage.label}
-                      aria-valuemax={100}
-                      aria-valuemin={0}
-                      aria-valuenow={progressValue}
-                      className="sg-zap-replay-bar"
-                      role="progressbar"
-                    >
-                      <span
-                        className="sg-zap-replay-bar__fill"
-                        style={{ width: `${progressValue}%` }}
-                      />
-                    </div>
-                    <div className="sg-zap-replay-stage__detail">
-                      {stage.detail}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            <div className="sg-zap-replay-timeline">
-              <div className="sg-zap-replay-timeline__head">
-                <span>Linea de tiempo del replay</span>
-                <span>{recentZapReplayProgressValue}% - {recentZapReplayCurrentTimeLabel}</span>
-              </div>
-              <div
-                aria-label={`Avance dentro de ${appliedZapReplayWindowText}`}
-                aria-valuemax={100}
-                aria-valuemin={0}
-                aria-valuenow={formatProgressValue(recentZapReplay.timelineProgress)}
-                className="sg-zap-replay-timeline__rail"
-                role="progressbar"
-              >
-                <span className="sg-zap-replay-timeline__tick sg-zap-replay-timeline__tick--start" />
-                <span className="sg-zap-replay-timeline__tick sg-zap-replay-timeline__tick--end" />
-                <span
-                  className="sg-zap-replay-timeline__fill"
-                  style={{
-                    width: formatProgressPercent(recentZapReplay.timelineProgress),
-                  }}
-                />
-                <span
-                  className="sg-zap-replay-timeline__marker"
-                  style={{
-                    left: formatProgressPercent(recentZapReplay.timelineProgress),
-                  }}
-                />
-              </div>
-              <div className="sg-zap-replay-timeline__labels">
-                <span>
-                  <strong>Inicio</strong>
-                  <time>{formatZapReplayTime(recentZapReplay.windowStartAt)}</time>
-                </span>
-                <span>
-                  <strong>Representando</strong>
-                  <time>{recentZapReplayCurrentTimeLabel}</time>
-                </span>
-                <span>
-                  <strong>Fin</strong>
-                  <time>{formatZapReplayTime(recentZapReplay.windowEndAt)}</time>
-                </span>
-              </div>
-            </div>
-            <div className="sg-zap-replay-actions">
-              <button
-                className="sg-mini-action"
-                disabled={
-                  recentZapReplay.phase === 'loading' ||
-                  recentZapReplay.phase === 'playing'
-                }
-                onClick={() => setRecentZapReplayRequest((current) => current + 1)}
-                type="button"
-              >
-                Reproducir cache
-              </button>
-              <button
-                className="sg-mini-action"
-                disabled={
-                  recentZapReplay.phase === 'loading' ||
-                  recentZapReplay.phase === 'playing'
-                }
-                onClick={() => {
-                  setRecentZapReplayRefreshRequest((current) => current + 1)
-                }}
-                type="button"
-              >
-                Actualizar
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="sg-settings-section">
         <h4>Proteccion operativa</h4>
         <div className="sg-setting-row">
           <div>
@@ -4361,6 +4261,21 @@ export default function GraphAppV2() {
     : zapFeedMode === 'recent'
       ? selectedZapReplayWindowLabel
       : 'Pausado'
+  const recentZapReplayCollectionClassName = `sg-zap-replay-collection sg-zap-replay-collection--${recentZapReplayCollection.status}${
+    recentZapReplayCollection.isIndeterminate ? ' sg-zap-replay-collection--waiting' : ''
+  }`
+  const canControlRecentZapReplay =
+    zapFeedMode === 'recent' && shouldEnableRecentZapReplay
+  const canToggleRecentZapReplayPlayback =
+    canControlRecentZapReplay &&
+    (recentZapReplay.phase === 'loading' ||
+      recentZapReplay.phase === 'playing' ||
+      recentZapReplay.playableCount > 0)
+  const recentZapReplayPlaybackIsPaused =
+    recentZapReplayPlaybackPaused || recentZapReplay.playbackPaused
+  const recentZapReplayPlayButtonLabel = recentZapReplayPlaybackIsPaused
+    ? 'Reanudar replay'
+    : 'Pausar replay'
 
   const renderZapsContent = () => (
     <div className="sg-zap-feed">
@@ -4375,12 +4290,32 @@ export default function GraphAppV2() {
           >
             {zapFeedStatus}
           </span>
+        </div>
+      </div>
+
+      <div className="sg-zap-console">
+        <div className="sg-zap-console__mode" role="group" aria-label="Modo de zaps">
           <button
-            className="sg-mini-action"
-            onClick={() => openSettingsTab('zaps')}
+            aria-pressed={zapFeedMode === 'live'}
+            className={`sg-zap-console__mode-btn${zapFeedMode === 'live' ? ' sg-zap-console__mode-btn--active' : ''}`}
+            onClick={() => {
+              setZapFeedMode('live')
+              setRecentZapReplayPlaybackPaused(false)
+            }}
             type="button"
           >
-            Configurar
+            Live
+          </button>
+          <button
+            aria-pressed={zapFeedMode === 'recent'}
+            className={`sg-zap-console__mode-btn${zapFeedMode === 'recent' ? ' sg-zap-console__mode-btn--active' : ''}`}
+            onClick={() => {
+              setZapFeedMode('recent')
+              setRecentZapReplayPlaybackPaused(false)
+            }}
+            type="button"
+          >
+            Replay
           </button>
         </div>
       </div>
@@ -4388,10 +4323,10 @@ export default function GraphAppV2() {
       {zapFeedMode === 'recent' ? (
         <div
           aria-live={recentZapReplayWorking ? 'polite' : 'off'}
-          className={`sg-zap-replay-ambient${recentZapReplayWorking ? ' sg-zap-replay-ambient--working' : ''}`}
+          className={`sg-zap-replay-console${recentZapReplayWorking ? ' sg-zap-replay-console--working' : ''}`}
         >
-          <div className="sg-zap-replay-ambient__head">
-            <span className="sg-zap-replay-ambient__dot" aria-hidden="true" />
+          <div className="sg-zap-replay-console__head">
+            <span className="sg-zap-replay-console__dot" aria-hidden="true" />
             <div>
               <strong>{recentZapReplayStatusLabel}</strong>
               <span>
@@ -4400,31 +4335,188 @@ export default function GraphAppV2() {
                   : `Replay configurado para ${appliedZapReplayWindowText}.`}
               </span>
             </div>
-            <span className="sg-zap-replay-ambient__percent">
-              {recentZapReplayProgressValue}%
+            <span className="sg-zap-replay-console__percent">
+              {recentZapReplayPlaybackProgressValue}%
             </span>
           </div>
-          <div
-            aria-label="Avance del trabajo de replay"
-            aria-valuemax={100}
-            aria-valuemin={0}
-            aria-valuenow={recentZapReplayProgressValue}
-            className="sg-zap-replay-ambient__bar"
-            role="progressbar"
-          >
-            <span
-              style={{
-                width: `${recentZapReplayProgressValue}%`,
+
+          <div className="sg-zap-replay-window">
+            <div className="sg-slider-row__head">
+              <span className="sg-slider-row__lbl">Ventana historica</span>
+              <span className="sg-slider-row__val">{selectedZapReplayWindowLabel}</span>
+            </div>
+            <input
+              aria-label="Horas de zaps recientes"
+              className="sg-slider"
+              max={RECENT_ZAP_REPLAY_MAX_LOOKBACK_HOURS}
+              min={RECENT_ZAP_REPLAY_MIN_LOOKBACK_HOURS}
+              onChange={(event) => {
+                setRecentZapReplayLookbackHours(
+                  clampRecentZapReplayLookbackHours(
+                    Number.parseInt(event.target.value, 10),
+                  ),
+                )
               }}
+              step={1}
+              type="range"
+              value={recentZapReplayLookbackHours}
             />
           </div>
-          <p>{recentZapReplayStatusDetail}</p>
-        </div>
-      ) : null}
 
-      {liveZapFeedFeedback ? (
-        <p className="sg-zap-feed__feedback">{liveZapFeedFeedback}</p>
-      ) : null}
+          <div className={recentZapReplayCollectionClassName}>
+            <div className="sg-zap-replay-section-head">
+              <span>Recoleccion</span>
+              <span>{recentZapReplayCollectionProgressValue}%</span>
+            </div>
+            <div
+              aria-label="Avance de recoleccion de zaps"
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={recentZapReplayCollectionProgressValue}
+              className="sg-zap-replay-collection__bar"
+              role="progressbar"
+            >
+              <span style={{ width: `${recentZapReplayCollectionProgressValue}%` }} />
+            </div>
+            <dl className="sg-zap-replay-metrics">
+              <div>
+                <dt>Objetivos</dt>
+                <dd>{formatInteger(recentZapReplay.targetCount)}</dd>
+              </div>
+              <div>
+                <dt>Batches</dt>
+                <dd>
+                  {formatInteger(recentZapReplay.completedBatchCount)}/{formatInteger(recentZapReplay.batchCount)}
+                </dd>
+              </div>
+              <div>
+                <dt>Cache</dt>
+                <dd>{formatInteger(recentZapReplay.cachedCount)}</dd>
+              </div>
+              <div>
+                <dt>Nuevos</dt>
+                <dd>{formatInteger(recentZapReplay.fetchedCount)}</dd>
+              </div>
+              <div>
+                <dt>Timeouts</dt>
+                <dd>{formatInteger(recentZapReplay.timedOutBatchCount)}</dd>
+              </div>
+              <div>
+                <dt>Limite</dt>
+                <dd>
+                  {recentZapReplay.truncatedTargetCount > 0
+                    ? `${formatInteger(recentZapReplay.truncatedTargetCount)} omitidos`
+                    : 'OK'}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className="sg-zap-replay-playback">
+            <div className="sg-zap-replay-section-head">
+              <span>Reproduccion</span>
+              <span>
+                {formatInteger(recentZapReplay.playedCount)} visibles / {formatInteger(recentZapReplay.droppedCount)} descartados
+              </span>
+            </div>
+            <div className="sg-zap-replay-controls">
+              <button
+                aria-label={recentZapReplayPlayButtonLabel}
+                className="sg-zap-replay-transport"
+                disabled={!canToggleRecentZapReplayPlayback}
+                onClick={() => {
+                  setRecentZapReplayPlaybackPaused((current) => !current)
+                }}
+                title={recentZapReplayPlayButtonLabel}
+                type="button"
+              >
+                {recentZapReplayPlaybackIsPaused ? <PlayIcon /> : <PauseIcon />}
+                <span>{recentZapReplayPlaybackIsPaused ? 'Play' : 'Pausa'}</span>
+              </button>
+              <button
+                className="sg-mini-action"
+                disabled={!canControlRecentZapReplay || recentZapReplay.phase === 'loading'}
+                onClick={() => {
+                  setRecentZapReplayPlaybackPaused(false)
+                  setRecentZapReplayRequest((current) => current + 1)
+                }}
+                type="button"
+              >
+                Reproducir cache
+              </button>
+              <button
+                className="sg-mini-action"
+                disabled={!canControlRecentZapReplay || recentZapReplay.phase === 'loading'}
+                onClick={() => {
+                  setRecentZapReplayPlaybackPaused(false)
+                  setRecentZapReplayRefreshRequest((current) => current + 1)
+                }}
+                type="button"
+              >
+                Actualizar
+              </button>
+            </div>
+
+            <div className="sg-zap-replay-timeline">
+              <div className="sg-zap-replay-timeline__head">
+                <span>Linea de tiempo</span>
+                <span>{displayedZapReplayProgressValue}% - {recentZapReplayCurrentTimeLabel}</span>
+              </div>
+              <div
+                aria-disabled={!canSeekRecentZapReplay}
+                aria-label={`Mover replay dentro de ${appliedZapReplayWindowText}`}
+                aria-valuemax={100}
+                aria-valuemin={0}
+                aria-valuenow={displayedZapReplayProgressValue}
+                className={recentZapReplayTimelineClassName}
+                onKeyDown={handleZapReplayTimelineKeyDown}
+                onLostPointerCapture={handleZapReplayTimelinePointerCancel}
+                onPointerCancel={handleZapReplayTimelinePointerCancel}
+                onPointerDown={handleZapReplayTimelinePointerDown}
+                onPointerMove={handleZapReplayTimelinePointerMove}
+                onPointerUp={handleZapReplayTimelinePointerUp}
+                role="slider"
+                tabIndex={canSeekRecentZapReplay ? 0 : -1}
+              >
+                <span className="sg-zap-replay-timeline__tick sg-zap-replay-timeline__tick--start" />
+                <span className="sg-zap-replay-timeline__tick sg-zap-replay-timeline__tick--end" />
+                <span
+                  className="sg-zap-replay-timeline__fill"
+                  style={{
+                    width: formatProgressPercent(displayedZapReplayProgress),
+                  }}
+                />
+                <span
+                  className="sg-zap-replay-timeline__marker"
+                  style={{
+                    left: formatProgressPercent(displayedZapReplayProgress),
+                  }}
+                />
+              </div>
+              <div className="sg-zap-replay-timeline__labels">
+                <span>
+                  <strong>Inicio</strong>
+                  <time>{recentZapReplayWindowStartLabel}</time>
+                </span>
+                <span>
+                  <strong>Actual</strong>
+                  <time>{recentZapReplayCurrentTimeLabel}</time>
+                </span>
+                <span>
+                  <strong>Fin</strong>
+                  <time>{recentZapReplayWindowEndLabel}</time>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <p className="sg-zap-replay-console__detail">{recentZapReplayStatusDetail}</p>
+        </div>
+      ) : (
+        liveZapFeedFeedback ? (
+          <p className="sg-zap-feed__feedback">{liveZapFeedFeedback}</p>
+        ) : null
+      )}
 
       {zapActivityLog.length > 0 ? (
         <div className="sg-zap-feed__list">

@@ -90,6 +90,23 @@ export function ClockIcon() {
   )
 }
 
+export function PlayIcon() {
+  return (
+    <svg {...COMMON}>
+      <polygon points="8 5 19 12 8 19 8 5" />
+    </svg>
+  )
+}
+
+export function PauseIcon() {
+  return (
+    <svg {...COMMON}>
+      <line x1="9" y1="5" x2="9" y2="19" />
+      <line x1="15" y1="5" x2="15" y2="19" />
+    </svg>
+  )
+}
+
 export function SearchIcon() {
   return (
     <svg {...COMMON}>

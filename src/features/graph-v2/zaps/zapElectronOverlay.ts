@@ -46,6 +46,8 @@ export class ZapElectronOverlay {
   private animations: ActiveElectron[] = []
   private rafId: number | null = null
   private disposed = false
+  private paused = false
+  private pausedAtMs: number | null = null
   private devicePixelRatio = 1
 
   constructor(
@@ -142,7 +144,7 @@ export class ZapElectronOverlay {
       virtualTo: isToOutside ? toPos : undefined,
       radiusPx: satsToRadiusPx(zap.sats),
       label: formatSatsLabel(zap.sats),
-      startMs: performance.now(),
+      startMs: this.pausedAtMs ?? performance.now(),
       durationMs: DEFAULT_DURATION_MS,
       flickerSeed: Math.random() * Math.PI * 2,
     })
@@ -161,7 +163,7 @@ export class ZapElectronOverlay {
       toPubkey: zap.toPubkey,
       radiusPx: satsToRadiusPx(zap.sats),
       label: formatSatsLabel(zap.sats),
-      startMs: performance.now(),
+      startMs: this.pausedAtMs ?? performance.now(),
       durationMs: DEFAULT_DURATION_MS,
       flickerSeed: Math.random() * Math.PI * 2,
     })
@@ -169,8 +171,39 @@ export class ZapElectronOverlay {
     return true
   }
 
+  public setPaused(paused: boolean): void {
+    if (this.disposed || this.paused === paused) return
+
+    if (paused) {
+      this.paused = true
+      this.pausedAtMs = performance.now()
+      if (this.rafId !== null) {
+        cancelAnimationFrame(this.rafId)
+        this.rafId = null
+      }
+      return
+    }
+
+    const pausedAtMs = this.pausedAtMs
+    const now = performance.now()
+    const pausedForMs = pausedAtMs === null ? 0 : Math.max(0, now - pausedAtMs)
+    this.paused = false
+    this.pausedAtMs = null
+    if (pausedForMs > 0) {
+      this.animations = this.animations.map((animation) => ({
+        ...animation,
+        startMs: animation.startMs + pausedForMs,
+      }))
+    }
+    if (this.animations.length > 0) {
+      this.ensureTicking()
+    }
+  }
+
   public dispose(): void {
     this.disposed = true
+    this.paused = false
+    this.pausedAtMs = null
     this.animations = []
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId)
@@ -192,13 +225,13 @@ export class ZapElectronOverlay {
   }
 
   private ensureTicking(): void {
-    if (this.rafId !== null || this.disposed) return
+    if (this.rafId !== null || this.disposed || this.paused) return
     this.rafId = requestAnimationFrame(this.tick)
   }
 
   private readonly tick = (timestamp: number) => {
     this.rafId = null
-    if (this.disposed) return
+    if (this.disposed || this.paused) return
 
     const ctx = this.ctx
     const widthCss = this.canvas.width / this.devicePixelRatio

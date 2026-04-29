@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type NDK from '@nostr-dev-kit/ndk'
 import type { NDKEvent, NDKSubscription } from '@nostr-dev-kit/ndk'
 
@@ -44,6 +44,7 @@ interface RecentZapReplayCoverage {
 export interface RecentZapReplaySnapshot {
   phase: RecentZapReplayPhase
   stage: RecentZapReplayStage
+  playbackPaused: boolean
   message: string | null
   targetCount: number
   truncatedTargetCount: number
@@ -65,6 +66,7 @@ export interface RecentZapReplaySnapshot {
 const INITIAL_SNAPSHOT: RecentZapReplaySnapshot = {
   phase: 'idle',
   stage: 'idle',
+  playbackPaused: false,
   message: null,
   targetCount: 0,
   truncatedTargetCount: 0,
@@ -97,6 +99,19 @@ function clampProgress(value: number): number {
   return Math.max(0, Math.min(1, value))
 }
 
+export type RecentZapReplayCollectionStatus =
+  | 'idle'
+  | 'collecting'
+  | 'done'
+  | 'partial'
+  | 'error'
+
+export interface RecentZapReplayCollectionViewModel {
+  progress: number
+  status: RecentZapReplayCollectionStatus
+  isIndeterminate: boolean
+}
+
 export function clampRecentZapReplayLookbackHours(value: number): number {
   if (!Number.isFinite(value) || !Number.isInteger(value)) {
     return RECENT_ZAP_REPLAY_DEFAULT_LOOKBACK_HOURS
@@ -111,6 +126,44 @@ export function clampRecentZapReplayLookbackHours(value: number): number {
 export function formatRecentZapReplayWindowLabel(hours: number): string {
   const clampedHours = clampRecentZapReplayLookbackHours(hours)
   return clampedHours === 1 ? 'ultima hora' : `ultimas ${clampedHours} horas`
+}
+
+export function buildRecentZapReplayCollectionViewModel(
+  replay: Pick<
+    RecentZapReplaySnapshot,
+    | 'phase'
+    | 'stage'
+    | 'batchCount'
+    | 'completedBatchCount'
+    | 'timedOutBatchCount'
+  >,
+): RecentZapReplayCollectionViewModel {
+  if (replay.phase === 'error' || replay.stage === 'error') {
+    return { progress: 1, status: 'error', isIndeterminate: false }
+  }
+
+  const hasFinishedCollecting =
+    replay.stage === 'playing' || replay.stage === 'done' || replay.stage === 'decoding'
+  const progress =
+    replay.batchCount > 0
+      ? clampProgress(replay.completedBatchCount / replay.batchCount)
+      : hasFinishedCollecting
+        ? 1
+        : 0
+  const status: RecentZapReplayCollectionStatus =
+    replay.timedOutBatchCount > 0 && hasFinishedCollecting
+      ? 'partial'
+      : replay.stage === 'collecting'
+        ? 'collecting'
+        : hasFinishedCollecting
+          ? 'done'
+          : 'idle'
+
+  return {
+    progress,
+    status,
+    isIndeterminate: status === 'collecting' && progress < 1,
+  }
 }
 
 function calculateTimelineProgress({
@@ -133,6 +186,23 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
     batches.push(items.slice(index, index + size))
   }
   return batches
+}
+
+export function findZapReplaySeekIndex(
+  zaps: readonly Pick<ParsedZap, 'createdAt' | 'eventId'>[],
+  targetCreatedAt: number,
+): number {
+  if (zaps.length === 0) return -1
+  let selectedIndex = zaps.length - 1
+
+  for (let index = 0; index < zaps.length; index += 1) {
+    if (zaps[index].createdAt >= targetCreatedAt) {
+      selectedIndex = index
+      break
+    }
+  }
+
+  return selectedIndex
 }
 
 function normalizeTargets(pubkeys: readonly string[]): {
@@ -411,6 +481,9 @@ export function useRecentZapReplay({
   lookbackHours,
   replayKey,
   refreshKey,
+  playbackPaused = false,
+  seekKey = 0,
+  seekProgress = 0,
   onZap,
 }: {
   enabled: boolean
@@ -418,15 +491,36 @@ export function useRecentZapReplay({
   lookbackHours: number
   replayKey: number
   refreshKey: number
+  playbackPaused?: boolean
+  seekKey?: number
+  seekProgress?: number
   onZap: (zap: ParsedZap) => boolean
 }): RecentZapReplaySnapshot {
   const onZapRef = useRef(onZap)
   const handledReplayKeyRef = useRef<number>(replayKey)
   const handledRefreshKeyRef = useRef<number>(refreshKey)
+  const handledSeekKeyRef = useRef<number>(seekKey)
+  const handledPlaybackPausedRef = useRef(playbackPaused)
+  const replayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const replayRunIdRef = useRef(0)
+  const replayZapsRef = useRef<ParsedZap[]>([])
+  const replayCountsRef = useRef({ playedCount: 0, droppedCount: 0 })
+  const playbackPausedRef = useRef(playbackPaused)
+  const replayPausedSnapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const replayPlaybackRef = useRef<{
+    zaps: ParsedZap[]
+    nextIndex: number
+    intervalMs: number
+    message: string
+  } | null>(null)
 
   useEffect(() => {
     onZapRef.current = onZap
   }, [onZap])
+
+  useEffect(() => {
+    playbackPausedRef.current = playbackPaused
+  }, [playbackPaused])
 
   const targetInfo = useMemo(
     () => normalizeTargets(visiblePubkeys),
@@ -443,6 +537,221 @@ export function useRecentZapReplay({
   const [snapshot, setSnapshot] =
     useState<RecentZapReplaySnapshot>(INITIAL_SNAPSHOT)
 
+  const clearReplayTimer = useCallback(() => {
+    replayRunIdRef.current += 1
+    if (replayTimerRef.current !== null) {
+      clearTimeout(replayTimerRef.current)
+      replayTimerRef.current = null
+    }
+    if (replayPausedSnapshotTimerRef.current !== null) {
+      clearTimeout(replayPausedSnapshotTimerRef.current)
+      replayPausedSnapshotTimerRef.current = null
+    }
+  }, [])
+
+  const stopReplayTimer = useCallback(() => {
+    if (replayTimerRef.current !== null) {
+      clearTimeout(replayTimerRef.current)
+      replayTimerRef.current = null
+    }
+  }, [])
+
+  const setReplayPausedSnapshot = useCallback((paused: boolean) => {
+    setSnapshot((current) =>
+      current.playbackPaused === paused
+        ? current
+        : {
+            ...current,
+            playbackPaused: paused,
+            message:
+              paused && current.stage === 'playing'
+                ? 'Replay pausado.'
+                : current.message,
+          },
+    )
+  }, [])
+
+  const scheduleReplayPausedSnapshot = useCallback((paused: boolean) => {
+    if (replayPausedSnapshotTimerRef.current !== null) {
+      clearTimeout(replayPausedSnapshotTimerRef.current)
+      replayPausedSnapshotTimerRef.current = null
+    }
+    replayPausedSnapshotTimerRef.current = setTimeout(() => {
+      replayPausedSnapshotTimerRef.current = null
+      setReplayPausedSnapshot(paused)
+    }, 0)
+  }, [setReplayPausedSnapshot])
+
+  const playReplayFromIndex = useCallback(({
+    zaps,
+    startIndex,
+    resetCounts,
+    message,
+  }: {
+    zaps: readonly ParsedZap[]
+    startIndex: number
+    resetCounts: boolean
+    message: string
+  }) => {
+    clearReplayTimer()
+    const replayZaps = [...zaps]
+    replayZapsRef.current = replayZaps
+    const runId = replayRunIdRef.current
+
+    if (replayZaps.length === 0) {
+      replayPlaybackRef.current = null
+      setSnapshot((current) => ({
+        ...current,
+        phase: 'done',
+        stage: 'done',
+        playbackPaused: false,
+        message: `No hubo zaps reproducibles en ${replayWindowText} para estos nodos.`,
+        currentZapCreatedAt: current.windowEndAt,
+        timelineProgress: 1,
+      }))
+      return
+    }
+
+    const safeStartIndex = Math.max(0, Math.min(replayZaps.length - 1, startIndex))
+    const intervalMs = Math.max(140, Math.min(550, Math.floor(12_000 / replayZaps.length)))
+    if (resetCounts) {
+      replayCountsRef.current = { playedCount: 0, droppedCount: 0 }
+    }
+    replayPlaybackRef.current = {
+      zaps: replayZaps,
+      nextIndex: safeStartIndex,
+      intervalMs,
+      message,
+    }
+
+    setSnapshot((current) => ({
+      ...current,
+      phase: 'playing',
+      stage: 'playing',
+      playbackPaused: playbackPausedRef.current,
+      message,
+      playableCount: replayZaps.length,
+      playedCount: replayCountsRef.current.playedCount,
+      droppedCount: replayCountsRef.current.droppedCount,
+      currentZapCreatedAt: replayZaps[safeStartIndex]?.createdAt ?? current.windowStartAt,
+      timelineProgress:
+        current.windowStartAt !== null &&
+        current.windowEndAt !== null &&
+        replayZaps[safeStartIndex]
+          ? calculateTimelineProgress({
+              currentAt: replayZaps[safeStartIndex].createdAt,
+              since: current.windowStartAt,
+              until: current.windowEndAt,
+            })
+          : current.timelineProgress,
+    }))
+
+    const playNext = (index: number) => {
+      if (replayRunIdRef.current !== runId) return
+      const zap = replayZaps[index]
+      if (!zap) return
+
+      replayPlaybackRef.current = {
+        zaps: replayZaps,
+        nextIndex: index,
+        intervalMs,
+        message,
+      }
+
+      if (playbackPausedRef.current) {
+        setReplayPausedSnapshot(true)
+        return
+      }
+
+      if (onZapRef.current(zap)) {
+        replayCountsRef.current = {
+          ...replayCountsRef.current,
+          playedCount: replayCountsRef.current.playedCount + 1,
+        }
+      } else {
+        replayCountsRef.current = {
+          ...replayCountsRef.current,
+          droppedCount: replayCountsRef.current.droppedCount + 1,
+        }
+      }
+
+      const { playedCount, droppedCount } = replayCountsRef.current
+      const nextIndex = index + 1
+      replayPlaybackRef.current = {
+        zaps: replayZaps,
+        nextIndex,
+        intervalMs,
+        message,
+      }
+      setSnapshot((current) => ({
+        ...current,
+        playbackPaused: false,
+        playedCount,
+        droppedCount,
+        currentZapCreatedAt: zap.createdAt,
+        timelineProgress:
+          current.windowStartAt !== null && current.windowEndAt !== null
+            ? calculateTimelineProgress({
+                currentAt: zap.createdAt,
+                since: current.windowStartAt,
+                until: current.windowEndAt,
+              })
+            : current.timelineProgress,
+      }))
+
+      if (nextIndex >= replayZaps.length) {
+        replayPlaybackRef.current = null
+        setSnapshot((current) => ({
+          ...current,
+          phase: 'done',
+          stage: 'done',
+          playbackPaused: false,
+          message: `Replay terminado: ${playedCount} zaps visibles, ${droppedCount} descartados porque no se pudieron dibujar en la escena.`,
+          currentZapCreatedAt: current.windowEndAt,
+          timelineProgress: 1,
+        }))
+        return
+      }
+
+      replayTimerRef.current = setTimeout(() => playNext(nextIndex), intervalMs)
+    }
+
+    playNext(safeStartIndex)
+  }, [clearReplayTimer, replayWindowText, setReplayPausedSnapshot])
+
+  useEffect(() => {
+    if (!enabled) return
+    if (handledPlaybackPausedRef.current === playbackPaused) return
+    handledPlaybackPausedRef.current = playbackPaused
+
+    if (playbackPaused) {
+      stopReplayTimer()
+      replayRunIdRef.current += 1
+      scheduleReplayPausedSnapshot(true)
+      return
+    }
+
+    scheduleReplayPausedSnapshot(false)
+    const playback = replayPlaybackRef.current
+    if (!playback || snapshot.stage !== 'playing') {
+      return
+    }
+
+    playReplayFromIndex({
+      zaps: playback.zaps,
+      startIndex: playback.nextIndex,
+      resetCounts: false,
+      message: playback.message,
+    })
+  }, [
+    enabled,
+    playReplayFromIndex,
+    playbackPaused,
+    scheduleReplayPausedSnapshot,
+    snapshot.stage,
+    stopReplayTimer,
+  ])
+
   useEffect(() => {
     if (!enabled) {
       return
@@ -454,85 +763,15 @@ export function useRecentZapReplay({
     }
 
     let disposed = false
-    let replayTimer: ReturnType<typeof setTimeout> | null = null
-
-    const clearReplayTimer = () => {
-      if (replayTimer !== null) {
-        clearTimeout(replayTimer)
-        replayTimer = null
-      }
-    }
 
     const replay = (zaps: readonly ParsedZap[]) => {
       if (disposed) return
-      if (zaps.length === 0) {
-        setSnapshot((current) => ({
-          ...current,
-          phase: 'done',
-          stage: 'done',
-          message: `No hubo zaps reproducibles en ${replayWindowText} para estos nodos.`,
-          currentZapCreatedAt: current.windowEndAt,
-          timelineProgress: 1,
-        }))
-        return
-      }
-
-      const intervalMs = Math.max(140, Math.min(550, Math.floor(12_000 / zaps.length)))
-      let playedCount = 0
-      let droppedCount = 0
-
-      setSnapshot((current) => ({
-        ...current,
-        phase: 'playing',
-        stage: 'playing',
+      playReplayFromIndex({
+        zaps,
+        startIndex: 0,
+        resetCounts: true,
         message: `Reproduciendo ${zaps.length} zaps de ${replayWindowText}...`,
-        playableCount: zaps.length,
-        playedCount: 0,
-        droppedCount: 0,
-        currentZapCreatedAt: current.windowStartAt,
-        timelineProgress: 0,
-      }))
-
-      const playNext = (index: number) => {
-        if (disposed) return
-        const zap = zaps[index]
-        if (onZapRef.current(zap)) {
-          playedCount += 1
-        } else {
-          droppedCount += 1
-        }
-
-        setSnapshot((current) => ({
-          ...current,
-          playedCount,
-          droppedCount,
-          currentZapCreatedAt: zap.createdAt,
-          timelineProgress:
-            current.windowStartAt !== null && current.windowEndAt !== null
-              ? calculateTimelineProgress({
-                  currentAt: zap.createdAt,
-                  since: current.windowStartAt,
-                  until: current.windowEndAt,
-                })
-              : current.timelineProgress,
-        }))
-
-        if (index + 1 >= zaps.length) {
-          setSnapshot((current) => ({
-            ...current,
-            phase: 'done',
-            stage: 'done',
-            message: `Replay terminado: ${playedCount} zaps visibles, ${droppedCount} descartados porque no se pudieron dibujar en la escena.`,
-            currentZapCreatedAt: current.windowEndAt,
-            timelineProgress: 1,
-          }))
-          return
-        }
-
-        replayTimer = setTimeout(() => playNext(index + 1), intervalMs)
-      }
-
-      playNext(0)
+      })
     }
 
     void (async () => {
@@ -587,6 +826,7 @@ export function useRecentZapReplay({
           setSnapshot({
             phase: 'done',
             stage: 'done',
+            playbackPaused: playbackPausedRef.current,
             message:
               replayZaps.length > 0
                 ? `Replay desde cache: ${replayZaps.length} zaps guardados.`
@@ -627,6 +867,7 @@ export function useRecentZapReplay({
         setSnapshot({
           phase: shouldFetch ? 'loading' : 'done',
           stage: shouldFetch ? 'collecting' : 'done',
+          playbackPaused: playbackPausedRef.current,
           message: shouldFetch
             ? forceRefresh && reusableCoverage
               ? `Actualizando zaps desde cache: descargando lo faltante desde el ultimo corte.`
@@ -784,6 +1025,7 @@ export function useRecentZapReplay({
           ...current,
           phase: 'error',
           stage: 'error',
+          playbackPaused: false,
           message,
         }))
       }
@@ -796,12 +1038,55 @@ export function useRecentZapReplay({
   }, [
     enabled,
     appliedLookbackHours,
+    clearReplayTimer,
+    playReplayFromIndex,
     refreshKey,
     replayKey,
     replayWindowText,
     replayWindowLabel,
     targetInfo.truncatedTargetCount,
     targetSignature,
+  ])
+
+  useEffect(() => {
+    if (!enabled || seekKey === handledSeekKeyRef.current) {
+      return
+    }
+
+    handledSeekKeyRef.current = seekKey
+    const zaps = replayZapsRef.current
+    if (zaps.length === 0) {
+      return
+    }
+
+    if (snapshot.windowStartAt === null || snapshot.windowEndAt === null) {
+      return
+    }
+
+    const progress = clampProgress(seekProgress)
+    const targetCreatedAt =
+      snapshot.windowStartAt +
+      Math.round((snapshot.windowEndAt - snapshot.windowStartAt) * progress)
+    const seekIndex = findZapReplaySeekIndex(zaps, targetCreatedAt)
+    if (seekIndex < 0) {
+      return
+    }
+
+    const message = `Replay reposicionado al ${Math.round(progress * 100)}% de ${replayWindowText}.`
+    playReplayFromIndex({
+      zaps,
+      startIndex: seekIndex,
+      resetCounts: true,
+      message,
+    })
+  }, [
+    enabled,
+    playReplayFromIndex,
+    replayWindowText,
+    seekKey,
+    seekProgress,
+    snapshot.windowEndAt,
+    snapshot.windowStartAt,
   ])
 
   if (!enabled) {

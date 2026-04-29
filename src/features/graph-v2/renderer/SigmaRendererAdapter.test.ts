@@ -1102,6 +1102,12 @@ type EdgeReducerHarness = {
   currentHoverFocus: { pubkey: string | null; neighbors: Set<string> }
   selectedSceneFocus: { pubkey: string | null; neighbors: Set<string> }
   safeRender: () => void
+  setConnectionVisualConfig: (config: {
+    opacity: number
+    thicknessScale: number
+    colorMode: 'semantic' | 'calm' | 'mono'
+    focusStyle: 'soft' | 'balanced' | 'dramatic'
+  }) => void
   setHideConnectionsForLowPerformance: (enabled: boolean) => void
   edgeReducer: (
     edge: string,
@@ -3707,6 +3713,116 @@ test('edge reducer keeps dragged-node edges stable for neighbors just outside th
   assert.equal(barelyOffscreenNeighbor.size, baseEdge.size)
 })
 
+test('edge reducer applies curated base visuals to idle connections', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const edgeEndpoints = new Map<string, [string, string]>([
+    ['A->B', ['A', 'B']],
+  ])
+  const adapter = new SigmaRendererAdapter() as unknown as EdgeReducerHarness
+  const baseEdge = {
+    size: 1,
+    color: '#64b5ff',
+    hidden: false,
+    label: null,
+    weight: 1,
+    isDimmed: false,
+    touchesFocus: false,
+    zIndex: 1,
+  }
+
+  adapter.sigma = {
+    getGraph: () => ({
+      hasEdge: (edgeId) => edgeEndpoints.has(edgeId),
+      source: (edgeId) => edgeEndpoints.get(edgeId)?.[0] ?? '',
+      target: (edgeId) => edgeEndpoints.get(edgeId)?.[1] ?? '',
+    }),
+  }
+  adapter.draggedNodePubkey = null
+  adapter.draggedNodeFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.currentHoverFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.selectedSceneFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.safeRender = () => {}
+  adapter.setConnectionVisualConfig({
+    opacity: 0.35,
+    thicknessScale: 1.5,
+    colorMode: 'calm',
+    focusStyle: 'balanced',
+  })
+
+  const idleEdge = adapter.edgeReducer('A->B', baseEdge)
+
+  assert.equal(idleEdge.color, 'rgba(103, 156, 207, 0.35)')
+  assert.equal(idleEdge.hidden, false)
+  assert.equal(idleEdge.size, 1.5)
+})
+
+test('edge reducer keeps focus highlighting fully legible while using the selected focus preset', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const edgeEndpoints = new Map<string, [string, string]>([
+    ['A->B', ['A', 'B']],
+  ])
+  const adapter = new SigmaRendererAdapter() as unknown as EdgeReducerHarness
+  const baseEdge = {
+    size: 1,
+    color: '#64b5ff',
+    hidden: false,
+    label: null,
+    weight: 1,
+    isDimmed: false,
+    touchesFocus: false,
+    zIndex: 1,
+  }
+
+  adapter.sigma = {
+    getGraph: () => ({
+      hasEdge: (edgeId) => edgeEndpoints.has(edgeId),
+      source: (edgeId) => edgeEndpoints.get(edgeId)?.[0] ?? '',
+      target: (edgeId) => edgeEndpoints.get(edgeId)?.[1] ?? '',
+    }),
+  }
+  adapter.draggedNodePubkey = null
+  adapter.draggedNodeFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.currentHoverFocus = {
+    pubkey: 'A',
+    neighbors: new Set(['B']),
+  }
+  adapter.selectedSceneFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.safeRender = () => {}
+  adapter.setConnectionVisualConfig({
+    opacity: 0.2,
+    thicknessScale: 1.4,
+    colorMode: 'mono',
+    focusStyle: 'dramatic',
+  })
+
+  const focusedEdge = adapter.edgeReducer('A->B', baseEdge)
+
+  assert.equal(focusedEdge.color, '#ffffff')
+  assert.equal(focusedEdge.hidden, false)
+  assert.ok(Math.abs(focusedEdge.size - 3.7) < 0.0001)
+})
+
 test('edge reducer hides background edges during low-performance connection LOD', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
@@ -3776,6 +3892,132 @@ test('edge reducer hides background edges during low-performance connection LOD'
   assert.equal(hidden.hidden, true)
   assert.equal(visible.hidden, false)
   assert.equal(renderCalls, 2)
+})
+
+test('connection visual config setter normalizes values and only rerenders on actual changes', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const edgeEndpoints = new Map<string, [string, string]>([
+    ['A->B', ['A', 'B']],
+  ])
+  const adapter = new SigmaRendererAdapter() as unknown as EdgeReducerHarness
+  let renderCalls = 0
+  const baseEdge = {
+    size: 1,
+    color: '#64b5ff',
+    hidden: false,
+    label: null,
+    weight: 1,
+    isDimmed: false,
+    touchesFocus: false,
+    zIndex: 1,
+  }
+
+  adapter.sigma = {
+    getGraph: () => ({
+      hasEdge: (edgeId) => edgeEndpoints.has(edgeId),
+      source: (edgeId) => edgeEndpoints.get(edgeId)?.[0] ?? '',
+      target: (edgeId) => edgeEndpoints.get(edgeId)?.[1] ?? '',
+    }),
+  }
+  adapter.draggedNodePubkey = null
+  adapter.draggedNodeFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.currentHoverFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.selectedSceneFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.safeRender = () => {
+    renderCalls += 1
+  }
+
+  adapter.setConnectionVisualConfig({
+    opacity: 0,
+    thicknessScale: 4,
+    colorMode: 'calm',
+    focusStyle: 'soft',
+  })
+  adapter.setConnectionVisualConfig({
+    opacity: 0.1,
+    thicknessScale: 1.75,
+    colorMode: 'calm',
+    focusStyle: 'soft',
+  })
+  adapter.setConnectionVisualConfig({
+    opacity: 1,
+    thicknessScale: 1.75,
+    colorMode: 'calm',
+    focusStyle: 'soft',
+  })
+
+  const clampedEdge = adapter.edgeReducer('A->B', baseEdge)
+
+  assert.equal(renderCalls, 2)
+  assert.equal(clampedEdge.color, 'rgba(103, 156, 207, 1)')
+  assert.equal(clampedEdge.size, 1.75)
+})
+
+test('edge reducer applies the soft focus preset to dimmed background edges', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const edgeEndpoints = new Map<string, [string, string]>([
+    ['A->B', ['A', 'B']],
+    ['C->D', ['C', 'D']],
+  ])
+  const adapter = new SigmaRendererAdapter() as unknown as EdgeReducerHarness
+  const baseEdge = {
+    size: 1,
+    color: '#64b5ff',
+    hidden: false,
+    label: null,
+    weight: 1,
+    isDimmed: false,
+    touchesFocus: false,
+    zIndex: 1,
+  }
+
+  adapter.sigma = {
+    getGraph: () => ({
+      hasEdge: (edgeId) => edgeEndpoints.has(edgeId),
+      source: (edgeId) => edgeEndpoints.get(edgeId)?.[0] ?? '',
+      target: (edgeId) => edgeEndpoints.get(edgeId)?.[1] ?? '',
+    }),
+  }
+  adapter.draggedNodePubkey = null
+  adapter.draggedNodeFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.currentHoverFocus = {
+    pubkey: 'A',
+    neighbors: new Set(['B']),
+  }
+  adapter.selectedSceneFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.safeRender = () => {}
+  adapter.setConnectionVisualConfig({
+    opacity: 0.25,
+    thicknessScale: 1.2,
+    colorMode: 'semantic',
+    focusStyle: 'soft',
+  })
+
+  const backgroundEdge = adapter.edgeReducer('C->D', baseEdge)
+
+  assert.equal(backgroundEdge.color, '#1c2530')
+  assert.equal(backgroundEdge.size, 0.35)
 })
 
 test('selected node focus keeps its incident edges visible during low-performance connection LOD', async () => {

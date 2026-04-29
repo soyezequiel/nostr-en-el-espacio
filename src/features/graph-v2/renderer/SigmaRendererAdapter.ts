@@ -1,6 +1,14 @@
 import Sigma from 'sigma'
 import type { Coordinates, TouchCoords } from 'sigma/types'
 
+import {
+  DEFAULT_CONNECTION_VISUAL_CONFIG,
+  MAX_CONNECTION_OPACITY,
+  MIN_CONNECTION_OPACITY,
+  normalizeConnectionVisualConfig,
+  type ConnectionFocusStyle,
+  type ConnectionVisualConfig,
+} from '@/features/graph-v2/connectionVisualConfig'
 import { hasRenderableSigmaContainer } from '@/features/graph-v2/renderer/containerDimensions'
 import { installSigmaPixelRatioCap } from '@/features/graph-v2/renderer/sigmaPixelRatio'
 import type {
@@ -266,6 +274,40 @@ const mixColor = (from: string, to: string, amount: number) => {
   )}${toHexChannel(lerpNumber(fromRgb.b, toRgb.b, amount))}`
 }
 
+const applyColorOpacity = (color: string, opacity: number) => {
+  const rgb = parseHexRgb(color)
+  if (!rgb) {
+    return color
+  }
+
+  const normalizedOpacity = clampNumber(
+    opacity,
+    MIN_CONNECTION_OPACITY,
+    MAX_CONNECTION_OPACITY,
+  )
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${normalizedOpacity})`
+}
+
+const resolveConnectionBaseColor = (
+  color: string,
+  config: ConnectionVisualConfig,
+) => {
+  switch (config.colorMode) {
+    case 'calm':
+      return mixColor(color, '#6c7a8d', 0.42)
+    case 'mono':
+      return '#7a92bd'
+    case 'semantic':
+    default:
+      return color
+  }
+}
+
+const resolveConnectionBaseSize = (
+  size: number,
+  config: ConnectionVisualConfig,
+) => Math.max(0.25, size * config.thicknessScale)
+
 const getMidpoint = (from: Coordinates, to: Coordinates): Coordinates => ({
   x: (from.x + to.x) / 2,
   y: (from.y + to.y) / 2,
@@ -298,6 +340,41 @@ type HoverFocusSnapshot = {
 const EMPTY_RENDERER_FOCUS: HoverFocusSnapshot = {
   pubkey: null,
   neighbors: EMPTY_HOVER_NEIGHBORS,
+}
+
+type EdgeFocusVisualPreset = {
+  brightColor: string
+  dimColor: string
+  dimSize: number
+  focusSizeBonus: number
+  focusMinSize: number
+}
+
+const EDGE_FOCUS_VISUAL_PRESETS: Record<
+  ConnectionFocusStyle,
+  EdgeFocusVisualPreset
+> = {
+  soft: {
+    brightColor: '#d8e4f0',
+    dimColor: '#1c2530',
+    dimSize: 0.35,
+    focusSizeBonus: 0.9,
+    focusMinSize: 2.1,
+  },
+  balanced: {
+    brightColor: HOVER_EDGE_BRIGHT_COLOR,
+    dimColor: HOVER_DIM_EDGE_COLOR,
+    dimSize: 0.2,
+    focusSizeBonus: 1.6,
+    focusMinSize: 2.8,
+  },
+  dramatic: {
+    brightColor: '#ffffff',
+    dimColor: '#0b1017',
+    dimSize: 0.12,
+    focusSizeBonus: 2.3,
+    focusMinSize: 3.4,
+  },
 }
 
 type HighlightTransition = {
@@ -518,6 +595,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private avatarRuntimeOptions: AvatarRuntimeOptions =
     DEFAULT_AVATAR_RUNTIME_OPTIONS
+
+  private connectionVisualConfig = DEFAULT_CONNECTION_VISUAL_CONFIG
 
   private initialCameraZoom = DEFAULT_INITIAL_CAMERA_ZOOM
 
@@ -1515,6 +1594,21 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
 
     this.hideConnectionsForLowPerformance = enabled
+    this.safeRender()
+  }
+
+  public setConnectionVisualConfig(config: ConnectionVisualConfig) {
+    const nextConfig = normalizeConnectionVisualConfig(config)
+    if (
+      this.connectionVisualConfig.opacity === nextConfig.opacity &&
+      this.connectionVisualConfig.thicknessScale === nextConfig.thicknessScale &&
+      this.connectionVisualConfig.colorMode === nextConfig.colorMode &&
+      this.connectionVisualConfig.focusStyle === nextConfig.focusStyle
+    ) {
+      return
+    }
+
+    this.connectionVisualConfig = nextConfig
     this.safeRender()
   }
 
@@ -3573,30 +3667,47 @@ export class SigmaRendererAdapter implements RendererAdapter {
     data: RenderEdgeAttributes,
     focus: HoverFocusSnapshot,
   ): RenderEdgeAttributes {
+    const baseData = this.resolveBaseEdgeAttributes(data)
     if (!focus.pubkey) {
-      return data
+      return baseData
     }
 
     const endpoints = this.getEdgeEndpoints(edge)
     if (!endpoints) {
-      return data
+      return baseData
     }
+
+    const focusPreset =
+      EDGE_FOCUS_VISUAL_PRESETS[this.connectionVisualConfig.focusStyle]
 
     if (!this.edgeEndpointsTouchFocus(endpoints, focus)) {
       return {
-        ...data,
-        color: HOVER_DIM_EDGE_COLOR,
-        size: 0.2,
-        zIndex: Math.min(data.zIndex, -3),
+        ...baseData,
+        color: focusPreset.dimColor,
+        size: focusPreset.dimSize,
+        zIndex: Math.min(baseData.zIndex, -3),
       }
     }
 
     return {
-      ...data,
-      color: HOVER_EDGE_BRIGHT_COLOR,
+      ...baseData,
+      color: focusPreset.brightColor,
       hidden: false,
-      size: Math.max(data.size + 1.6, 2.8),
-      zIndex: Math.max(data.zIndex, 9),
+      size: Math.max(
+        baseData.size + focusPreset.focusSizeBonus,
+        focusPreset.focusMinSize,
+      ),
+      zIndex: Math.max(baseData.zIndex, 9),
+    }
+  }
+
+  private resolveBaseEdgeAttributes(
+    data: RenderEdgeAttributes,
+  ): RenderEdgeAttributes {
+    return {
+      ...data,
+      color: resolveConnectionBaseColor(data.color, this.connectionVisualConfig),
+      size: resolveConnectionBaseSize(data.size, this.connectionVisualConfig),
     }
   }
 
@@ -3745,7 +3856,21 @@ export class SigmaRendererAdapter implements RendererAdapter {
       data,
       focus,
     )
-    return target
+    if (focus.pubkey) {
+      return target
+    }
+
+    if (target.hidden) {
+      return target
+    }
+
+    return {
+      ...target,
+      color: applyColorOpacity(
+        target.color,
+        this.connectionVisualConfig.opacity,
+      ),
+    }
   }
 
   private readonly setHoveredNode = (

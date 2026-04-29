@@ -37,6 +37,20 @@ import type {
 import { getKernelNetworkTuning } from '@/features/graph-runtime/kernel/modules/constants'
 import { GraphInteractionController } from '@/features/graph-v2/application/InteractionController'
 import { LegacyKernelBridge } from '@/features/graph-v2/bridge/LegacyKernelBridge'
+import {
+  clampConnectionOpacity,
+  CONNECTION_OPACITY_STEP,
+  CONNECTION_THICKNESS_SCALE_STEP,
+  DEFAULT_CONNECTION_VISUAL_CONFIG,
+  MAX_CONNECTION_OPACITY,
+  MAX_CONNECTION_THICKNESS_SCALE,
+  MIN_CONNECTION_OPACITY,
+  MIN_CONNECTION_THICKNESS_SCALE,
+  normalizeConnectionVisualConfig,
+  type ConnectionColorMode,
+  type ConnectionFocusStyle,
+  type ConnectionVisualConfig,
+} from '@/features/graph-v2/connectionVisualConfig'
 import { GRAPH_V2_LAYERS } from '@/features/graph-v2/domain/invariants'
 import type {
   CanonicalGraphSceneState,
@@ -105,6 +119,11 @@ import {
   serializeHudStatsEnabled,
   type RuntimeEnvironment,
 } from '@/features/graph-v2/ui/hudStatsPreference'
+import {
+  resolveStoredRootLoadChromeEnabled,
+  serializeRootLoadChromeEnabled,
+} from '@/features/graph-v2/ui/rootLoadChromePreference'
+import { getRootLoadChromeVisibility } from '@/features/graph-v2/ui/rootLoadChromeVisibility'
 import { SigmaCanvasHost, type SigmaCanvasHostHandle } from '@/features/graph-v2/ui/SigmaCanvasHost'
 import {
   AtomIcon,
@@ -320,6 +339,27 @@ const readStoredHudStatsEnabled = (environment: string | undefined) => {
   }
 }
 
+const readStoredRootLoadChromeEnabled = (storageKey: string) => {
+  if (typeof window === 'undefined') {
+    return resolveStoredRootLoadChromeEnabled(
+      null,
+      storageKey === ROOT_LOAD_OVERLAY_ENABLED_STORAGE_KEY,
+    )
+  }
+
+  try {
+    return resolveStoredRootLoadChromeEnabled(
+      window.localStorage.getItem(storageKey),
+      storageKey === ROOT_LOAD_OVERLAY_ENABLED_STORAGE_KEY,
+    )
+  } catch {
+    return resolveStoredRootLoadChromeEnabled(
+      null,
+      storageKey === ROOT_LOAD_OVERLAY_ENABLED_STORAGE_KEY,
+    )
+  }
+}
+
 const readStoredVisibleEdgeCountLabelsEnabled = () => {
   if (typeof window === 'undefined') {
     return false
@@ -345,8 +385,12 @@ const IDENTITY_FIRST_RUN_HELP_KEY = 'sigma.identityFirstRunHelpDismissed'
 const AVATAR_PHOTOS_ENABLED_STORAGE_KEY = 'sigma.avatarPhotosEnabled'
 const RUNTIME_INSPECTOR_BUTTON_STORAGE_KEY = 'sigma.runtimeInspectorButtonEnabled'
 const HUD_STATS_STORAGE_KEY = 'sigma.hudStatsEnabled'
+const ROOT_LOAD_OVERLAY_ENABLED_STORAGE_KEY = 'sigma.rootLoadOverlayEnabled'
+const ROOT_LOAD_HUD_ENABLED_STORAGE_KEY = 'sigma.rootLoadHudEnabled'
 const VISIBLE_EDGE_COUNT_LABELS_STORAGE_KEY = 'sigma.visibleEdgeCountLabels'
 const INITIAL_CAMERA_ZOOM_STORAGE_KEY = 'sigma.initialCameraZoom'
+const CONNECTION_VISUAL_CONFIG_STORAGE_KEY = 'sigma.connectionVisualConfig'
+const LEGACY_CONNECTION_OPACITY_STORAGE_KEY = 'sigma.connectionOpacity'
 const NODE_SIZE_CONFIG_STORAGE_KEY = 'sigma.nodeSizeConfig'
 const RECENT_ZAP_REPLAY_LOOKBACK_STORAGE_KEY = 'sigma.recentZapReplayLookbackHours'
 const RECENT_ZAP_REPLAY_LOOKBACK_DEBOUNCE_MS = 350
@@ -376,6 +420,34 @@ const readStoredInitialCameraZoom = () => {
       : clampInitialCameraZoom(Number.parseFloat(stored))
   } catch {
     return DEFAULT_INITIAL_CAMERA_ZOOM
+  }
+}
+
+const readStoredConnectionVisualConfig = (): ConnectionVisualConfig => {
+  if (typeof window === 'undefined') {
+    return DEFAULT_CONNECTION_VISUAL_CONFIG
+  }
+
+  try {
+    const stored = window.localStorage.getItem(CONNECTION_VISUAL_CONFIG_STORAGE_KEY)
+    if (stored !== null) {
+      return normalizeConnectionVisualConfig(
+        JSON.parse(stored) as Partial<ConnectionVisualConfig>,
+      )
+    }
+
+    const legacyOpacity = window.localStorage.getItem(
+      LEGACY_CONNECTION_OPACITY_STORAGE_KEY,
+    )
+    if (legacyOpacity !== null) {
+      return normalizeConnectionVisualConfig({
+        opacity: clampConnectionOpacity(Number.parseFloat(legacyOpacity)),
+      })
+    }
+
+    return DEFAULT_CONNECTION_VISUAL_CONFIG
+  } catch {
+    return DEFAULT_CONNECTION_VISUAL_CONFIG
   }
 }
 
@@ -1241,24 +1313,30 @@ function DragTuningPanel({
 
 function VisualOptionsPanel({
   avatarRuntimeOptions,
+  connectionVisualConfig,
   initialCameraZoom,
   nodeSizeConfig,
   showVisibleEdgeCountLabels,
   onAvatarRuntimeOptionsChange,
+  onConnectionVisualConfigChange,
   onInitialCameraZoomChange,
   onNodeSizeConfigChange,
   onToggleVisibleEdgeCountLabels,
 }: {
   avatarRuntimeOptions: AvatarRuntimeOptions
+  connectionVisualConfig: ConnectionVisualConfig
   initialCameraZoom: number
   nodeSizeConfig: GraphSceneNodeSizeConfig
   showVisibleEdgeCountLabels: boolean
   onAvatarRuntimeOptionsChange: (options: AvatarRuntimeOptions) => void
+  onConnectionVisualConfigChange: (config: ConnectionVisualConfig) => void
   onInitialCameraZoomChange: (zoom: number) => void
   onNodeSizeConfigChange: (config: GraphSceneNodeSizeConfig) => void
   onToggleVisibleEdgeCountLabels: () => void
 }) {
   const t = useTranslations('sigma.settings.visuals')
+  const connectionColorModes: ConnectionColorMode[] = ['semantic', 'calm', 'mono']
+  const connectionFocusStyles: ConnectionFocusStyle[] = ['soft', 'balanced', 'dramatic']
 
   return (
     <div>
@@ -1282,6 +1360,105 @@ function VisualOptionsPanel({
             type="range"
             value={initialCameraZoom}
           />
+        </div>
+      </div>
+      <div className="sg-settings-section">
+        <h4>{t('connections')}</h4>
+        <div className="sg-slider-row">
+          <div className="sg-slider-row__head">
+            <span className="sg-slider-row__lbl">{t('connectionOpacity')}</span>
+            <span className="sg-slider-row__val">
+              {Math.round(connectionVisualConfig.opacity * 100)}%
+            </span>
+          </div>
+          <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 4px' }}>
+            {t('connectionOpacityDesc')}
+          </p>
+          <input
+            className="sg-slider"
+            max={MAX_CONNECTION_OPACITY}
+            min={MIN_CONNECTION_OPACITY}
+            onChange={(event) => {
+              onConnectionVisualConfigChange({
+                ...connectionVisualConfig,
+                opacity: Number.parseFloat(event.target.value),
+              })
+            }}
+            step={CONNECTION_OPACITY_STEP}
+            type="range"
+            value={connectionVisualConfig.opacity}
+          />
+        </div>
+        <div className="sg-slider-row">
+          <div className="sg-slider-row__head">
+            <span className="sg-slider-row__lbl">{t('connectionThickness')}</span>
+            <span className="sg-slider-row__val">
+              {connectionVisualConfig.thicknessScale.toFixed(2)}x
+            </span>
+          </div>
+          <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 4px' }}>
+            {t('connectionThicknessDesc')}
+          </p>
+          <input
+            className="sg-slider"
+            max={MAX_CONNECTION_THICKNESS_SCALE}
+            min={MIN_CONNECTION_THICKNESS_SCALE}
+            onChange={(event) => {
+              onConnectionVisualConfigChange({
+                ...connectionVisualConfig,
+                thicknessScale: Number.parseFloat(event.target.value),
+              })
+            }}
+            step={CONNECTION_THICKNESS_SCALE_STEP}
+            type="range"
+            value={connectionVisualConfig.thicknessScale}
+          />
+        </div>
+        <div className="sg-setting-stack">
+          <div className="sg-setting-row__lbl">{t('connectionPalette')}</div>
+          <div className="sg-setting-row__desc">{t('connectionPaletteDesc')}</div>
+          <div
+            aria-label={t('connectionPalette')}
+            className="sg-segmented-control sg-segmented-control--triple"
+            role="group"
+          >
+            {connectionColorModes.map((mode) => (
+              <button
+                className={`sg-segmented-control__btn${connectionVisualConfig.colorMode === mode ? ' sg-segmented-control__btn--active' : ''}`}
+                key={mode}
+                onClick={() => onConnectionVisualConfigChange({
+                  ...connectionVisualConfig,
+                  colorMode: mode,
+                })}
+                type="button"
+              >
+                {t(`connectionPaletteModes.${mode}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="sg-setting-stack">
+          <div className="sg-setting-row__lbl">{t('connectionFocusStyle')}</div>
+          <div className="sg-setting-row__desc">{t('connectionFocusStyleDesc')}</div>
+          <div
+            aria-label={t('connectionFocusStyle')}
+            className="sg-segmented-control sg-segmented-control--triple"
+            role="group"
+          >
+            {connectionFocusStyles.map((style) => (
+              <button
+                className={`sg-segmented-control__btn${connectionVisualConfig.focusStyle === style ? ' sg-segmented-control__btn--active' : ''}`}
+                key={style}
+                onClick={() => onConnectionVisualConfigChange({
+                  ...connectionVisualConfig,
+                  focusStyle: style,
+                })}
+                type="button"
+              >
+                {t(`connectionFocusStyles.${style}`)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <div className="sg-settings-section">
@@ -1823,6 +2000,8 @@ interface SigmaRootLoadChromeProps {
   isRootLoadScreenOpen: boolean
   isRootSheetOpen: boolean
   relayState: CanonicalRelayState
+  rootLoadHudEnabled: boolean
+  rootLoadOverlayEnabled: boolean
   rootLoadOverride?: RootLoadState | null
   rootPubkey: string | null
   sceneNodeCount: number
@@ -1846,6 +2025,8 @@ const SigmaRootLoadChrome = memo(function SigmaRootLoadChrome({
   isRootLoadScreenOpen,
   isRootSheetOpen,
   relayState,
+  rootLoadHudEnabled,
+  rootLoadOverlayEnabled,
   rootLoadOverride,
   rootPubkey,
   sceneNodeCount,
@@ -1860,35 +2041,33 @@ const SigmaRootLoadChrome = memo(function SigmaRootLoadChrome({
     fallbackMessage === 'Cargando root...' && rootLoad.message
       ? rootLoad.message
       : fallbackMessage ?? rootLoad.message
-  const isGraphLoading =
-    !isRootSheetOpen &&
-    (isRootLoadScreenOpen ||
-      (rootPubkey !== null &&
-        rootLoad.status === 'loading' &&
-        sceneNodeCount < 3))
-  const shouldShowLoadProgressHud =
-    !isGraphLoading &&
-    !isRootSheetOpen &&
-    hasRoot &&
-    rootLoad.visibleLinkProgress !== null &&
-    isRootLoadProgressActive(rootLoad)
+  const visibility = getRootLoadChromeVisibility({
+    hasRoot,
+    isRootLoadScreenOpen,
+    isRootSheetOpen,
+    rootLoad,
+    rootPubkey,
+    sceneNodeCount,
+    rootLoadHudEnabled,
+  })
 
-  if (!isGraphLoading && !shouldShowLoadProgressHud) {
+  if (!visibility.showOverlay && !visibility.showHud) {
     return null
   }
 
   return (
     <>
-      {isGraphLoading ? (
+      {visibility.showOverlay ? (
         <SigmaLoadingOverlay
           identityLabel={identityLabel}
           message={visibleLoadFeedback}
           nodeCount={displayNodeCount}
           relayState={relayState}
           rootLoad={rootLoad}
+          showProgressBar={rootLoadOverlayEnabled}
         />
       ) : null}
-      {shouldShowLoadProgressHud ? (
+      {visibility.showHud ? (
         <SigmaLoadProgressHud
           identityLabel={identityLabel}
           message={visibleLoadFeedback}
@@ -1902,7 +2081,6 @@ const SigmaRootLoadChrome = memo(function SigmaRootLoadChrome({
 
 interface SigmaTopBarRootLoadBridgeProps
   extends Omit<ComponentProps<typeof SigmaTopBar>, 'searchLoadProgress'> {
-  bridge: LegacyKernelBridge
   displayNodeCount: number
   fallbackMessage: string | null
   identityLabel?: string | null
@@ -1912,60 +2090,11 @@ interface SigmaTopBarRootLoadBridgeProps
 }
 
 const SigmaTopBarRootLoadBridge = memo(function SigmaTopBarRootLoadBridge({
-  bridge,
-  displayNodeCount,
-  fallbackMessage,
-  identityLabel,
   nodeDrawProgress = null,
   nodeExpansionLoadProgress = null,
-  rootLoadOverride,
   ...topBarProps
 }: SigmaTopBarRootLoadBridgeProps) {
-  const loadingT = useTranslations('sigma.loading')
-  const locale = useLocale()
-  const progressCopy = useMemo(
-    () => buildRootLoadProgressCopy({ locale, t: loadingT }),
-    [loadingT, locale],
-  )
-  const subscribedRootLoad = useSyncExternalStore(
-    bridge.subscribeUi,
-    () => bridge.getUiState().rootLoad,
-    getServerRootLoadSnapshot,
-  )
-  const rootLoad = rootLoadOverride ?? subscribedRootLoad
-  const shouldPrioritizeRootLoad =
-    rootLoad.status !== 'ready' && isRootLoadProgressActive(rootLoad)
-  const shouldShowSearchLoadProgress =
-    shouldPrioritizeRootLoad ||
-    (rootLoad.status === 'ready' && !topBarProps.searchDisabled)
-  const rootSearchLoadProgress = useMemo(() => {
-    if (!shouldShowSearchLoadProgress) {
-      return null
-    }
-
-    const progress = buildRootLoadProgressViewModel({
-      copy: progressCopy,
-      rootLoad,
-      identityLabel,
-      nodeCount: displayNodeCount,
-      fallbackMessage,
-    })
-
-    return {
-      percent: progress.percent,
-      label: progress.ariaLabel,
-    }
-  }, [
-    displayNodeCount,
-    fallbackMessage,
-    identityLabel,
-    progressCopy,
-    rootLoad,
-    shouldShowSearchLoadProgress,
-  ])
-  const baseSearchLoadProgress = shouldPrioritizeRootLoad
-    ? rootSearchLoadProgress
-    : nodeExpansionLoadProgress ?? rootSearchLoadProgress
+  const baseSearchLoadProgress = nodeExpansionLoadProgress
   const searchLoadProgress = useMemo(
     () => includeNodeDrawProgress(baseSearchLoadProgress, nodeDrawProgress),
     [baseSearchLoadProgress, nodeDrawProgress],
@@ -2067,6 +2196,9 @@ export default function GraphAppV2() {
   ] = useState(false)
   const [avatarRuntimeOptions, setAvatarRuntimeOptions] =
     useState<AvatarRuntimeOptions>(DEFAULT_AVATAR_RUNTIME_OPTIONS)
+  const [connectionVisualConfig, setConnectionVisualConfig] = useState(
+    readStoredConnectionVisualConfig,
+  )
   const [initialCameraZoom, setInitialCameraZoom] = useState(
     readStoredInitialCameraZoom,
   )
@@ -2093,6 +2225,12 @@ export default function GraphAppV2() {
   const [physicsEnabled, setPhysicsEnabled] = useState(true)
   const [avatarPhotosEnabled, setAvatarPhotosEnabled] = useState(
     readStoredAvatarPhotosEnabled,
+  )
+  const [rootLoadOverlayEnabled, setRootLoadOverlayEnabled] = useState(() =>
+    readStoredRootLoadChromeEnabled(ROOT_LOAD_OVERLAY_ENABLED_STORAGE_KEY),
+  )
+  const [rootLoadHudEnabled, setRootLoadHudEnabled] = useState(() =>
+    readStoredRootLoadChromeEnabled(ROOT_LOAD_HUD_ENABLED_STORAGE_KEY),
   )
   const [hudStatsEnabled, setHudStatsEnabled] = useState(() =>
     readStoredHudStatsEnabled(process.env.NODE_ENV),
@@ -2257,6 +2395,28 @@ export default function GraphAppV2() {
   useEffect(() => {
     try {
       window.localStorage.setItem(
+        ROOT_LOAD_OVERLAY_ENABLED_STORAGE_KEY,
+        serializeRootLoadChromeEnabled(rootLoadOverlayEnabled),
+      )
+    } catch {
+      // Persistence is best-effort; the root load overlay toggle still works.
+    }
+  }, [rootLoadOverlayEnabled])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        ROOT_LOAD_HUD_ENABLED_STORAGE_KEY,
+        serializeRootLoadChromeEnabled(rootLoadHudEnabled),
+      )
+    } catch {
+      // Persistence is best-effort; the root load HUD toggle still works.
+    }
+  }, [rootLoadHudEnabled])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
         HUD_STATS_STORAGE_KEY,
         serializeHudStatsEnabled(hudStatsEnabled),
       )
@@ -2290,6 +2450,17 @@ export default function GraphAppV2() {
       // Non-critical preference persistence.
     }
   }, [showVisibleEdgeCountLabels])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        CONNECTION_VISUAL_CONFIG_STORAGE_KEY,
+        JSON.stringify(connectionVisualConfig),
+      )
+    } catch {
+      // Non-critical preference persistence.
+    }
+  }, [connectionVisualConfig])
 
   useEffect(() => {
     try {
@@ -3481,6 +3652,9 @@ export default function GraphAppV2() {
   const handleInitialCameraZoomChange = useCallback((zoom: number) => {
     setInitialCameraZoom(clampInitialCameraZoom(zoom))
   }, [])
+  const handleConnectionVisualConfigChange = useCallback((config: ConnectionVisualConfig) => {
+    setConnectionVisualConfig(normalizeConnectionVisualConfig(config))
+  }, [])
   const handleNodeSizeConfigChange = useCallback(
     (config: GraphSceneNodeSizeConfig) => {
       setNodeSizeConfig(normalizeGraphSceneNodeSizeConfig(config))
@@ -4425,9 +4599,11 @@ export default function GraphAppV2() {
         return (
           <VisualOptionsPanel
             avatarRuntimeOptions={avatarRuntimeOptions}
+            connectionVisualConfig={connectionVisualConfig}
             initialCameraZoom={initialCameraZoom}
             nodeSizeConfig={nodeSizeConfig}
             onAvatarRuntimeOptionsChange={setAvatarRuntimeOptions}
+            onConnectionVisualConfigChange={handleConnectionVisualConfigChange}
             onInitialCameraZoomChange={handleInitialCameraZoomChange}
             onNodeSizeConfigChange={handleNodeSizeConfigChange}
             onToggleVisibleEdgeCountLabels={() => {
@@ -4496,6 +4672,55 @@ export default function GraphAppV2() {
                 </div>
               </div>
             ) : null}
+            <div className="sg-settings-section">
+              <h4>{tSigma('settings.performance.advanced')}</h4>
+              <div className="sg-setting-row">
+                <div>
+                  <div className="sg-setting-row__lbl">
+                    {tSigma('settings.performance.rootLoadOverlay')}
+                  </div>
+                  <div className="sg-setting-row__desc">
+                    {tSigma('settings.performance.rootLoadOverlayDesc')}
+                  </div>
+                </div>
+                <button
+                  aria-pressed={rootLoadOverlayEnabled}
+                  className={`sg-toggle${rootLoadOverlayEnabled ? ' sg-toggle--on' : ''}`}
+                  onClick={() => {
+                    setRootLoadOverlayEnabled((current) => !current)
+                  }}
+                  title={
+                    rootLoadOverlayEnabled
+                      ? tSigma('settings.performance.hideRootLoadOverlay')
+                      : tSigma('settings.performance.showRootLoadOverlay')
+                  }
+                  type="button"
+                />
+              </div>
+              <div className="sg-setting-row">
+                <div>
+                  <div className="sg-setting-row__lbl">
+                    {tSigma('settings.performance.rootLoadHud')}
+                  </div>
+                  <div className="sg-setting-row__desc">
+                    {tSigma('settings.performance.rootLoadHudDesc')}
+                  </div>
+                </div>
+                <button
+                  aria-pressed={rootLoadHudEnabled}
+                  className={`sg-toggle${rootLoadHudEnabled ? ' sg-toggle--on' : ''}`}
+                  onClick={() => {
+                    setRootLoadHudEnabled((current) => !current)
+                  }}
+                  title={
+                    rootLoadHudEnabled
+                      ? tSigma('settings.performance.hideRootLoadHud')
+                      : tSigma('settings.performance.showRootLoadHud')
+                  }
+                  type="button"
+                />
+              </div>
+            </div>
             <AdvancedAvatarOptionsPanel
               avatarPerfSnapshot={avatarPerfSnapshot}
               avatarRuntimeOptions={avatarRuntimeOptions}
@@ -5333,6 +5558,7 @@ export default function GraphAppV2() {
         avatarImagesEnabled={avatarPhotosEnabled}
         avatarRuntimeOptions={stableAvatarRuntimeOptions}
         callbacks={callbacks}
+        connectionVisualConfig={connectionVisualConfig}
         dragInfluenceTuning={dragInfluenceTuning}
         enableDebugProbe={isTestMode}
         hideConnectionsForLowPerformance={lowPerformanceConnectionHidingActive}
@@ -5354,6 +5580,8 @@ export default function GraphAppV2() {
         isRootLoadScreenOpen={isRootLoadScreenOpen}
         isRootSheetOpen={isRootSheetOpen}
         relayState={relayState}
+        rootLoadHudEnabled={rootLoadHudEnabled}
+        rootLoadOverlayEnabled={rootLoadOverlayEnabled}
         rootLoadOverride={fixtureUiState?.rootLoad ?? null}
         rootPubkey={sceneState.rootPubkey}
         sceneNodeCount={deferredScene.render.nodes.length}
@@ -5361,7 +5589,6 @@ export default function GraphAppV2() {
 
       {/* Top bar: search strip (left) + brand (right) */}
       <SigmaTopBarRootLoadBridge
-        bridge={bridge}
         displayNodeCount={displayScene.render.nodes.length}
         fallbackMessage={loadFeedback}
         identityLabel={rootDisplayName ?? sceneState.rootPubkey?.slice(0, 10) ?? null}

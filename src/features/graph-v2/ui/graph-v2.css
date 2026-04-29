@@ -2337,6 +2337,10 @@
   background: oklch(100% 0 0 / 0.03);
 }
 
+[data-graph-v2] .sg-segmented-control--triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 [data-graph-v2] .sg-segmented-control__btn {
   min-height: 30px;
   border: 0;
@@ -2360,6 +2364,12 @@
 [data-graph-v2] .sg-segmented-control__btn--active:hover {
   color: var(--sg-bg-deep);
   background: oklch(100% 0 0 / 0.92);
+}
+
+[data-graph-v2] .sg-setting-stack {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0 2px;
 }
 
 [data-graph-v2] .sg-slider-row {

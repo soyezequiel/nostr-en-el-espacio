@@ -14,6 +14,7 @@ interface Props {
   nodeCount: number
   relayState: CanonicalRelayState
   rootLoad: RootLoadState
+  showProgressBar?: boolean
 }
 
 interface GraphLoaderNode {
@@ -264,6 +265,7 @@ export const SigmaLoadingOverlay = memo(function SigmaLoadingOverlay({
   nodeCount,
   relayState,
   rootLoad,
+  showProgressBar = true,
 }: Props) {
   const t = useTranslations('sigma.loadingOverlay')
   const loadingT = useTranslations('sigma.loading')
@@ -317,15 +319,17 @@ export const SigmaLoadingOverlay = memo(function SigmaLoadingOverlay({
           <span>{progress.progressLabel}</span>
           {progress.isEstimatedTotal ? <em>{t('estimated')}</em> : null}
         </div>
-        <div
-          aria-hidden="true"
-          className={`sg-load-bar${progress.isIndeterminate ? ' sg-load-bar--indeterminate' : ''}`}
-        >
+        {showProgressBar ? (
           <div
-            className={progressBarClassName}
-            style={{ width: progress.isIndeterminate ? '100%' : `${progress.percent}%` }}
-          />
-        </div>
+            aria-hidden="true"
+            className={`sg-load-bar${progress.isIndeterminate ? ' sg-load-bar--indeterminate' : ''}`}
+          >
+            <div
+              className={progressBarClassName}
+              style={{ width: progress.isIndeterminate ? '100%' : `${progress.percent}%` }}
+            />
+          </div>
+        ) : null}
 
         <div className="sg-loading-terminal">
           {terminalLines.map((line, index) => (

@@ -2,6 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 
+import type { ConnectionVisualConfig } from '@/features/graph-v2/connectionVisualConfig'
 import type {
   GraphInteractionCallbacks,
   GraphSceneSnapshot,
@@ -39,6 +40,7 @@ interface SigmaCanvasHostProps {
   avatarImagesEnabled?: boolean
   hideConnectionsForLowPerformance?: boolean
   avatarRuntimeOptions?: AvatarRuntimeOptions
+  connectionVisualConfig?: ConnectionVisualConfig
   initialCameraZoom?: number
   onAvatarPerfSnapshot?: (snapshot: PerfBudgetSnapshot | null) => void
 }
@@ -156,6 +158,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       avatarImagesEnabled = true,
       hideConnectionsForLowPerformance = false,
       avatarRuntimeOptions,
+      connectionVisualConfig,
       initialCameraZoom,
       onAvatarPerfSnapshot,
     },
@@ -176,6 +179,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
     hideConnectionsForLowPerformance,
   )
   const avatarRuntimeOptionsRef = useRef(avatarRuntimeOptions)
+  const connectionVisualConfigRef = useRef(connectionVisualConfig)
   const initialCameraZoomRef = useRef(initialCameraZoom)
   const lastAvatarPerfSnapshotKeyRef = useRef<string | null>(null)
 
@@ -189,10 +193,12 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
     hideConnectionsForLowPerformanceRef.current =
       hideConnectionsForLowPerformance
     avatarRuntimeOptionsRef.current = avatarRuntimeOptions
+    connectionVisualConfigRef.current = connectionVisualConfig
     initialCameraZoomRef.current = initialCameraZoom
   }, [
     avatarImagesEnabled,
     avatarRuntimeOptions,
+    connectionVisualConfig,
     dragInfluenceTuning,
     hideConnectionsForLowPerformance,
     hideAvatarsOnMove,
@@ -237,6 +243,9 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       )
       if (avatarRuntimeOptionsRef.current) {
         nextAdapter.setAvatarRuntimeOptions(avatarRuntimeOptionsRef.current)
+      }
+      if (connectionVisualConfigRef.current) {
+        nextAdapter.setConnectionVisualConfig(connectionVisualConfigRef.current)
       }
 
       adapter = nextAdapter
@@ -395,6 +404,13 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       hideConnectionsForLowPerformance,
     )
   }, [hideConnectionsForLowPerformance])
+
+  useEffect(() => {
+    if (!connectionVisualConfig) {
+      return
+    }
+    adapterRef.current?.setConnectionVisualConfig(connectionVisualConfig)
+  }, [connectionVisualConfig])
 
   useEffect(() => {
     if (!avatarRuntimeOptions) {

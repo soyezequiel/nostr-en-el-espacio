@@ -52,6 +52,12 @@ export interface ParsedZap {
   toPubkey: string
   sats: number
   createdAt: number
+  // Id del evento original que recibio el zap (tag 'e' del recibo NIP-57).
+  // Puede ser null cuando el zap apunta a un perfil y no a una nota concreta.
+  zappedEventId: string | null
+  // Comentario opcional incluido en la zap request (campo content del JSON
+  // dentro del tag description). null si no hay texto util.
+  comment: string | null
 }
 
 export interface RawZapReceiptEvent {
@@ -71,6 +77,7 @@ export function parseZapReceiptEvent(event: RawZapReceiptEvent): ParsedZap | nul
   if (!description) return null
 
   let senderPubkey: string | undefined
+  let comment: string | null = null
   try {
     const parsed: unknown = JSON.parse(description)
     if (
@@ -80,6 +87,15 @@ export function parseZapReceiptEvent(event: RawZapReceiptEvent): ParsedZap | nul
       typeof (parsed as { pubkey?: unknown }).pubkey === 'string'
     ) {
       senderPubkey = (parsed as { pubkey: string }).pubkey
+    }
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'content' in parsed &&
+      typeof (parsed as { content?: unknown }).content === 'string'
+    ) {
+      const trimmed = (parsed as { content: string }).content.trim()
+      comment = trimmed.length > 0 ? trimmed : null
     }
   } catch {
     // Ignorar el error de parseo, intentaremos con el tag P
@@ -96,11 +112,19 @@ export function parseZapReceiptEvent(event: RawZapReceiptEvent): ParsedZap | nul
     parseBolt11ToSats(findTag(event.tags, 'bolt11'))
   if (!sats || sats <= 0) return null
 
+  const zappedEventIdRaw = findTag(event.tags, 'e')
+  const zappedEventId =
+    zappedEventIdRaw && /^[0-9a-f]{64}$/i.test(zappedEventIdRaw)
+      ? zappedEventIdRaw.toLowerCase()
+      : null
+
   return {
     eventId: event.id,
     fromPubkey: senderPubkey.toLowerCase(),
     toPubkey: toPubkeyRaw.toLowerCase(),
     sats,
     createdAt: event.created_at,
+    zappedEventId,
+    comment,
   }
 }

@@ -160,8 +160,10 @@ import {
 } from '@/features/graph-v2/ui/rootLoadProgressViewModel'
 import { buildRootLoadProgressCopy } from '@/features/graph-v2/ui/rootLoadProgressI18n'
 import { SigmaRootInput } from '@/features/graph-v2/ui/SigmaRootInput'
+import { SigmaOffGraphIdentityPanel } from '@/features/graph-v2/ui/SigmaOffGraphIdentityPanel'
 import { SigmaSavedRootsPanel } from '@/features/graph-v2/ui/SigmaSavedRootsPanel'
 import { SigmaToasts, type SigmaToast } from '@/features/graph-v2/ui/SigmaToasts'
+import { SigmaZapDetailPanel } from '@/features/graph-v2/ui/SigmaZapDetailPanel'
 import { RuntimeInspectorDrawer } from '@/features/graph-v2/ui/runtime-inspector/RuntimeInspectorDrawer'
 import {
   buildAvatarRuntimeDebugFilename,
@@ -243,8 +245,18 @@ interface ZapActivityLogEntry {
   toPubkey: string
   sats: number
   played: boolean
+  // Cuando se registro la entrada en la UI (ms epoch).
   createdAt: number
+  // Timestamp original del zap (s epoch, segun el recibo NIP-57).
+  zapCreatedAt: number
   eventId?: string
+  zappedEventId?: string | null
+  comment?: string | null
+}
+
+interface ZapOffGraphIdentitySelection {
+  fallbackLabel: string
+  pubkey: string
 }
 
 const INTEGER_FORMATTER = new Intl.NumberFormat('es-AR')
@@ -2213,6 +2225,13 @@ export default function GraphAppV2() {
   const [isRootSheetOpen, setIsRootSheetOpen] = useState(!isFixtureMode)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isZapsPanelOpen, setIsZapsPanelOpen] = useState(false)
+  const [selectedZapDetailId, setSelectedZapDetailId] = useState<string | null>(null)
+  const [selectedZapOffGraphIdentity, setSelectedZapOffGraphIdentity] =
+    useState<ZapOffGraphIdentitySelection | null>(null)
+  // Refs para que el handler de Escape (declarado mas arriba en el archivo)
+  // pueda acceder al estado del nodo seleccionado y al clearer sin romper TDZ.
+  const detailNodeRef = useRef<unknown>(null)
+  const clearSelectedNodeRef = useRef<(() => void) | null>(null)
   const [isRuntimeInspectorOpen, setIsRuntimeInspectorOpen] = useState(false)
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [isPersonSearchOpen, setIsPersonSearchOpen] = useState(false)
@@ -2612,7 +2631,22 @@ export default function GraphAppV2() {
         if (mobileUtilityPanel) { setMobileUtilityPanel(null); return }
         if (isPersonSearchOpen) { setIsPersonSearchOpen(false); return }
         if (isSettingsOpen) { setIsSettingsOpen(false); return }
-        if (isZapsPanelOpen) { setIsZapsPanelOpen(false); return }
+        if (isZapsPanelOpen) {
+          if (detailNodeRef.current) {
+            clearSelectedNodeRef.current?.()
+            return
+          }
+          if (selectedZapOffGraphIdentity) {
+            setSelectedZapOffGraphIdentity(null)
+            return
+          }
+          if (selectedZapDetailId) {
+            setSelectedZapDetailId(null)
+            return
+          }
+          setIsZapsPanelOpen(false)
+          return
+        }
         if (isNotificationsOpen) { setIsNotificationsOpen(false); return }
         if (isRuntimeInspectorOpen) { setIsRuntimeInspectorOpen(false); return }
         if (isRootSheetOpen && sceneState.rootPubkey) { setIsRootSheetOpen(false); return }
@@ -2659,7 +2693,7 @@ export default function GraphAppV2() {
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [canUseRuntimeInspector, mobileUtilityPanel, sceneState.rootPubkey, isNotificationsOpen, isPersonSearchOpen, isRootSheetOpen, isRuntimeInspectorOpen, isSettingsOpen, isZapsPanelOpen])
+  }, [canUseRuntimeInspector, mobileUtilityPanel, sceneState.rootPubkey, isNotificationsOpen, isPersonSearchOpen, isRootSheetOpen, isRuntimeInspectorOpen, isSettingsOpen, isZapsPanelOpen, selectedZapDetailId, selectedZapOffGraphIdentity])
 
   const closeCompetingSidePanels = useCallback(() => {
     setIsRootSheetOpen(false)
@@ -2927,6 +2961,9 @@ export default function GraphAppV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sceneState.nodeDetailRevision, sceneState.sceneSignature],
   )
+  useEffect(() => {
+    detailNodeRef.current = detail.node
+  }, [detail.node])
 
   useEffect(() => {
     const latest = latestVisibleWarmupRef.current
@@ -3106,6 +3143,9 @@ export default function GraphAppV2() {
     }
     bridge.selectNode(null)
   }, [bridge, isFixtureMode, updateFixtureState])
+  useEffect(() => {
+    clearSelectedNodeRef.current = clearSelectedNode
+  }, [clearSelectedNode])
 
   useEffect(() => {
     if (!sceneState.rootPubkey || !currentRootNode) return
@@ -3157,7 +3197,12 @@ export default function GraphAppV2() {
     [sceneState.edgesById],
   )
   const appendZapActivity = useCallback((
-    zap: Pick<ParsedZap, 'fromPubkey' | 'toPubkey' | 'sats'> & { eventId?: string },
+    zap: Pick<ParsedZap, 'fromPubkey' | 'toPubkey' | 'sats'> & {
+      eventId?: string
+      createdAt?: number
+      zappedEventId?: string | null
+      comment?: string | null
+    },
     source: ZapActivitySource,
     played: boolean,
   ) => {
@@ -3170,7 +3215,10 @@ export default function GraphAppV2() {
       sats: zap.sats,
       played,
       createdAt: Date.now(),
+      zapCreatedAt: zap.createdAt ?? Math.floor(Date.now() / 1_000),
       eventId: zap.eventId,
+      zappedEventId: zap.zappedEventId ?? null,
+      comment: zap.comment ?? null,
     }
     setZapActivityLog((current) => {
       if (entry.eventId && current.some((e) => e.eventId === entry.eventId)) {
@@ -4120,6 +4168,8 @@ export default function GraphAppV2() {
   const handleOpenZapsPanel = useCallback(() => {
     if (isZapsPanelOpen) {
       setIsZapsPanelOpen(false)
+      setSelectedZapDetailId(null)
+      setSelectedZapOffGraphIdentity(null)
       clearSelectedNode()
       return
     }
@@ -4130,8 +4180,55 @@ export default function GraphAppV2() {
     setIsRootSheetOpen(false)
     setMobileUtilityPanel(null)
     setMobilePanelSnap('mid')
+    setSelectedZapDetailId(null)
+    setSelectedZapOffGraphIdentity(null)
     setIsZapsPanelOpen(true)
   }, [clearSelectedNode, isZapsPanelOpen])
+
+  useEffect(() => {
+    if (isZapsPanelOpen) return
+    if (selectedZapDetailId !== null) {
+      setSelectedZapDetailId(null)
+    }
+    if (selectedZapOffGraphIdentity !== null) {
+      setSelectedZapOffGraphIdentity(null)
+    }
+  }, [isZapsPanelOpen, selectedZapDetailId, selectedZapOffGraphIdentity])
+
+  const selectedZapDetail = useMemo(() => {
+    if (!selectedZapDetailId) return null
+    return zapActivityLog.find((entry) => entry.id === selectedZapDetailId) ?? null
+  }, [selectedZapDetailId, zapActivityLog])
+
+  const handleOpenZapDetail = useCallback((entryId: string) => {
+    setSelectedZapOffGraphIdentity(null)
+    setSelectedZapDetailId(entryId)
+  }, [])
+
+  const handleCloseZapDetail = useCallback(() => {
+    setSelectedZapOffGraphIdentity(null)
+    setSelectedZapDetailId(null)
+  }, [])
+
+  const handleCloseZapOffGraphIdentity = useCallback(() => {
+    setSelectedZapOffGraphIdentity(null)
+  }, [])
+
+  const handleOpenIdentityFromZap = useCallback((pubkey: string, fallbackLabel: string) => {
+    if (isFixtureMode) {
+      updateFixtureState((current) => ({ ...current, selectedNodePubkey: pubkey }))
+      return
+    }
+    setSelectedZapOffGraphIdentity(null)
+    // Si el actor ya existe en el grafo, reutilizamos el panel de identidad
+    // actual. Si no existe, abrimos una vista read-only con su perfil remoto
+    // sin tocar el root ni mutar el grafo.
+    if (sceneState.nodesByPubkey[pubkey]) {
+      bridge.selectNode(pubkey)
+      return
+    }
+    setSelectedZapOffGraphIdentity({ fallbackLabel, pubkey })
+  }, [bridge, isFixtureMode, sceneState.nodesByPubkey, updateFixtureState])
 
   const handleOpenRuntimeInspector = useCallback(() => {
     if (!canUseRuntimeInspector) {
@@ -5163,9 +5260,23 @@ export default function GraphAppV2() {
                 <span aria-hidden="true">{'->'}</span>
                 <span>{getZapActorLabel(entry.toPubkey)}</span>
               </p>
-              <span className="sg-zap-feed__result">
-                {entry.played ? tSigma('zaps.panel.shownInGraph') : tSigma('zaps.panel.outsideView')}
-              </span>
+              <div className="sg-zap-feed__item-actions">
+                <span className="sg-zap-feed__result">
+                  {entry.played ? tSigma('zaps.panel.shownInGraph') : tSigma('zaps.panel.outsideView')}
+                </span>
+                <button
+                  aria-label={`Ver detalles del zap de ${getZapActorLabel(entry.fromPubkey)} a ${getZapActorLabel(entry.toPubkey)}`}
+                  className="sg-zap-feed__details-btn"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    handleOpenZapDetail(entry.id)
+                  }}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  type="button"
+                >
+                  Detalles
+                </button>
+              </div>
             </article>
           ))}
         </div>
@@ -5523,6 +5634,23 @@ export default function GraphAppV2() {
       setIsSettingsOpen(false)
     }
     if (isZapsPanelOpen) {
+      // Stack de niveles dentro del panel de zaps:
+      //   identidad del grafo / identidad off-graph -> detalle del zap -> listado -> cerrar
+      if (detail.node) {
+        if (!isIdentityHelpDismissed) {
+          dismissIdentityHelp()
+        }
+        clearSelectedNode()
+        return
+      }
+      if (selectedZapOffGraphIdentity) {
+        setSelectedZapOffGraphIdentity(null)
+        return
+      }
+      if (selectedZapDetailId) {
+        setSelectedZapDetailId(null)
+        return
+      }
       setIsZapsPanelOpen(false)
     }
     if (isNotificationsOpen) {
@@ -5538,6 +5666,7 @@ export default function GraphAppV2() {
     clearSelectedNode()
   }, [
     clearSelectedNode,
+    detail.node,
     dismissIdentityHelp,
     isIdentityHelpDismissed,
     isIdentityPanelOpen,
@@ -5545,6 +5674,8 @@ export default function GraphAppV2() {
     isNotificationsOpen,
     isSettingsOpen,
     isZapsPanelOpen,
+    selectedZapDetailId,
+    selectedZapOffGraphIdentity,
   ])
 
   return (
@@ -5678,7 +5809,11 @@ export default function GraphAppV2() {
             isSettingsOpen
               ? tSigma('panelEyebrow.settings')
               : isZapsPanelOpen
-                ? tSigma('panelEyebrow.zaps')
+                ? (detail.node || selectedZapOffGraphIdentity)
+                  ? tSigma('panelEyebrow.identity')
+                  : selectedZapDetail
+                    ? 'DETALLE DE ZAP'
+                    : tSigma('panelEyebrow.zaps')
                 : isNotificationsOpen
                   ? tSigma('panelEyebrow.notifications')
                   : mobileUtilityPanel === 'filters'
@@ -5710,6 +5845,23 @@ export default function GraphAppV2() {
         >
           {isSettingsOpen ? (
             renderSettingsContent()
+          ) : isZapsPanelOpen && detail.node ? (
+            renderDetailContent()
+          ) : isZapsPanelOpen && selectedZapOffGraphIdentity ? (
+            <SigmaOffGraphIdentityPanel
+              fallbackLabel={selectedZapOffGraphIdentity.fallbackLabel}
+              onBack={handleCloseZapOffGraphIdentity}
+              pubkey={selectedZapOffGraphIdentity.pubkey}
+            />
+          ) : isZapsPanelOpen && selectedZapDetail ? (
+            <SigmaZapDetailPanel
+              entry={selectedZapDetail}
+              onBack={handleCloseZapDetail}
+              onOpenIdentity={handleOpenIdentityFromZap}
+              onReplay={() => handleReplayZapActivity(selectedZapDetail)}
+              resolveActorLabel={getZapActorLabel}
+              sourceLabel={ZAP_ACTIVITY_SOURCE_LABELS[selectedZapDetail.source]}
+            />
           ) : isZapsPanelOpen ? (
             renderZapsContent()
           ) : isNotificationsOpen ? (

@@ -470,6 +470,12 @@ function zapRecordToParsedZap(record: ZapRecord): ParsedZap {
     toPubkey: record.toPubkey,
     sats: record.sats,
     createdAt: record.createdAt,
+    zappedEventId: record.eventRef && /^[0-9a-f]{64}$/i.test(record.eventRef)
+      ? record.eventRef.toLowerCase()
+      : null,
+    // El cache persistido no guarda el comentario aun; los zaps recientes
+    // muestran el detalle vacio mientras no se rehidrate desde live.
+    comment: null,
   }
 }
 

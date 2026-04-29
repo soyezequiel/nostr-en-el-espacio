@@ -1,0 +1,363 @@
+{
+  "rootLoader": {
+    "title": "Load identity",
+    "copy": "Paste an npub, nprofile, NIP-05, hex key, or profile link. Sigma will query relays and project the neighborhood.",
+    "recentIdentities": "Recent identities",
+    "clearCache": "Clear cache",
+    "clearingCache": "Clearing...",
+    "cancel": "Cancel"
+  },
+  "rootInput": {
+    "label": "Nostr identity",
+    "placeholder": "npub, nprofile, NIP-05, hex, or profile link",
+    "empty": "Paste an npub, nprofile, NIP-05, hex key, or profile link.",
+    "resolving": "Resolving identity...",
+    "submit": "Explore ->"
+  },
+  "topBar": {
+    "rootFallback": "Root identity",
+    "placeholderReady": "Search for a person in the graph",
+    "placeholderEmpty": "Load an identity to search",
+    "status": {
+      "base": "Search across {count} visible nodes.",
+      "empty": "No visible matches.",
+      "matches": "{count, plural, one {# visible match.} other {# visible matches.}}"
+    },
+    "progressAria": "Graph loading progress",
+    "searchAria": "Search for a person in the graph",
+    "clearSearch": "Clear search",
+    "switchRoot": "Switch root identity: {label}",
+    "moreMatches": "+{count} more highlighted in the graph",
+    "hint": "Matches by fragment, regardless of case or accents."
+  },
+  "savedRoots": {
+    "section": "Saved identities",
+    "unnamed": "Unnamed identity",
+    "source": {
+      "npub": "npub",
+      "nprofile": "nprofile",
+      "hex": "hex",
+      "nip05": "NIP-05",
+      "session": "session",
+      "url": "link"
+    },
+    "empty": "There are no saved identities yet.",
+    "open": "Open {name}",
+    "avatarAlt": "{name} avatar",
+    "confirmDelete": "Confirm removal of {name}",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "removeAria": "Remove {name} from saved identities",
+    "remove": "Remove"
+  },
+  "emptyState": {
+    "title": "Explore any Nostr identity.",
+    "copy": "Load an npub or nprofile. Sigma queries your relays, discovers relationships, and projects the neighborhood as a live graph.",
+    "cta": "Load identity ->",
+    "tip": "tip: press '/' to switch identity"
+  },
+  "filterBar": {
+    "aria": "Graph filters"
+  },
+  "mobileNav": {
+    "aria": "Main graph navigation"
+  },
+  "toasts": {
+    "close": "Close notification",
+    "closeTitle": "Close"
+  },
+  "loadingOverlay": {
+    "relayLoop": "relay loop active - syncing graph",
+    "step": "Step",
+    "of": "of",
+    "estimated": "estimated"
+  },
+  "loading": {
+    "terminal": {
+      "resolveProfileRelays": "resolving profile -> relays",
+      "connected": "connected",
+      "partial": "partial",
+      "slow": "slow",
+      "noResponse": "no response",
+      "pending": "pending",
+      "kind3Events": "kind:3 events received - {count}",
+      "inboundCandidates": "candidate inbound #p - {count}",
+      "visibleLinks": "visible links - {progress}",
+      "waiting": "waiting for graph progress..."
+    },
+    "progress": {
+      "defaultIdentity": "identity",
+      "title": "Mapping {identity}",
+      "measuringLinks": "Measuring links",
+      "nodesSuffix": "nodes",
+      "linksSuffix": "links",
+      "complete": "Load complete",
+      "noLiveData": "No live data arrived",
+      "loadingGraph": "Loading graph",
+      "noRelay": "no relay",
+      "cacheSourceValue": "local cache + live",
+      "metrics": {
+        "nodes": "Nodes",
+        "follows": "Follows",
+        "followers": "Followers",
+        "events": "Events",
+        "lastRelay": "Last relay",
+        "source": "Source"
+      },
+      "steps": {
+        "identity": "Resolve identity",
+        "cache": "Read local cache",
+        "relays": "Query active relays",
+        "discovery": "Discover contact list + inbound",
+        "pagination": "Paginate inbound followers",
+        "parse": "Correlate evidence in worker",
+        "merge": "Merge visible graph",
+        "enrich": "Hydrate profiles and zaps"
+      }
+    }
+  },
+  "settingsTabs": {
+    "performance": "Performance",
+    "visuals": "Visuals",
+    "zaps": "Zaps",
+    "relays": "Network",
+    "dev": "Advanced"
+  },
+  "zaps": {
+    "settings": {
+      "visualization": "Visualization",
+      "showInGraph": "Show zaps in the graph",
+      "showInGraphDesc": "Controls whether zap connections and animations are drawn over the scene.",
+      "hideZaps": "Hide zaps",
+      "showZaps": "Show zaps",
+      "operationalProtection": "Operational protection",
+      "pauseLargeScenes": "Pause live feed in large scenes",
+      "pauseLargeScenesDesc": "Limits relay filters when more than {limit} nodes are visible.",
+      "disableLargeSceneLimit": "Disable live zap limit",
+      "enableLargeSceneLimit": "Enable live zap pause in large scenes"
+    },
+    "panel": {
+      "visible": "Visible zaps",
+      "statusPaused": "Paused",
+      "modeAria": "Zap mode",
+      "keepWorking": "It keeps working even if you close this panel.",
+      "configuredWindow": "Replay configured for {window}.",
+      "historicalWindow": "Historical window",
+      "recentHoursAria": "Recent zap hours",
+      "collection": "Collection",
+      "collectionProgressAria": "Zap collection progress",
+      "targets": "Targets",
+      "batches": "Batches",
+      "cache": "Cache",
+      "new": "New",
+      "timeouts": "Timeouts",
+      "limit": "Limit",
+      "omitted": "{count} omitted",
+      "ok": "OK",
+      "playback": "Playback",
+      "playbackSummary": "{visible} visible / {dropped} dropped",
+      "play": "Play",
+      "pause": "Pause",
+      "resumeReplay": "Resume replay",
+      "pauseReplay": "Pause replay",
+      "replayCache": "Replay cache",
+      "refresh": "Refresh",
+      "timeline": "Timeline",
+      "moveReplay": "Move replay within {window}",
+      "start": "Start",
+      "current": "Current",
+      "end": "End",
+      "replayZap": "Replay zap from {from} to {to}",
+      "shownInGraph": "Shown in the graph",
+      "outsideView": "Outside the current view",
+      "empty": "There are no visible zaps in this session yet."
+    }
+  },
+  "sessionRoot": {
+    "eyebrow": "Connected session",
+    "main": "Explore my identity"
+  },
+  "filters": {
+    "all": {
+      "label": "Whole graph",
+      "hint": "Base view: root, outgoing follows, incoming followers, and expanded nodes."
+    },
+    "following": {
+      "label": "Who I follow",
+      "hint": "Who I follow: outgoing follows from the root and from expanded nodes."
+    },
+    "followers": {
+      "label": "Follows me",
+      "hint": "Follows me: incoming follows to the root and expanded nodes."
+    },
+    "mutuals": {
+      "label": "Mutuals",
+      "hint": "Mutuals: confirmed two-way relationship."
+    },
+    "oneway": {
+      "label": "One-way",
+      "hint": "One-way: confirmed relationship from only one side."
+    },
+    "connections": {
+      "label": "Connections",
+      "caption": "mutuals",
+      "hint": "Connections: only mutuals from the root and expanded nodes."
+    }
+  },
+  "hud": {
+    "nodes": "Nodes",
+    "edges": "Edges",
+    "visible": "Visible",
+    "physics": "Physics",
+    "physicsActive": "active",
+    "physicsPaused": "paused",
+    "relays": "Relays",
+    "fps": "FPS"
+  },
+  "rail": {
+    "settings": "Settings",
+    "closeSettings": "Close settings",
+    "notifications": "Notifications ({count})",
+    "closeNotifications": "Close notifications",
+    "runtime": "Runtime inspector (Shift + D)",
+    "closeRuntime": "Close runtime inspector",
+    "pausePhysics": "Pause physics",
+    "resumePhysics": "Resume physics",
+    "zaps": "Zaps",
+    "closeZaps": "Close zaps panel",
+    "view": "Fit view",
+    "relaysCurrent": "Relays up to date",
+    "relaysRevert": "Revert relays",
+    "filters": "Filters",
+    "closeFilters": "Close connection filters",
+    "liveZaps": "Live zaps",
+    "runtimeShort": "Runtime",
+    "viewShort": "View"
+  },
+  "panelEyebrow": {
+    "settings": "SETTINGS",
+    "zaps": "ZAPS",
+    "notifications": "NOTIFICATIONS",
+    "filters": "FILTERS",
+    "identity": "IDENTITY"
+  },
+  "filtersPanel": {
+    "title": "Connection filter",
+    "description": "Choose which relationships you want to see in the graph. This changes the visible projection, not the loaded data or the exportable evidence."
+  },
+  "settings": {
+    "relayEditor": {
+      "title": "Session relays",
+      "status": "Status",
+      "custom": "custom",
+      "base": "base",
+      "placeholder": "wss://relay.example",
+      "applied": "Applied {count} relays.",
+      "applyError": "The relays could not be applied.",
+      "reverted": "The custom relay configuration was reverted.",
+      "revertError": "The relay configuration could not be reverted.",
+      "apply": "Apply",
+      "revert": "Revert"
+    },
+    "graphCapacity": {
+      "title": "Graph size",
+      "maxNodes": "Max nodes",
+      "nodesValue": "{count} nodes",
+      "description": "Increase it to allow more connections in. Lower it if you want less layout, memory, and avatar load.",
+      "project": "Project {count}",
+      "recommended": "Recommended {count}",
+      "loadedNodes": "Loaded nodes",
+      "remainingMargin": "Remaining margin",
+      "recommendedFor": "Recommended for {profile}",
+      "capReached": "The graph hit the current cap. If you want to keep expanding, raise this limit and try again."
+    },
+    "visuals": {
+      "camera": "Camera",
+      "initialZoom": "Initial zoom",
+      "labels": "Labels",
+      "visibleDegree": "Visible degree",
+      "visibleDegreeDesc": "Each node shows how many visible edges touch it in the current view.",
+      "showNodeNames": "Show node names again",
+      "showVisibleEdges": "Show visible edge count per node",
+      "monograms": "Monograms",
+      "monogramLetters": "Monogram letters",
+      "monogramLettersDesc": "Shows initials when there is no photo available."
+    },
+    "performance": {
+      "discovery": "Discovery",
+      "findMoreNodes": "Find more nodes",
+      "findMoreNodesDesc": "Queries relays and cache again looking for new followers of the root.",
+      "loadRootFirst": "Load a root first",
+      "searching": "Searching...",
+      "findMoreNodesTitle": "Find more nodes",
+      "fluidity": "Fluidity",
+      "prioritizeFluidity": "Prioritize fluidity",
+      "prioritizeFluidityDesc": "Reduce visible connections when performance drops. Status: {status}.",
+      "disableConnectionLod": "Disable performance-based connection LOD",
+      "enableConnectionLod": "Enable performance-based connection LOD",
+      "mobileDegraded": "Degraded mobile mode",
+      "mobileDegradedDesc": "Reduces limits to optimize performance on phones.",
+      "disableDegraded": "Disable degraded mode",
+      "enableDegraded": "Enable degraded mode",
+      "diagnostics": "Diagnostics",
+      "runtimeInspector": "Runtime inspector",
+      "runtimeInspectorDescLocked": "Shows the button to open runtime snapshots. In development it stays visible by default.",
+      "runtimeInspectorDescUnlocked": "Shows the button to open runtime snapshots. In production it stays hidden until you enable it.",
+      "runtimeVisibleByDefault": "Visible by default in development",
+      "hideRuntimeButton": "Hide runtime inspector button",
+      "showRuntimeButton": "Show runtime inspector button",
+      "localData": "Local data",
+      "browserCache": "Browser cache",
+      "browserCacheDesc": "Clears persisted data for this page and reloads the explorer.{message}",
+      "clearing": "Clearing...",
+      "clearCache": "Clear cache",
+      "avatars": "Avatars",
+      "avatarPhotos": "Avatar photos",
+      "avatarPhotosDesc": "Real photos cost more network, decode, and draw work.",
+      "disableAvatarPhotos": "Disable photos to save performance",
+      "enableAvatarPhotos": "Enable avatar photos",
+      "hideOnMove": "Hide while moving",
+      "hideOnMoveDesc": "Switches to monograms during pan, drag, or fast node movement.",
+      "hideWhenZoomedOut": "Hide when zoomed out",
+      "hideWhenZoomedOutDesc": "Switches to monograms when nodes look very small on screen."
+    },
+    "relays": {
+      "state": "Relay state",
+      "custom": "Custom relays",
+      "customDesc": "This session is using a custom list.",
+      "base": "Base relays",
+      "baseDesc": "This session is using the explorer base configuration.",
+      "revert": "Revert"
+    }
+  },
+  "detail": {
+    "rootIdentity": "ROOT IDENTITY",
+    "mutual": "MUTUAL",
+    "following": "I FOLLOW",
+    "follower": "FOLLOWS ME",
+    "oneWay": "ONE-WAY",
+    "unpin": "Unpin profile",
+    "pin": "Pin profile",
+    "connectionsExplored": "Connections explored",
+    "expanding": "Expanding...",
+    "exploreConnections": "Explore connections",
+    "loadingProfile": "Loading profile...",
+    "loadingProfileBio": "Loading profile from relays and cache...",
+    "noBio": "No known bio.",
+    "pinned": "Pinned",
+    "pinAction": "Pin",
+    "identityHelp": "You opened an identity. Explore its connections or pin it to compare it.",
+    "understood": "Understood",
+    "followingCount": "Following",
+    "followersCount": "Followers",
+    "mutualsCount": "Mutuals",
+    "identitySection": "Identity",
+    "notAvailable": "Not available",
+    "copyNpub": "Copy full npub",
+    "copy": "Copy",
+    "openPrimal": "Open account in Primal",
+    "openJumble": "Open account in Jumble",
+    "loadingInline": "loading...",
+    "expansion": "Expansion"
+  }
+}

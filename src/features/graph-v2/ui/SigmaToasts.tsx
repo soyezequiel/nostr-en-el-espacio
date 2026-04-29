@@ -1,6 +1,7 @@
 'use client'
 
 import { memo } from 'react'
+import { useTranslations } from 'next-intl'
 import { CloseIcon } from '@/features/graph-v2/ui/SigmaIcons'
 
 export interface SigmaToast {
@@ -15,22 +16,23 @@ interface Props {
 }
 
 export const SigmaToasts = memo(function SigmaToasts({ onDismiss, toasts }: Props) {
+  const t = useTranslations('sigma.toasts')
   if (toasts.length === 0) return null
 
   return (
     <div aria-live="polite" className="sg-toasts">
-      {toasts.map((t) => (
+      {toasts.map((toast) => (
         <div
-          className={`sg-toast${t.tone && t.tone !== 'default' ? ` sg-toast--${t.tone}` : ''}`}
-          key={t.id}
+          className={`sg-toast${toast.tone && toast.tone !== 'default' ? ` sg-toast--${toast.tone}` : ''}`}
+          key={toast.id}
         >
-          <span className="sg-toast__message">{t.msg}</span>
+          <span className="sg-toast__message">{toast.msg}</span>
           {onDismiss ? (
             <button
-              aria-label="Cerrar notificacion"
+              aria-label={t('close')}
               className="sg-toast__close"
-              onClick={() => onDismiss(t.id)}
-              title="Cerrar"
+              onClick={() => onDismiss(toast.id)}
+              title={t('closeTitle')}
               type="button"
             >
               <CloseIcon />

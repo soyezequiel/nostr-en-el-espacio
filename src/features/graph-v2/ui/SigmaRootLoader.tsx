@@ -2,6 +2,7 @@
 
 import { memo, useId } from 'react'
 import type { ReactNode } from 'react'
+import { useTranslations } from 'next-intl'
 
 interface Props {
   canClose: boolean
@@ -47,11 +48,12 @@ export const SigmaRootLoader = memo(function SigmaRootLoader({
   savedRootsSlot,
   manualInputSlot,
   sessionSlot,
-  title = 'Cargar identidad',
-  copy = 'Pega un npub, nprofile, NIP-05, hex o link. Sigma consultara relays y proyectara el vecindario.',
+  title,
+  copy,
   onClearCache,
   isClearingCache,
 }: Props) {
+  const t = useTranslations('sigma.rootLoader')
   const titleId = useId()
 
   return (
@@ -69,29 +71,32 @@ export const SigmaRootLoader = memo(function SigmaRootLoader({
           <span>labs/sigma</span>
         </div>
         <div className="sg-loader__head">
-          <h1 id={titleId}>{title}</h1>
-          <p>{copy}</p>
+          <h1 id={titleId}>{title ?? t('title')}</h1>
+          <p>{copy ?? t('copy')}</p>
         </div>
         <div className="sg-loader__body">
           {sessionSlot}
 
           {manualInputSlot}
 
-          <div className="sg-loader__divider">Identidades recientes</div>
+          <div className="sg-loader__divider">{t('recentIdentities')}</div>
 
           {savedRootsSlot}
 
           {(canClose || onClearCache) ? (
-            <div className="sg-loader__cancel" style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+            <div
+              className="sg-loader__cancel"
+              style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}
+            >
               {onClearCache && (
                 <button
                   className="sg-btn sg-btn--ghost"
-                  onClick={onClearCache}
                   disabled={isClearingCache}
+                  onClick={onClearCache}
                   style={{ flex: 'none', color: 'var(--nc-red-400)' }}
                   type="button"
                 >
-                  {isClearingCache ? 'Borrando...' : 'Borrar caché'}
+                  {isClearingCache ? t('clearingCache') : t('clearCache')}
                 </button>
               )}
               {canClose && (
@@ -101,7 +106,7 @@ export const SigmaRootLoader = memo(function SigmaRootLoader({
                   style={{ flex: 'none' }}
                   type="button"
                 >
-                  Cancelar
+                  {t('cancel')}
                 </button>
               )}
             </div>

@@ -1,0 +1,363 @@
+{
+  "rootLoader": {
+    "title": "Cargar identidad",
+    "copy": "Pega un npub, nprofile, NIP-05, hex o link de perfil. Sigma consultara relays y proyectara el vecindario.",
+    "recentIdentities": "Identidades recientes",
+    "clearCache": "Borrar cache",
+    "clearingCache": "Borrando...",
+    "cancel": "Cancelar"
+  },
+  "rootInput": {
+    "label": "Identidad Nostr",
+    "placeholder": "npub, nprofile, NIP-05, hex o link de perfil",
+    "empty": "Pega un npub, nprofile, NIP-05, hex o link de perfil.",
+    "resolving": "Resolviendo identidad...",
+    "submit": "Explorar ->"
+  },
+  "topBar": {
+    "rootFallback": "Identidad raiz",
+    "placeholderReady": "Buscar persona en el grafo",
+    "placeholderEmpty": "Carga una identidad para buscar",
+    "status": {
+      "base": "Busca entre {count} nodos visibles.",
+      "empty": "Sin coincidencias visibles.",
+      "matches": "{count, plural, one {# coincidencia visible.} other {# coincidencias visibles.}}"
+    },
+    "progressAria": "Progreso de carga del grafo",
+    "searchAria": "Buscar persona en el grafo",
+    "clearSearch": "Limpiar busqueda",
+    "switchRoot": "Cambiar identidad raiz: {label}",
+    "moreMatches": "+{count} mas resaltadas en el grafo",
+    "hint": "Coincide por fragmento, sin importar mayusculas, minusculas o acentos."
+  },
+  "savedRoots": {
+    "section": "Identidades guardadas",
+    "unnamed": "Identidad sin nombre",
+    "source": {
+      "npub": "npub",
+      "nprofile": "nprofile",
+      "hex": "hex",
+      "nip05": "NIP-05",
+      "session": "sesion",
+      "url": "link"
+    },
+    "empty": "No hay identidades guardadas todavia.",
+    "open": "Abrir {name}",
+    "avatarAlt": "Avatar de {name}",
+    "confirmDelete": "Confirmar borrado de {name}",
+    "confirm": "Confirmar",
+    "cancel": "Cancelar",
+    "removeAria": "Quitar {name} de las identidades guardadas",
+    "remove": "Quitar"
+  },
+  "emptyState": {
+    "title": "Explora cualquier identidad Nostr.",
+    "copy": "Carga un npub o nprofile. Sigma consulta tus relays, descubre relaciones y proyecta el vecindario como un grafo vivo.",
+    "cta": "Cargar identidad ->",
+    "tip": "tip: presiona '/' para cambiar identidad"
+  },
+  "filterBar": {
+    "aria": "Filtros del grafo"
+  },
+  "mobileNav": {
+    "aria": "Navegacion principal del grafo"
+  },
+  "toasts": {
+    "close": "Cerrar notificacion",
+    "closeTitle": "Cerrar"
+  },
+  "loadingOverlay": {
+    "relayLoop": "relay loop activo - sincronizando grafo",
+    "step": "Paso",
+    "of": "de",
+    "estimated": "estimado"
+  },
+  "loading": {
+    "terminal": {
+      "resolveProfileRelays": "resolviendo profile -> relays",
+      "connected": "conectado",
+      "partial": "parcial",
+      "slow": "lento",
+      "noResponse": "sin respuesta",
+      "pending": "pendiente",
+      "kind3Events": "eventos kind:3 recibidos - {count}",
+      "inboundCandidates": "inbound #p candidatos - {count}",
+      "visibleLinks": "links visibles - {progress}",
+      "waiting": "esperando progreso del grafo..."
+    },
+    "progress": {
+      "defaultIdentity": "identidad",
+      "title": "Mapeando {identity}",
+      "measuringLinks": "Midiendo links",
+      "nodesSuffix": "nodos",
+      "linksSuffix": "links",
+      "complete": "Carga completa",
+      "noLiveData": "No llegaron datos live",
+      "loadingGraph": "Cargando grafo",
+      "noRelay": "sin relay",
+      "cacheSourceValue": "cache local + live",
+      "metrics": {
+        "nodes": "Nodos",
+        "follows": "Follows",
+        "followers": "Followers",
+        "events": "Eventos",
+        "lastRelay": "Ultimo relay",
+        "source": "Origen"
+      },
+      "steps": {
+        "identity": "Resolver identidad",
+        "cache": "Leer cache local",
+        "relays": "Consultar relays activos",
+        "discovery": "Descubrir contact list + inbound",
+        "pagination": "Paginar followers inbound",
+        "parse": "Correlacionar evidencia en worker",
+        "merge": "Integrar grafo visible",
+        "enrich": "Hidratar perfiles y zaps"
+      }
+    }
+  },
+  "settingsTabs": {
+    "performance": "Rendimiento",
+    "visuals": "Visuales",
+    "zaps": "Zaps",
+    "relays": "Red",
+    "dev": "Avanzado"
+  },
+  "zaps": {
+    "settings": {
+      "visualization": "Visualizacion",
+      "showInGraph": "Mostrar zaps en el grafo",
+      "showInGraphDesc": "Controla si las conexiones y animaciones de zaps se dibujan sobre la escena.",
+      "hideZaps": "Ocultar zaps",
+      "showZaps": "Mostrar zaps",
+      "operationalProtection": "Proteccion operativa",
+      "pauseLargeScenes": "Pausar live en escenas grandes",
+      "pauseLargeScenesDesc": "Limita filtros de relay cuando hay mas de {limit} nodos visibles.",
+      "disableLargeSceneLimit": "Desactivar limite de zaps live",
+      "enableLargeSceneLimit": "Activar pausa de zaps live en escenas grandes"
+    },
+    "panel": {
+      "visible": "Zaps visibles",
+      "statusPaused": "Pausado",
+      "modeAria": "Modo de zaps",
+      "keepWorking": "Sigue trabajando aunque cierres este panel.",
+      "configuredWindow": "Replay configurado para {window}.",
+      "historicalWindow": "Ventana historica",
+      "recentHoursAria": "Horas de zaps recientes",
+      "collection": "Recoleccion",
+      "collectionProgressAria": "Avance de recoleccion de zaps",
+      "targets": "Objetivos",
+      "batches": "Batches",
+      "cache": "Cache",
+      "new": "Nuevos",
+      "timeouts": "Timeouts",
+      "limit": "Limite",
+      "omitted": "{count} omitidos",
+      "ok": "OK",
+      "playback": "Reproduccion",
+      "playbackSummary": "{visible} visibles / {dropped} descartados",
+      "play": "Play",
+      "pause": "Pausa",
+      "resumeReplay": "Reanudar replay",
+      "pauseReplay": "Pausar replay",
+      "replayCache": "Reproducir cache",
+      "refresh": "Actualizar",
+      "timeline": "Linea de tiempo",
+      "moveReplay": "Mover replay dentro de {window}",
+      "start": "Inicio",
+      "current": "Actual",
+      "end": "Fin",
+      "replayZap": "Reproducir zap de {from} a {to}",
+      "shownInGraph": "Mostrado en el grafo",
+      "outsideView": "Fuera de la vista actual",
+      "empty": "Todavia no hay zaps visibles en esta sesion."
+    }
+  },
+  "sessionRoot": {
+    "eyebrow": "Sesion conectada",
+    "main": "Explorar mi identidad"
+  },
+  "filters": {
+    "all": {
+      "label": "Toda la red",
+      "hint": "Vista base: raiz, follows salientes, followers entrantes y nodos expandidos."
+    },
+    "following": {
+      "label": "A quienes sigo",
+      "hint": "A quienes sigo: follows salientes desde la raiz y desde nodos expandidos."
+    },
+    "followers": {
+      "label": "Me siguen",
+      "hint": "Me siguen: follows entrantes hacia la raiz y nodos expandidos."
+    },
+    "mutuals": {
+      "label": "Mutuos",
+      "hint": "Mutuos: relacion de ida y vuelta confirmada."
+    },
+    "oneway": {
+      "label": "Sin reciprocidad",
+      "hint": "Sin reciprocidad: vinculo confirmado de un solo lado."
+    },
+    "connections": {
+      "label": "Conexiones",
+      "caption": "mutuos",
+      "hint": "Conexiones: solo mutuos de raiz y expandidos."
+    }
+  },
+  "hud": {
+    "nodes": "Nodos",
+    "edges": "Aristas",
+    "visible": "Visibles",
+    "physics": "Fisica",
+    "physicsActive": "activa",
+    "physicsPaused": "pausa",
+    "relays": "Relays",
+    "fps": "FPS"
+  },
+  "rail": {
+    "settings": "Ajustes",
+    "closeSettings": "Cerrar ajustes",
+    "notifications": "Notificaciones ({count})",
+    "closeNotifications": "Cerrar notificaciones",
+    "runtime": "Inspector de runtime (Shift + D)",
+    "closeRuntime": "Cerrar inspector de runtime",
+    "pausePhysics": "Pausar fisica",
+    "resumePhysics": "Reanudar fisica",
+    "zaps": "Zaps",
+    "closeZaps": "Cerrar panel de zaps",
+    "view": "Ajustar vista",
+    "relaysCurrent": "Relays al dia",
+    "relaysRevert": "Revertir relays",
+    "filters": "Filtros",
+    "closeFilters": "Cerrar filtros de conexiones",
+    "liveZaps": "Zaps en vivo",
+    "runtimeShort": "Runtime",
+    "viewShort": "Vista"
+  },
+  "panelEyebrow": {
+    "settings": "AJUSTES",
+    "zaps": "ZAPS",
+    "notifications": "NOTIFICACIONES",
+    "filters": "FILTROS",
+    "identity": "IDENTIDAD"
+  },
+  "filtersPanel": {
+    "title": "Filtro de conexiones",
+    "description": "Elegi que relaciones queres ver en el grafo. Esto cambia la proyeccion visible, no los datos cargados ni la evidencia exportable."
+  },
+  "settings": {
+    "relayEditor": {
+      "title": "Relays de sesion",
+      "status": "Estado",
+      "custom": "personalizados",
+      "base": "base",
+      "placeholder": "wss://relay.example",
+      "applied": "Aplicados {count} relays.",
+      "applyError": "No se pudieron aplicar los relays.",
+      "reverted": "Se revirtio la configuracion personalizada de relays.",
+      "revertError": "No se pudo revertir la configuracion de relays.",
+      "apply": "Aplicar",
+      "revert": "Revertir"
+    },
+    "graphCapacity": {
+      "title": "Tamaño del grafo",
+      "maxNodes": "Maximo de nodos",
+      "nodesValue": "{count} nodos",
+      "description": "Subilo para dejar entrar mas conexiones. Bajalo si queres menos carga de layout, memoria y avatares.",
+      "project": "Proyecto {count}",
+      "recommended": "Sugerido {count}",
+      "loadedNodes": "Nodos cargados",
+      "remainingMargin": "Margen restante",
+      "recommendedFor": "Sugerido para {profile}",
+      "capReached": "El grafo toco el tope actual. Si queres seguir expandiendo, subi este limite y volve a probar."
+    },
+    "visuals": {
+      "camera": "Camara",
+      "initialZoom": "Zoom inicial (acercamiento)",
+      "labels": "Etiquetas",
+      "visibleDegree": "Grado visible",
+      "visibleDegreeDesc": "Cada nodo muestra cuantas aristas visibles lo tocan en la vista actual.",
+      "showNodeNames": "Volver a mostrar nombres de nodos",
+      "showVisibleEdges": "Mostrar cantidad de aristas visibles por nodo",
+      "monograms": "Monogramas",
+      "monogramLetters": "Letras de monograma",
+      "monogramLettersDesc": "Muestra iniciales cuando no hay foto disponible."
+    },
+    "performance": {
+      "discovery": "Descubrimiento",
+      "findMoreNodes": "Buscar mas nodos",
+      "findMoreNodesDesc": "Vuelve a consultar relays y cache buscando nuevos seguidores del root.",
+      "loadRootFirst": "Carga un root primero",
+      "searching": "Buscando...",
+      "findMoreNodesTitle": "Buscar mas nodos",
+      "fluidity": "Fluidez",
+      "prioritizeFluidity": "Priorizar fluidez",
+      "prioritizeFluidityDesc": "Reduce conexiones visibles cuando el rendimiento cae. Estado: {status}.",
+      "disableConnectionLod": "Desactivar LOD de conexiones por rendimiento",
+      "enableConnectionLod": "Activar LOD de conexiones por rendimiento",
+      "mobileDegraded": "Modo celular degradado",
+      "mobileDegradedDesc": "Reduce limites para optimizar el rendimiento en celulares.",
+      "disableDegraded": "Desactivar degradado",
+      "enableDegraded": "Activar degradado",
+      "diagnostics": "Diagnostico",
+      "runtimeInspector": "Inspector de runtime",
+      "runtimeInspectorDescLocked": "Muestra el boton para abrir snapshots del tiempo de ejecucion. En desarrollo queda visible por defecto.",
+      "runtimeInspectorDescUnlocked": "Muestra el boton para abrir snapshots del tiempo de ejecucion. En produccion queda oculto hasta activarlo.",
+      "runtimeVisibleByDefault": "Visible por defecto en desarrollo",
+      "hideRuntimeButton": "Ocultar boton del inspector de runtime",
+      "showRuntimeButton": "Mostrar boton del inspector de runtime",
+      "localData": "Datos locales",
+      "browserCache": "Cache del navegador",
+      "browserCacheDesc": "Borra datos persistidos de esta pagina y recarga el explorador.{message}",
+      "clearing": "Borrando...",
+      "clearCache": "Borrar cache",
+      "avatars": "Avatares",
+      "avatarPhotos": "Fotos de avatares",
+      "avatarPhotosDesc": "Las fotos reales cuestan mas carga de red, decode y dibujo.",
+      "disableAvatarPhotos": "Desactivar fotos para ahorrar rendimiento",
+      "enableAvatarPhotos": "Activar fotos de avatares",
+      "hideOnMove": "Ocultar durante movimiento",
+      "hideOnMoveDesc": "Pasa a monograma durante pan, drag o movimiento rapido de nodos.",
+      "hideWhenZoomedOut": "Ocultar al alejar la vista",
+      "hideWhenZoomedOutDesc": "Pasa a monograma cuando los nodos se ven muy pequeños en la pantalla."
+    },
+    "relays": {
+      "state": "Estado de relays",
+      "custom": "Relays personalizados",
+      "customDesc": "La sesion esta usando una lista personalizada.",
+      "base": "Relays base",
+      "baseDesc": "La sesion usa la configuracion base del explorador.",
+      "revert": "Revertir"
+    }
+  },
+  "detail": {
+    "rootIdentity": "IDENTIDAD RAIZ",
+    "mutual": "MUTUO",
+    "following": "LO SIGO",
+    "follower": "ME SIGUE",
+    "oneWay": "SIN RECIPROCIDAD",
+    "unpin": "Desanclar perfil",
+    "pin": "Anclar perfil",
+    "connectionsExplored": "Conexiones exploradas",
+    "expanding": "Expandiendo...",
+    "exploreConnections": "Explorar conexiones",
+    "loadingProfile": "Cargando perfil...",
+    "loadingProfileBio": "Cargando perfil desde relays y cache...",
+    "noBio": "Sin bio conocida.",
+    "pinned": "Anclado",
+    "pinAction": "Anclar",
+    "identityHelp": "Abriste una identidad. Explora sus conexiones o anclala para compararla.",
+    "understood": "Entendido",
+    "followingCount": "Sigo",
+    "followersCount": "Me siguen",
+    "mutualsCount": "Mutuos",
+    "identitySection": "Identidad",
+    "notAvailable": "No disponible",
+    "copyNpub": "Copiar npub completo",
+    "copy": "Copiar",
+    "openPrimal": "Abrir cuenta en Primal",
+    "openJumble": "Abrir cuenta en Jumble",
+    "loadingInline": "cargando...",
+    "expansion": "Expansion"
+  }
+}

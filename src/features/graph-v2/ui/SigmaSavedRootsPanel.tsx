@@ -1,7 +1,8 @@
-﻿'use client'
+'use client'
 /* eslint-disable @next/next/no-img-element */
 
-import { memo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
+import { useLocale, useTranslations } from 'next-intl'
 
 import AvatarFallback from '@/components/AvatarFallback'
 import type { SavedRootEntry } from '@/features/graph-runtime/app/store/types'
@@ -13,38 +14,7 @@ interface Props {
   onSelect: (entry: SavedRootEntry) => void
 }
 
-const relativeTimeFormatter = new Intl.RelativeTimeFormat('es', {
-  numeric: 'auto',
-})
-
-const getDisplayName = (entry: SavedRootEntry) =>
-  entry.profile?.displayName ?? entry.profile?.name ?? 'Identidad sin nombre'
-
-const getInitials = (entry: SavedRootEntry) => {
-  const source = getDisplayName(entry)
-  const initials = source
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((segment) => segment[0]?.toUpperCase() ?? '')
-    .join('')
-  return initials || entry.npub.slice(0, 2).toUpperCase()
-}
-
 const shortenNpub = (npub: string) => `${npub.slice(0, 12)}...${npub.slice(-6)}`
-
-const SOURCE_LABELS = {
-  npub: 'npub',
-  nprofile: 'nprofile',
-  hex: 'hex',
-  nip05: 'NIP-05',
-  session: 'sesion',
-  url: 'link',
-} as const
-
-const getRootTag = (entry: SavedRootEntry) => {
-  return SOURCE_LABELS[entry.source ?? 'npub']
-}
 
 const getRootDescription = (entry: SavedRootEntry) => {
   const primaryIdentifier =
@@ -56,30 +26,6 @@ const getRootDescription = (entry: SavedRootEntry) => {
   }
 
   return [primaryIdentifier, npubLabel].filter(Boolean).join(' · ')
-}
-
-const formatSavedRootTime = (timestamp: number) => {
-  const elapsedMs = timestamp - Date.now()
-  const elapsedMinutes = Math.round(elapsedMs / 60_000)
-
-  if (Math.abs(elapsedMinutes) < 60) {
-    return relativeTimeFormatter.format(elapsedMinutes, 'minute')
-  }
-
-  const elapsedHours = Math.round(elapsedMs / 3_600_000)
-  if (Math.abs(elapsedHours) < 24) {
-    return relativeTimeFormatter.format(elapsedHours, 'hour')
-  }
-
-  const elapsedDays = Math.round(elapsedMs / 86_400_000)
-  if (Math.abs(elapsedDays) < 7) {
-    return relativeTimeFormatter.format(elapsedDays, 'day')
-  }
-
-  return new Intl.DateTimeFormat('es-AR', {
-    day: 'numeric',
-    month: 'short',
-  }).format(timestamp)
 }
 
 const renderSkeleton = (index: number) => (
@@ -103,12 +49,64 @@ export const SigmaSavedRootsPanel = memo(function SigmaSavedRootsPanel({
   onDelete,
   onSelect,
 }: Props) {
+  const t = useTranslations('sigma.savedRoots')
+  const locale = useLocale()
+  const [renderedAt] = useState(() => Date.now())
   const [pendingRemovalPubkey, setPendingRemovalPubkey] = useState<string | null>(null)
   const [failedPictures, setFailedPictures] = useState<Set<string>>(() => new Set())
+  const relativeTimeFormatter = useMemo(
+    () => new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }),
+    [locale],
+  )
+  const dateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        day: 'numeric',
+        month: 'short',
+      }),
+    [locale],
+  )
+
+  const getDisplayName = (entry: SavedRootEntry) =>
+    entry.profile?.displayName ?? entry.profile?.name ?? t('unnamed')
+
+  const getInitials = (entry: SavedRootEntry) => {
+    const source = getDisplayName(entry)
+    const initials = source
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((segment) => segment[0]?.toUpperCase() ?? '')
+      .join('')
+    return initials || entry.npub.slice(0, 2).toUpperCase()
+  }
+
+  const getRootTag = (entry: SavedRootEntry) => t(`source.${entry.source ?? 'npub'}`)
+
+  const formatSavedRootTime = (timestamp: number) => {
+    const elapsedMs = timestamp - renderedAt
+    const elapsedMinutes = Math.round(elapsedMs / 60_000)
+
+    if (Math.abs(elapsedMinutes) < 60) {
+      return relativeTimeFormatter.format(elapsedMinutes, 'minute')
+    }
+
+    const elapsedHours = Math.round(elapsedMs / 3_600_000)
+    if (Math.abs(elapsedHours) < 24) {
+      return relativeTimeFormatter.format(elapsedHours, 'hour')
+    }
+
+    const elapsedDays = Math.round(elapsedMs / 86_400_000)
+    if (Math.abs(elapsedDays) < 7) {
+      return relativeTimeFormatter.format(elapsedDays, 'day')
+    }
+
+    return dateFormatter.format(timestamp)
+  }
 
   if (!isHydrated && entries.length === 0) {
     return (
-      <section aria-label="Identidades guardadas" className="saved-roots-panel">
+      <section aria-label={t('section')} className="saved-roots-panel">
         <div className="saved-roots-grid">
           {Array.from({ length: 3 }, (_, index) => renderSkeleton(index))}
         </div>
@@ -118,16 +116,16 @@ export const SigmaSavedRootsPanel = memo(function SigmaSavedRootsPanel({
 
   if (entries.length === 0) {
     return (
-      <section aria-label="Identidades guardadas" className="saved-roots-panel">
+      <section aria-label={t('section')} className="saved-roots-panel">
         <p className="saved-roots-panel__empty" role="status">
-          No hay identidades guardadas todavia.
+          {t('empty')}
         </p>
       </section>
     )
   }
 
   return (
-    <section aria-label="Identidades guardadas" className="saved-roots-panel">
+    <section aria-label={t('section')} className="saved-roots-panel">
       <div className="saved-roots-grid">
         {entries.map((entry, index) => {
           const displayName = getDisplayName(entry)
@@ -139,7 +137,7 @@ export const SigmaSavedRootsPanel = memo(function SigmaSavedRootsPanel({
           return (
             <article className="saved-root-card" key={entry.pubkey}>
               <button
-                aria-label={`Abrir ${displayName}`}
+                aria-label={t('open', { name: displayName })}
                 className="saved-root-card__select"
                 onClick={() => onSelect(entry)}
                 type="button"
@@ -147,7 +145,7 @@ export const SigmaSavedRootsPanel = memo(function SigmaSavedRootsPanel({
                 <div className="saved-root-card__avatar">
                   {canShowPicture ? (
                     <img
-                      alt={`Avatar de ${displayName}`}
+                      alt={t('avatarAlt', { name: displayName })}
                       decoding="async"
                       fetchPriority={index === 0 ? 'high' : 'auto'}
                       loading={index === 0 ? 'eager' : 'lazy'}
@@ -186,7 +184,7 @@ export const SigmaSavedRootsPanel = memo(function SigmaSavedRootsPanel({
 
               {isConfirmingRemoval ? (
                 <div
-                  aria-label={`Confirmar borrado de ${displayName}`}
+                  aria-label={t('confirmDelete', { name: displayName })}
                   className="saved-root-card__confirm"
                   role="group"
                 >
@@ -198,24 +196,24 @@ export const SigmaSavedRootsPanel = memo(function SigmaSavedRootsPanel({
                     }}
                     type="button"
                   >
-                    Confirmar
+                    {t('confirm')}
                   </button>
                   <button
                     className="saved-root-card__confirm-btn"
                     onClick={() => setPendingRemovalPubkey(null)}
                     type="button"
                   >
-                    Cancelar
+                    {t('cancel')}
                   </button>
                 </div>
               ) : (
                 <button
-                  aria-label={`Quitar ${displayName} de las identidades guardadas`}
+                  aria-label={t('removeAria', { name: displayName })}
                   className="saved-root-card__delete"
                   onClick={() => setPendingRemovalPubkey(entry.pubkey)}
                   type="button"
                 >
-                  Quitar
+                  {t('remove')}
                 </button>
               )}
             </article>

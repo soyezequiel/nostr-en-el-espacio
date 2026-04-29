@@ -1,9 +1,11 @@
 'use client'
 
 import { memo, useEffect, useMemo, useRef } from 'react'
+import { useLocale, useTranslations } from 'next-intl'
 
 import type { RootLoadState } from '@/features/graph-runtime/app/store/types'
 import type { CanonicalRelayState } from '@/features/graph-v2/domain/types'
+import { buildRootLoadProgressCopy } from '@/features/graph-v2/ui/rootLoadProgressI18n'
 import { buildRootLoadProgressViewModel } from '@/features/graph-v2/ui/rootLoadProgressViewModel'
 
 interface Props {
@@ -196,9 +198,10 @@ const buildTerminalLines = (
   rootLoad: RootLoadState,
   relayState: CanonicalRelayState,
   progressLabel: string,
+  loadingT: (key: string, values?: Record<string, unknown>) => string,
 ): TerminalLine[] => {
   const lines: TerminalLine[] = [
-    { text: 'resolviendo profile -> relays', tone: 'dim' },
+    { text: loadingT('terminal.resolveProfileRelays'), tone: 'dim' },
   ]
   const progress = rootLoad.visibleLinkProgress
   const preferredRelayUrls = new Set<string>()
@@ -216,14 +219,14 @@ const buildTerminalLines = (
     const status = relayState.endpoints[relayUrl]?.status ?? 'unknown'
     const statusLabel =
       status === 'connected'
-        ? 'conectado'
+        ? loadingT('terminal.connected')
         : status === 'partial'
-          ? 'parcial'
+          ? loadingT('terminal.partial')
           : status === 'degraded'
-            ? 'lento'
+            ? loadingT('terminal.slow')
             : status === 'offline'
-              ? 'sin respuesta'
-              : 'pendiente'
+              ? loadingT('terminal.noResponse')
+              : loadingT('terminal.pending')
     lines.push({
       text: `wss://${compactRelayUrl(relayUrl)} - ${statusLabel}`,
       tone:
@@ -237,15 +240,17 @@ const buildTerminalLines = (
 
   if (progress) {
     lines.push(
-      { text: `eventos kind:3 recibidos - ${progress.contactListEventCount}`, tone: 'dim' },
+      { text: loadingT('terminal.kind3Events', { count: progress.contactListEventCount }), tone: 'dim' },
       {
-        text: `inbound #p candidatos - ${progress.inboundCandidateEventCount}`,
+        text: loadingT('terminal.inboundCandidates', {
+          count: progress.inboundCandidateEventCount,
+        }),
         tone: 'dim',
       },
-      { text: `links visibles - ${progressLabel}`, tone: 'dim' },
+      { text: loadingT('terminal.visibleLinks', { progress: progressLabel }), tone: 'dim' },
     )
-  } else if (rootLoad.message) {
-    lines.push({ text: rootLoad.message, tone: 'dim' })
+  } else {
+    lines.push({ text: loadingT('terminal.waiting'), tone: 'dim' })
   }
 
   return lines.slice(0, 8)
@@ -258,28 +263,36 @@ export const SigmaLoadingOverlay = memo(function SigmaLoadingOverlay({
   relayState,
   rootLoad,
 }: Props) {
+  const t = useTranslations('sigma.loadingOverlay')
+  const loadingT = useTranslations('sigma.loading')
+  const locale = useLocale()
+  const progressCopy = useMemo(
+    () => buildRootLoadProgressCopy({ locale, t: loadingT }),
+    [locale, loadingT],
+  )
   const progress = useMemo(
     () =>
       buildRootLoadProgressViewModel({
+        copy: progressCopy,
         fallbackMessage: message,
         identityLabel,
         nodeCount,
         rootLoad,
       }),
-    [identityLabel, message, nodeCount, rootLoad],
+    [identityLabel, message, nodeCount, progressCopy, rootLoad],
   )
   const progressBarClassName = `sg-load-bar__fill${
     progress.isIndeterminate ? ' sg-load-bar__fill--indeterminate' : ''
   }`
   const terminalLines = useMemo(
-    () => buildTerminalLines(rootLoad, relayState, progress.progressLabel),
-    [progress.progressLabel, relayState, rootLoad],
+    () => buildTerminalLines(rootLoad, relayState, progress.progressLabel, loadingT),
+    [loadingT, progress.progressLabel, relayState, rootLoad],
   )
 
   return (
     <div className="sg-loading-overlay" aria-label={progress.ariaLabel} aria-live="polite">
       <div className="sg-loading-loop-pill" aria-hidden="true">
-        relay loop activo - sincronizando grafo
+        {t('relayLoop')}
       </div>
       <div className="sg-loader-grid" aria-hidden="true">
         <GraphLoader size={170} seed={7} />
@@ -295,12 +308,12 @@ export const SigmaLoadingOverlay = memo(function SigmaLoadingOverlay({
         </div>
 
         <div className="sg-loading-phase">
-          Paso {progress.stepIndex} de {progress.stepCount} - {progress.phaseLabel}
+          {t('step')} {progress.stepIndex} {t('of')} {progress.stepCount} - {progress.phaseLabel}
         </div>
 
         <div className="sg-loading-total" aria-hidden="true">
           <span>{progress.progressLabel}</span>
-          {progress.isEstimatedTotal ? <em>estimado</em> : null}
+          {progress.isEstimatedTotal ? <em>{t('estimated')}</em> : null}
         </div>
         <div
           aria-hidden="true"
@@ -336,15 +349,22 @@ export const SigmaLoadProgressHud = memo(function SigmaLoadProgressHud({
   nodeCount,
   rootLoad,
 }: LoadProgressProps) {
+  const loadingT = useTranslations('sigma.loading')
+  const locale = useLocale()
+  const progressCopy = useMemo(
+    () => buildRootLoadProgressCopy({ locale, t: loadingT }),
+    [locale, loadingT],
+  )
   const progress = useMemo(
     () =>
       buildRootLoadProgressViewModel({
+        copy: progressCopy,
         fallbackMessage: message,
         identityLabel,
         nodeCount,
         rootLoad,
       }),
-    [identityLabel, message, nodeCount, rootLoad],
+    [identityLabel, message, nodeCount, progressCopy, rootLoad],
   )
 
   if (progress.tone === 'idle' || progress.tone === 'ready') {

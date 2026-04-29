@@ -1,6 +1,7 @@
 'use client'
 
 import { memo, useCallback, useId, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 import {
   resolveRootIdentity,
@@ -18,6 +19,7 @@ export const SigmaRootInput = memo(function SigmaRootInput({
   feedback,
   onValidRoot,
 }: Props) {
+  const t = useTranslations('sigma.rootInput')
   const inputId = useId()
   const statusId = useId()
   const [inputValue, setInputValue] = useState('')
@@ -28,12 +30,12 @@ export const SigmaRootInput = memo(function SigmaRootInput({
   const submit = useCallback(async () => {
     const normalizedInput = inputValue.trim()
     if (!normalizedInput) {
-      setStatusMessage('Pega un npub, nprofile, NIP-05, hex o link de perfil.')
+      setStatusMessage(t('empty'))
       return
     }
 
     setIsResolving(true)
-    setStatusMessage('Resolviendo identidad...')
+    setStatusMessage(t('resolving'))
 
     try {
       const result = await resolveRootIdentity(normalizedInput)
@@ -50,12 +52,12 @@ export const SigmaRootInput = memo(function SigmaRootInput({
     } finally {
       setIsResolving(false)
     }
-  }, [inputValue, onValidRoot])
+  }, [inputValue, onValidRoot, t])
 
   return (
     <div className="sigma-root-input">
       <label className="sigma-root-input__label" htmlFor={inputId}>
-        Identidad Nostr
+        {t('label')}
       </label>
       <div className="sigma-root-input__row">
         <input
@@ -75,7 +77,7 @@ export const SigmaRootInput = memo(function SigmaRootInput({
               void submit()
             }
           }}
-          placeholder="npub, nprofile, NIP-05, hex o link"
+          placeholder={t('placeholder')}
           spellCheck={false}
           type="text"
           value={inputValue}
@@ -88,7 +90,7 @@ export const SigmaRootInput = memo(function SigmaRootInput({
           }}
           type="button"
         >
-          {isResolving ? 'Resolviendo...' : 'Explorar ->'}
+          {isResolving ? t('resolving') : t('submit')}
         </button>
       </div>
       {visibleStatus ? (

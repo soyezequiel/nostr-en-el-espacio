@@ -8,11 +8,13 @@ import {
   type RefObject,
 } from 'react'
 import Link from 'next/link'
+import { useLocale, useTranslations } from 'next-intl'
 import AvatarFallback from '@/components/AvatarFallback'
 import BrandLogo from '@/components/BrandLogo'
 import { isSafeAvatarUrl } from '@/features/graph-runtime/avatar'
 import { resolveAvatarFetchUrl } from '@/features/graph-runtime/avatarProxyUrl'
 import { CloseIcon, SearchIcon } from '@/features/graph-v2/ui/SigmaIcons'
+import { localizePathname, type Locale } from '@/i18n/routing'
 
 interface SearchMatch {
   pubkey: string
@@ -67,13 +69,15 @@ export const SigmaTopBar = memo(function SigmaTopBar({
   searchLoadProgress = null,
   brandVersion = 'v0.3.2',
 }: Props) {
-  const rootLabel = rootDisplayName ?? 'Identidad raiz'
+  const t = useTranslations('sigma.topBar')
+  const locale = useLocale() as Locale
+  const rootLabel = rootDisplayName ?? t('rootFallback')
   const initials =
     rootLabel
       .split(/\s+/)
       .filter(Boolean)
       .slice(0, 2)
-      .map((w) => w[0]?.toUpperCase() ?? '')
+      .map((word) => word[0]?.toUpperCase() ?? '')
       .join('') || 'N'
 
   const rootPictureSrc =
@@ -84,6 +88,9 @@ export const SigmaTopBar = memo(function SigmaTopBar({
   const hasSearchQuery = trimmedSearchQuery.length > 0
   const visibleMatches = searchMatches.slice(0, 8)
   const hasMoreMatches = searchMatches.length > visibleMatches.length
+  const resolvedSearchPlaceholder = searchDisabled
+    ? t('placeholderEmpty')
+    : t('placeholderReady')
   const searchLoadProgressValue =
     searchLoadProgress === null
       ? null
@@ -96,10 +103,10 @@ export const SigmaTopBar = memo(function SigmaTopBar({
           '--sg-search-load-progress': `${searchLoadProgressValue * 3.6}deg`,
         } as CSSProperties)
   const searchStatus = !trimmedSearchQuery
-    ? `Busca entre ${searchTotalNodeCount} nodos visibles.`
+    ? t('status.base', { count: searchTotalNodeCount })
     : searchMatches.length === 0
-      ? 'Sin coincidencias visibles.'
-      : `${searchMatches.length} coincidencia${searchMatches.length === 1 ? '' : 's'} visible${searchMatches.length === 1 ? '' : 's'}.`
+      ? t('status.empty')
+      : t('status.matches', { count: searchMatches.length })
 
   const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
     onSearchChange(event.target.value)
@@ -121,7 +128,7 @@ export const SigmaTopBar = memo(function SigmaTopBar({
         >
           {searchLoadProgressValue !== null ? (
             <span
-              aria-label={searchLoadProgress?.label ?? 'Progreso de carga del grafo'}
+              aria-label={searchLoadProgress?.label ?? t('progressAria')}
               aria-valuemax={100}
               aria-valuemin={0}
               aria-valuenow={searchLoadProgressValue}
@@ -134,7 +141,7 @@ export const SigmaTopBar = memo(function SigmaTopBar({
           </span>
           <input
             aria-controls="sigma-person-search-results"
-            aria-label="Buscar persona en el grafo"
+            aria-label={t('searchAria')}
             autoComplete="off"
             className="sg-top-search__input"
             disabled={searchDisabled}
@@ -143,7 +150,7 @@ export const SigmaTopBar = memo(function SigmaTopBar({
             onChange={handleSearchChange}
             onFocus={onSearchFocus}
             onKeyDown={handleSearchKeyDown}
-            placeholder={searchPlaceholder}
+            placeholder={resolvedSearchPlaceholder || searchPlaceholder}
             ref={searchInputRef}
             spellCheck={false}
             type="search"
@@ -159,7 +166,7 @@ export const SigmaTopBar = memo(function SigmaTopBar({
           ) : null}
           {hasSearchQuery ? (
             <button
-              aria-label="Limpiar busqueda"
+              aria-label={t('clearSearch')}
               className="sg-top-search__clear"
               onClick={onSearchClear}
               type="button"
@@ -173,10 +180,10 @@ export const SigmaTopBar = memo(function SigmaTopBar({
             />
           )}
           <button
-            aria-label={`Cambiar identidad raiz: ${rootLabel}`}
+            aria-label={t('switchRoot', { label: rootLabel })}
             className="sg-top-search__profile"
             onClick={onSwitchRoot}
-            title={`Cambiar identidad raiz: ${rootLabel}`}
+            title={t('switchRoot', { label: rootLabel })}
             type="button"
           >
             <span className="sg-top-search__avatar">
@@ -218,14 +225,14 @@ export const SigmaTopBar = memo(function SigmaTopBar({
                 ))}
                 {hasMoreMatches ? (
                   <div className="sg-top-search-menu__more">
-                    +{searchMatches.length - visibleMatches.length} mas resaltadas en el grafo
+                    {t('moreMatches', {
+                      count: searchMatches.length - visibleMatches.length,
+                    })}
                   </div>
                 ) : null}
               </div>
             ) : (
-              <p className="sg-top-search-menu__hint">
-                Coincide por fragmento, sin importar mayusculas, minusculas o acentos.
-              </p>
+              <p className="sg-top-search-menu__hint">{t('hint')}</p>
             )}
           </div>
         ) : null}
@@ -233,7 +240,10 @@ export const SigmaTopBar = memo(function SigmaTopBar({
 
       <div className="sg-topbar__right">
         <div className="sg-brand">
-          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center' }}>
+          <Link
+            href={localizePathname('/', locale)}
+            style={{ display: 'inline-flex', alignItems: 'center' }}
+          >
             <BrandLogo
               className="block"
               imageClassName="h-10 w-auto object-contain"

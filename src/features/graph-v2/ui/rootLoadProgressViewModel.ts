@@ -39,14 +39,62 @@ export interface RootLoadProgressViewModel {
   ariaLabel: string
 }
 
+export interface RootLoadProgressCopy {
+  locale: string
+  defaultIdentity: string
+  title: (identity: string) => string
+  measuringLinks: string
+  nodesSuffix: string
+  linksSuffix: string
+  complete: string
+  noLiveData: string
+  loadingGraph: string
+  noRelay: string
+  metrics: {
+    nodes: string
+    follows: string
+    followers: string
+    events: string
+    lastRelay: string
+    source: string
+  }
+  cacheSourceValue: string
+  steps: Array<{
+    id: string
+    label: string
+    floor: number
+  }>
+}
+
 interface BuildRootLoadProgressViewModelInput {
   rootLoad: RootLoadState
   identityLabel?: string | null
   nodeCount: number
   fallbackMessage?: string | null
+  copy?: RootLoadProgressCopy
 }
 
-const STEP_DEFINITIONS = [
+const DEFAULT_COPY: RootLoadProgressCopy = {
+  locale: 'es-AR',
+  defaultIdentity: 'identidad',
+  title: (identity) => `Mapeando ${identity}`,
+  measuringLinks: 'Midiendo links',
+  nodesSuffix: 'nodos',
+  linksSuffix: 'links',
+  complete: 'Carga completa',
+  noLiveData: 'No llegaron datos live',
+  loadingGraph: 'Cargando grafo',
+  noRelay: 'sin relay',
+  metrics: {
+    nodes: 'Nodos',
+    follows: 'Follows',
+    followers: 'Followers',
+    events: 'Eventos',
+    lastRelay: 'Ultimo relay',
+    source: 'Origen',
+  },
+  cacheSourceValue: 'cache local + live',
+  steps: [
   { id: 'identity', label: 'Resolver identidad', floor: 6 },
   { id: 'cache', label: 'Leer cache local', floor: 12 },
   { id: 'relays', label: 'Consultar relays activos', floor: 24 },
@@ -55,14 +103,13 @@ const STEP_DEFINITIONS = [
   { id: 'parse', label: 'Correlacionar evidencia en worker', floor: 74 },
   { id: 'merge', label: 'Integrar grafo visible', floor: 86 },
   { id: 'enrich', label: 'Hidratar perfiles y zaps', floor: 92 },
-] as const
-
-const NUMBER_FORMATTER = new Intl.NumberFormat('es-AR')
+  ],
+}
 
 const clampPercent = (value: number) => Math.min(100, Math.max(0, value))
 
-const compactRelayUrl = (relayUrl: string | null) => {
-  if (!relayUrl) return 'sin relay'
+const compactRelayUrl = (relayUrl: string | null, noRelayLabel: string) => {
+  if (!relayUrl) return noRelayLabel
 
   try {
     return new URL(relayUrl).host || relayUrl.replace(/^wss?:\/\//, '')
@@ -71,10 +118,14 @@ const compactRelayUrl = (relayUrl: string | null) => {
   }
 }
 
-const formatInteger = (value: number) => NUMBER_FORMATTER.format(value)
+const formatInteger = (value: number, locale: string) =>
+  new Intl.NumberFormat(locale).format(value)
 
-const formatCollectionProgress = (progress: RootCollectionProgress) => {
-  const loaded = formatInteger(progress.loadedCount)
+const formatCollectionProgress = (
+  progress: RootCollectionProgress,
+  locale: string,
+) => {
+  const loaded = formatInteger(progress.loadedCount, locale)
   if (progress.totalCount === null) {
     return loaded
   }
@@ -83,7 +134,7 @@ const formatCollectionProgress = (progress: RootCollectionProgress) => {
     return `${loaded}+`
   }
 
-  const total = formatInteger(progress.totalCount)
+  const total = formatInteger(progress.totalCount, locale)
   return `${loaded} / ${progress.isTotalKnown ? '' : '~'}${total}`
 }
 
@@ -139,7 +190,7 @@ const detectActiveStepIndex = (
   const normalizedMessage = message.toLowerCase()
 
   if (rootLoad.status === 'ready' || rootLoad.status === 'empty') {
-    return STEP_DEFINITIONS.length - 1
+    return DEFAULT_COPY.steps.length - 1
   }
 
   if (
@@ -213,68 +264,73 @@ const resolveTone = (rootLoad: RootLoadState): RootLoadProgressTone => {
 const buildProgressLabel = (
   rootLoad: RootLoadState,
   nodeCount: number,
+  copy: RootLoadProgressCopy,
 ) => {
   const progress = rootLoad.visibleLinkProgress
   if (!progress) {
-    return nodeCount > 0 ? `${formatInteger(nodeCount)} nodos` : 'Midiendo links'
+    return nodeCount > 0
+      ? `${formatInteger(nodeCount, copy.locale)} ${copy.nodesSuffix}`
+      : copy.measuringLinks
   }
 
   const loaded = progress.following.loadedCount + progress.followers.loadedCount
   const total = getCombinedTotal(progress.following, progress.followers)
   if (total === null) {
-    return `${formatInteger(loaded)} links`
+    return `${formatInteger(loaded, copy.locale)} ${copy.linksSuffix}`
   }
 
   const isKnown =
     progress.following.isTotalKnown && progress.followers.isTotalKnown
   if (!isKnown && total <= loaded) {
-    return `${formatInteger(loaded)}+ links`
+    return `${formatInteger(loaded, copy.locale)}+ ${copy.linksSuffix}`
   }
 
-  return `${formatInteger(loaded)} / ${isKnown ? '' : '~'}${formatInteger(total)} links`
+  return `${formatInteger(loaded, copy.locale)} / ${isKnown ? '' : '~'}${formatInteger(total, copy.locale)} ${copy.linksSuffix}`
 }
 
 const buildMetrics = (
   rootLoad: RootLoadState,
   nodeCount: number,
+  copy: RootLoadProgressCopy,
 ): RootLoadProgressMetric[] => {
   const progress = rootLoad.visibleLinkProgress
   if (!progress) {
     return [
       {
-        label: 'Nodos',
-        value: formatInteger(nodeCount),
+        label: copy.metrics.nodes,
+        value: formatInteger(nodeCount, copy.locale),
       },
     ]
   }
 
   const metrics: RootLoadProgressMetric[] = [
     {
-      label: 'Follows',
-      value: formatCollectionProgress(progress.following),
+      label: copy.metrics.follows,
+      value: formatCollectionProgress(progress.following, copy.locale),
       tone: progress.following.status === 'complete' ? 'good' : undefined,
     },
     {
-      label: 'Followers',
-      value: formatCollectionProgress(progress.followers),
+      label: copy.metrics.followers,
+      value: formatCollectionProgress(progress.followers, copy.locale),
       tone: progress.followers.status === 'complete' ? 'good' : undefined,
     },
     {
-      label: 'Eventos',
-      value: `${formatInteger(progress.contactListEventCount)} contact lists - ${formatInteger(
+      label: copy.metrics.events,
+      value: `${formatInteger(progress.contactListEventCount, copy.locale)} contact lists - ${formatInteger(
         progress.inboundCandidateEventCount,
+        copy.locale,
       )} inbound`,
     },
     {
-      label: 'Ultimo relay',
-      value: compactRelayUrl(progress.lastRelayUrl),
+      label: copy.metrics.lastRelay,
+      value: compactRelayUrl(progress.lastRelayUrl, copy.noRelay),
     },
   ]
 
   if (rootLoad.loadedFrom === 'cache') {
     metrics.push({
-      label: 'Origen',
-      value: 'cache local + live',
+      label: copy.metrics.source,
+      value: copy.cacheSourceValue,
       tone: 'warn',
     })
   }
@@ -287,18 +343,20 @@ export const buildRootLoadProgressViewModel = ({
   identityLabel,
   nodeCount,
   fallbackMessage,
+  copy,
 }: BuildRootLoadProgressViewModelInput): RootLoadProgressViewModel => {
-  const displayName = identityLabel?.trim() || 'identidad'
+  const resolvedCopy = copy ?? DEFAULT_COPY
+  const displayName = identityLabel?.trim() || resolvedCopy.defaultIdentity
   const message = rootLoad.message ?? fallbackMessage ?? ''
   const activeStepIndex = detectActiveStepIndex(rootLoad, nodeCount, message)
-  const stepCount = STEP_DEFINITIONS.length
+  const stepCount = resolvedCopy.steps.length
   const tone = resolveTone(rootLoad)
   const progress = rootLoad.visibleLinkProgress
   const ratio = progress
     ? getCollectionRatio(progress.following, progress.followers)
     : null
-  const currentFloor = STEP_DEFINITIONS[activeStepIndex]?.floor ?? 0
-  const nextFloor = STEP_DEFINITIONS[activeStepIndex + 1]?.floor ?? 96
+  const currentFloor = resolvedCopy.steps[activeStepIndex]?.floor ?? 0
+  const nextFloor = resolvedCopy.steps[activeStepIndex + 1]?.floor ?? 96
   const phasePercent =
     ratio === null
       ? currentFloor
@@ -309,7 +367,7 @@ export const buildRootLoadProgressViewModel = ({
       : tone === 'error'
         ? clampPercent(Math.max(currentFloor, 8))
         : clampPercent(Math.round(Math.min(96, phasePercent)))
-  const progressLabel = buildProgressLabel(rootLoad, nodeCount)
+  const progressLabel = buildProgressLabel(rootLoad, nodeCount, resolvedCopy)
   const isEstimatedTotal = Boolean(
     progress &&
       progress.following.totalCount !== null &&
@@ -320,11 +378,11 @@ export const buildRootLoadProgressViewModel = ({
     !progress || getCombinedTotal(progress.following, progress.followers) === null
   const phaseLabel =
     tone === 'ready'
-      ? 'Carga completa'
+      ? resolvedCopy.complete
       : tone === 'error'
-        ? message || 'No llegaron datos live'
-        : STEP_DEFINITIONS[activeStepIndex]?.label ?? 'Cargando grafo'
-  const steps: RootLoadProgressStep[] = STEP_DEFINITIONS.map((step, index) => ({
+        ? message || resolvedCopy.noLiveData
+        : resolvedCopy.steps[activeStepIndex]?.label ?? resolvedCopy.loadingGraph
+  const steps: RootLoadProgressStep[] = resolvedCopy.steps.map((step, index) => ({
     id: step.id,
     label: step.label,
     status:
@@ -336,7 +394,7 @@ export const buildRootLoadProgressViewModel = ({
   }))
 
   return {
-    title: `Mapeando ${displayName}`,
+    title: resolvedCopy.title(displayName),
     phaseLabel,
     stepIndex: Math.min(activeStepIndex + 1, stepCount),
     stepCount,
@@ -345,8 +403,8 @@ export const buildRootLoadProgressViewModel = ({
     isEstimatedTotal,
     isIndeterminate,
     tone,
-    metrics: buildMetrics(rootLoad, nodeCount),
+    metrics: buildMetrics(rootLoad, nodeCount, resolvedCopy),
     steps,
-    ariaLabel: `${progressLabel}. ${phaseLabel}. ${percent} por ciento.`,
+    ariaLabel: `${resolvedCopy.title(displayName)}. ${phaseLabel}. ${progressLabel}. ${percent}%.`,
   }
 }

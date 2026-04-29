@@ -1,6 +1,7 @@
 'use client'
 
 import { memo, useEffect, useRef } from 'react'
+import { useTranslations } from 'next-intl'
 
 export interface FilterPill {
   id: 'all' | 'following' | 'followers' | 'mutuals' | 'oneway' | 'connections'
@@ -22,6 +23,7 @@ export const SigmaFilterBar = memo(function SigmaFilterBar({
   pills,
   onSelect,
 }: Props) {
+  const t = useTranslations('sigma.filterBar')
   const stackRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export const SigmaFilterBar = memo(function SigmaFilterBar({
       className="sg-filter-stack"
       ref={stackRef}
       role="region"
-      aria-label="Filtros del grafo"
+      aria-label={t('aria')}
     >
       <div className="sg-filter-bar">
         {pills.map((pill) => (

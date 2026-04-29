@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 /* eslint-disable @next/next/no-img-element */
 
 import {
@@ -17,6 +17,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { useLocale, useTranslations } from 'next-intl'
 import { nip19 } from 'nostr-tools'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -124,6 +125,7 @@ import {
   buildRootLoadProgressViewModel,
   isRootLoadProgressActive,
 } from '@/features/graph-v2/ui/rootLoadProgressViewModel'
+import { buildRootLoadProgressCopy } from '@/features/graph-v2/ui/rootLoadProgressI18n'
 import { SigmaRootInput } from '@/features/graph-v2/ui/SigmaRootInput'
 import { SigmaSavedRootsPanel } from '@/features/graph-v2/ui/SigmaSavedRootsPanel'
 import { SigmaToasts, type SigmaToast } from '@/features/graph-v2/ui/SigmaToasts'
@@ -261,15 +263,6 @@ interface SearchNodeDrawProgress {
   detailLabel: string
 }
 
-const DEVICE_PROFILE_LABELS: Record<
-  AppStore['devicePerformanceProfile'],
-  string
-> = {
-  desktop: 'desktop',
-  mobile: 'movil',
-  'low-end-mobile': 'movil liviano',
-}
-
 type ValidRootIdentity = Extract<RootIdentityResolution, { status: 'valid' }>
 
 const readStoredAvatarPhotosEnabled = () => {
@@ -315,18 +308,6 @@ interface LoadRootInput
   npub?: string
   profile?: SavedRootProfileSnapshot | null
   profileFetchedAt?: number | null
-}
-
-const PUBLIC_SIGMA_SETTINGS_TABS: Array<{ id: SigmaSettingsTab; label: string }> = [
-  { id: 'performance', label: 'Rendimiento' },
-  { id: 'visuals', label: 'Visuales' },
-  { id: 'zaps', label: 'Zaps' },
-  { id: 'relays', label: 'Red' },
-]
-
-const DEV_SIGMA_SETTINGS_TAB: { id: SigmaSettingsTab; label: string } = {
-  id: 'dev',
-  label: 'Avanzado',
 }
 
 const IDENTITY_FIRST_RUN_HELP_KEY = 'sigma.identityFirstRunHelpDismissed'
@@ -438,7 +419,7 @@ const selectSavedRootState = (state: AppStore) => ({
 // Zustand reruns every subscribed selector on every state mutation, so cache
 // Object.keys(state.nodes).length by reference. state.nodes is a Record that
 // gets reassigned on every node upsert, so identity changes exactly when the
-// count can change — perfect WeakMap cache key. Avoids allocating a fresh
+// count can change â€” perfect WeakMap cache key. Avoids allocating a fresh
 // keys-array (potentially thousands of strings) on every unrelated store
 // mutation (zap ticks, relay status, UI flags, etc.).
 const nodeCountCache = new WeakMap<object, number>()
@@ -787,7 +768,7 @@ const pickFixtureUiState = (
   rootLoad: state.discoveryState.rootLoad,
 })
 
-// ── Sub-components (settings/relay content) ───────────────────────────────────
+// â”€â”€ Sub-components (settings/relay content) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function RelayEditor({
   relayUrls,
@@ -800,6 +781,7 @@ function RelayEditor({
   onApply: (relayUrls: string[]) => Promise<unknown>
   onRevert: () => Promise<void>
 }) {
+  const t = useTranslations('sigma.settings.relayEditor')
   const [draft, setDraft] = useState(relayUrls.join('\n'))
   const [message, setMessage] = useState<string | null>(null)
   const relaySignature = relayUrls.join('\n')
@@ -810,9 +792,9 @@ function RelayEditor({
 
   return (
     <div className="sg-settings-section">
-      <h4>Relays de sesion</h4>
+      <h4>{t('title')}</h4>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 12, color: 'var(--sg-fg-muted)' }}>Estado</span>
+        <span style={{ fontSize: 12, color: 'var(--sg-fg-muted)' }}>{t('status')}</span>
         <span
           style={{
             borderRadius: 999,
@@ -823,12 +805,12 @@ function RelayEditor({
             fontFamily: 'var(--sg-font-mono)',
           }}
         >
-          {isGraphStale ? 'personalizados' : 'base'}
+          {isGraphStale ? t('custom') : t('base')}
         </span>
       </div>
       <textarea
         onChange={(event) => setDraft(event.target.value)}
-        placeholder="wss://relay.example"
+        placeholder={t('placeholder')}
         spellCheck={false}
         style={{
           width: '100%',
@@ -855,16 +837,16 @@ function RelayEditor({
               .filter(Boolean)
             startTransition(() => {
               void onApply(nextRelayUrls)
-                .then(() => { setMessage(`Aplicados ${nextRelayUrls.length} relays.`) })
+                .then(() => { setMessage(t('applied', { count: nextRelayUrls.length })) })
                 .catch((error) => {
-                  setMessage(error instanceof Error ? error.message : 'No se pudieron aplicar los relays.')
+                  setMessage(error instanceof Error ? error.message : t('applyError'))
                 })
             })
           }}
           style={{ flex: 'none' }}
           type="button"
         >
-          Aplicar
+          {t('apply')}
         </button>
         {isGraphStale ? (
           <button
@@ -872,16 +854,16 @@ function RelayEditor({
             onClick={() => {
               startTransition(() => {
                 void onRevert()
-                  .then(() => { setMessage('Se revirtio la configuracion personalizada de relays.') })
+                  .then(() => { setMessage(t('reverted')) })
                   .catch((error) => {
-                    setMessage(error instanceof Error ? error.message : 'No se pudo revertir la configuracion de relays.')
+                    setMessage(error instanceof Error ? error.message : t('revertError'))
                   })
               })
             }}
             style={{ flex: 'none' }}
             type="button"
           >
-            Revertir
+            {t('revert')}
           </button>
         ) : null}
       </div>
@@ -905,6 +887,8 @@ function GraphCapacityPanel({
   devicePerformanceProfile: AppStore['devicePerformanceProfile']
   onChange: (maxNodes: number) => void
 }) {
+  const t = useTranslations('sigma.settings.graphCapacity')
+  const locale = useLocale()
   const sliderValue = Math.min(
     GRAPH_MAX_NODES_SLIDER_MAX,
     Math.max(GRAPH_MAX_NODES_SLIDER_MIN, maxNodes),
@@ -912,15 +896,20 @@ function GraphCapacityPanel({
   const remainingCapacity = Math.max(0, maxNodes - nodeCount)
   const isAtProjectDefault = maxNodes === DEFAULT_MAX_GRAPH_NODES
   const isAtRecommended = maxNodes === recommendedMaxNodes
+  const deviceProfileLabels: Record<AppStore['devicePerformanceProfile'], string> = {
+    desktop: 'desktop',
+    mobile: locale === 'en' ? 'mobile' : 'movil',
+    'low-end-mobile': locale === 'en' ? 'low-end mobile' : 'movil liviano',
+  }
 
   return (
     <div className="sg-settings-section">
-      <h4>Tamaño del grafo</h4>
+      <h4>{t('title')}</h4>
       <div className="sg-slider-row">
         <div className="sg-slider-row__head">
-          <span className="sg-slider-row__lbl">Máximo de nodos</span>
+          <span className="sg-slider-row__lbl">{t('maxNodes')}</span>
           <span className="sg-slider-row__val">
-            {formatInteger(maxNodes)} nodos
+            {t('nodesValue', { count: formatInteger(maxNodes) })}
           </span>
         </div>
         <p
@@ -930,8 +919,7 @@ function GraphCapacityPanel({
             margin: '2px 0 8px',
           }}
         >
-          Subilo para dejar entrar más conexiones. Bajalo si querés menos
-          carga de layout, memoria y avatares.
+          {t('description')}
         </p>
         <input
           className="sg-slider"
@@ -954,7 +942,7 @@ function GraphCapacityPanel({
           style={{ flex: 'none', padding: '4px 10px', fontSize: 11 }}
           type="button"
         >
-          Proyecto {formatInteger(DEFAULT_MAX_GRAPH_NODES)}
+          {t('project', { count: formatInteger(DEFAULT_MAX_GRAPH_NODES) })}
         </button>
         <button
           className="sg-btn"
@@ -963,7 +951,7 @@ function GraphCapacityPanel({
           style={{ flex: 'none', padding: '4px 10px', fontSize: 11 }}
           type="button"
         >
-          Sugerido {formatInteger(recommendedMaxNodes)}
+          {t('recommended', { count: formatInteger(recommendedMaxNodes) })}
         </button>
       </div>
 
@@ -976,10 +964,12 @@ function GraphCapacityPanel({
         }}
       >
         {[
-          ['Nodos cargados', formatInteger(nodeCount)],
-          ['Margen restante', formatInteger(remainingCapacity)],
+          [t('loadedNodes'), formatInteger(nodeCount)],
+          [t('remainingMargin'), formatInteger(remainingCapacity)],
           [
-            `Sugerido para ${DEVICE_PROFILE_LABELS[devicePerformanceProfile]}`,
+            t('recommendedFor', {
+              profile: deviceProfileLabels[devicePerformanceProfile],
+            }),
             formatInteger(recommendedMaxNodes),
           ],
         ].map(([label, value]) => (
@@ -999,27 +989,23 @@ function GraphCapacityPanel({
             lineHeight: 1.45,
           }}
         >
-          El grafo tocó el tope actual. Si querés seguir expandiendo, subí este
-          límite y volvé a probar.
+          {t('capReached')}
         </p>
       ) : null}
     </div>
   )
 }
-
 const PHYSICS_TUNING_SLIDERS: Array<{
   key: keyof ForceAtlasPhysicsTuning
-  label: string
-  description: string
   min: number
   max: number
   step: number
 }> = [
-  { key: 'centripetalForce', label: 'Fuerza centrípeta', description: 'Multiplica gravity: compacta el grafo. 0 la desactiva.', min: 0, max: 0.5, step: 0.01 },
-  { key: 'repulsionForce', label: 'Repulsión', description: 'Multiplica scalingRatio: separa nodos.', min: 0.25, max: 5, step: 0.05 },
-  { key: 'linkForce', label: 'Fuerza de enlace', description: 'Multiplica edgeWeightInfluence.', min: 0.25, max: 2.5, step: 0.05 },
-  { key: 'linkDistance', label: 'Distancia de enlace', description: 'Aproxima distancia sin cambiar FA2.', min: 0.5, max: 2, step: 0.05 },
-  { key: 'damping', label: 'Amortiguación', description: 'Multiplica slowDown: velocidad e inercia.', min: 0.1, max: 2.5, step: 0.05 },
+  { key: 'centripetalForce', min: 0, max: 0.5, step: 0.01 },
+  { key: 'repulsionForce', min: 0.25, max: 5, step: 0.05 },
+  { key: 'linkForce', min: 0.25, max: 2.5, step: 0.05 },
+  { key: 'linkDistance', min: 0.5, max: 2, step: 0.05 },
+  { key: 'damping', min: 0.1, max: 2.5, step: 0.05 },
 ]
 
 function PhysicsTuningPanel({
@@ -1031,21 +1017,71 @@ function PhysicsTuningPanel({
   onChange: <K extends keyof ForceAtlasPhysicsTuning>(key: K, value: ForceAtlasPhysicsTuning[K]) => void
   onReset: () => void
 }) {
+  const locale = useLocale()
+  const physicsSliderCopy: Record<keyof ForceAtlasPhysicsTuning, { label: string; description: string }> = locale === 'en'
+    ? {
+        centripetalForce: {
+          label: 'Centripetal force',
+          description: 'Multiplies gravity and compacts the graph. Set 0 to disable it.',
+        },
+        repulsionForce: {
+          label: 'Repulsion',
+          description: 'Multiplies scalingRatio and separates nodes.',
+        },
+        linkForce: {
+          label: 'Link force',
+          description: 'Multiplies edgeWeightInfluence.',
+        },
+        linkDistance: {
+          label: 'Link distance',
+          description: 'Approximates spacing without changing ForceAtlas2.',
+        },
+        damping: {
+          label: 'Damping',
+          description: 'Multiplies slowDown to change speed and inertia.',
+        },
+      }
+    : {
+        centripetalForce: {
+          label: 'Fuerza centripeta',
+          description: 'Multiplica gravity: compacta el grafo. 0 la desactiva.',
+        },
+        repulsionForce: {
+          label: 'Repulsion',
+          description: 'Multiplica scalingRatio: separa nodos.',
+        },
+        linkForce: {
+          label: 'Fuerza de enlace',
+          description: 'Multiplica edgeWeightInfluence.',
+        },
+        linkDistance: {
+          label: 'Distancia de enlace',
+          description: 'Aproxima distancia sin cambiar ForceAtlas2.',
+        },
+        damping: {
+          label: 'Amortiguacion',
+          description: 'Multiplica slowDown: velocidad e inercia.',
+        },
+      }
+
   return (
     <div className="sg-settings-section">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <h4 style={{ margin: 0 }}>ForceAtlas2</h4>
-        <button className="sg-btn" onClick={onReset} style={{ flex: 'none', padding: '4px 10px', fontSize: 11 }} type="button">Reset</button>
+        <button className="sg-btn" onClick={onReset} style={{ flex: 'none', padding: '4px 10px', fontSize: 11 }} type="button">
+          Reset
+        </button>
       </div>
       {PHYSICS_TUNING_SLIDERS.map((slider) => {
         const value = tuning[slider.key]
+        const copy = physicsSliderCopy[slider.key]
         return (
           <div className="sg-slider-row" key={slider.key}>
             <div className="sg-slider-row__head">
-              <span className="sg-slider-row__lbl">{slider.label}</span>
-              <span className="sg-slider-row__val">{(value as number).toFixed(2)}×</span>
+              <span className="sg-slider-row__lbl">{copy.label}</span>
+              <span className="sg-slider-row__val">{(value as number).toFixed(2)}x</span>
             </div>
-            <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 4px' }}>{slider.description}</p>
+            <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 4px' }}>{copy.description}</p>
             <input
               className="sg-slider"
               max={slider.max}
@@ -1066,15 +1102,13 @@ function PhysicsTuningPanel({
 
 const DRAG_TUNING_SLIDERS: Array<{
   key: keyof DragNeighborhoodInfluenceTuning
-  label: string
-  description: string
   min: number
   max: number
   step: number
 }> = [
-  { key: 'edgeStiffness', label: 'Edge stiffness', description: 'Cuanto se propaga el tirón por las aristas.', min: 0.01, max: 0.12, step: 0.002 },
-  { key: 'anchorStiffnessPerHop', label: 'Anchor por hop', description: 'Cuanto vuelve cada hop a su posición inicial.', min: 0.001, max: 0.02, step: 0.0005 },
-  { key: 'baseDamping', label: 'Base damping', description: 'Amortiguación de velocidad.', min: 0.75, max: 0.95, step: 0.005 },
+  { key: 'edgeStiffness', min: 0.01, max: 0.12, step: 0.002 },
+  { key: 'anchorStiffnessPerHop', min: 0.001, max: 0.02, step: 0.0005 },
+  { key: 'baseDamping', min: 0.75, max: 0.95, step: 0.005 },
 ]
 
 function DragTuningPanel({
@@ -1086,21 +1120,55 @@ function DragTuningPanel({
   onChange: <K extends keyof DragNeighborhoodInfluenceTuning>(key: K, value: DragNeighborhoodInfluenceTuning[K]) => void
   onReset: () => void
 }) {
+  const locale = useLocale()
+  const dragSliderCopy: Record<keyof DragNeighborhoodInfluenceTuning, { label: string; description: string }> = locale === 'en'
+    ? {
+        edgeStiffness: {
+          label: 'Edge stiffness',
+          description: 'How far the pull spreads through connected edges.',
+        },
+        anchorStiffnessPerHop: {
+          label: 'Anchor per hop',
+          description: 'How strongly each hop returns to its starting position.',
+        },
+        baseDamping: {
+          label: 'Base damping',
+          description: 'Velocity damping.',
+        },
+      }
+    : {
+        edgeStiffness: {
+          label: 'Rigidez de aristas',
+          description: 'Cuanto se propaga el tiron por las aristas.',
+        },
+        anchorStiffnessPerHop: {
+          label: 'Ancla por hop',
+          description: 'Cuanto vuelve cada hop a su posicion inicial.',
+        },
+        baseDamping: {
+          label: 'Amortiguacion base',
+          description: 'Amortiguacion de velocidad.',
+        },
+      }
+
   return (
     <div className="sg-settings-section">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <h4 style={{ margin: 0 }}>Drag springs lab</h4>
-        <button className="sg-btn" onClick={onReset} style={{ flex: 'none', padding: '4px 10px', fontSize: 11 }} type="button">Reset</button>
+        <h4 style={{ margin: 0 }}>{locale === 'en' ? 'Drag springs lab' : 'Laboratorio de resortes de drag'}</h4>
+        <button className="sg-btn" onClick={onReset} style={{ flex: 'none', padding: '4px 10px', fontSize: 11 }} type="button">
+          Reset
+        </button>
       </div>
       {DRAG_TUNING_SLIDERS.map((slider) => {
         const value = tuning[slider.key]
+        const copy = dragSliderCopy[slider.key]
         return (
           <div className="sg-slider-row" key={slider.key}>
             <div className="sg-slider-row__head">
-              <span className="sg-slider-row__lbl">{slider.label}</span>
+              <span className="sg-slider-row__lbl">{copy.label}</span>
               <span className="sg-slider-row__val">{(value as number).toFixed(3)}</span>
             </div>
-            <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 4px' }}>{slider.description}</p>
+            <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 4px' }}>{copy.description}</p>
             <input
               className="sg-slider"
               max={slider.max}
@@ -1134,13 +1202,15 @@ function VisualOptionsPanel({
   onInitialCameraZoomChange: (zoom: number) => void
   onToggleVisibleEdgeCountLabels: () => void
 }) {
+  const t = useTranslations('sigma.settings.visuals')
+
   return (
     <div>
       <div className="sg-settings-section">
-        <h4>Camara</h4>
+        <h4>{t('camera')}</h4>
         <div className="sg-slider-row">
           <div className="sg-slider-row__head">
-            <span className="sg-slider-row__lbl">Zoom inicial (acercamiento)</span>
+            <span className="sg-slider-row__lbl">{t('initialZoom')}</span>
             <span className="sg-slider-row__val">{initialCameraZoom.toFixed(2)}x</span>
           </div>
           <input
@@ -1159,12 +1229,12 @@ function VisualOptionsPanel({
         </div>
       </div>
       <div className="sg-settings-section">
-        <h4>Etiquetas</h4>
+        <h4>{t('labels')}</h4>
         <div className="sg-setting-row">
           <div>
-            <div className="sg-setting-row__lbl">Grado visible</div>
+            <div className="sg-setting-row__lbl">{t('visibleDegree')}</div>
             <div className="sg-setting-row__desc">
-              Cada nodo muestra cuantas aristas visibles lo tocan en la vista actual.
+              {t('visibleDegreeDesc')}
             </div>
           </div>
           <button
@@ -1173,20 +1243,20 @@ function VisualOptionsPanel({
             onClick={onToggleVisibleEdgeCountLabels}
             title={
               showVisibleEdgeCountLabels
-                ? 'Volver a mostrar nombres de nodos'
-                : 'Mostrar cantidad de aristas visibles por nodo'
+                ? t('showNodeNames')
+                : t('showVisibleEdges')
             }
             type="button"
           />
         </div>
       </div>
       <div className="sg-settings-section">
-        <h4>Monogramas</h4>
+        <h4>{t('monograms')}</h4>
         <div className="sg-setting-row">
           <div>
-            <div className="sg-setting-row__lbl">Letras de monograma</div>
+            <div className="sg-setting-row__lbl">{t('monogramLetters')}</div>
             <div className="sg-setting-row__desc">
-              Muestra iniciales cuando no hay foto disponible.
+              {t('monogramLettersDesc')}
             </div>
           </div>
           <button
@@ -1202,7 +1272,6 @@ function VisualOptionsPanel({
     </div>
   )
 }
-
 function PerformanceOptionsPanel({
   avatarPhotosEnabled,
   avatarRuntimeOptions,
@@ -1256,6 +1325,7 @@ function PerformanceOptionsPanel({
   onAvatarRuntimeOptionsChange: (options: AvatarRuntimeOptions) => void
   onExpandRoot: () => void
 }) {
+  const t = useTranslations('sigma.settings.performance')
   const isExpandingRoot = rootLoadStatus === 'loading'
   return (
     <div>
@@ -1268,12 +1338,12 @@ function PerformanceOptionsPanel({
         recommendedMaxNodes={recommendedMaxNodes}
       />
       <div className="sg-settings-section">
-        <h4>Descubrimiento</h4>
+        <h4>{t('discovery')}</h4>
         <div className="sg-setting-row">
           <div>
-            <div className="sg-setting-row__lbl">Buscar más nodos</div>
+            <div className="sg-setting-row__lbl">{t('findMoreNodes')}</div>
             <div className="sg-setting-row__desc">
-              Vuelve a consultar relays y caché buscando nuevos seguidores del root.
+              {t('findMoreNodesDesc')}
             </div>
           </div>
           <button
@@ -1281,20 +1351,20 @@ function PerformanceOptionsPanel({
             disabled={!rootPubkey || isExpandingRoot}
             id="btn-expand-root"
             onClick={onExpandRoot}
-            title={!rootPubkey ? 'Cargá un root primero' : isExpandingRoot ? 'Buscando...' : 'Buscar más nodos'}
+            title={!rootPubkey ? t('loadRootFirst') : isExpandingRoot ? t('searching') : t('findMoreNodesTitle')}
             type="button"
           >
-            {isExpandingRoot ? '⟳' : '↓+'}
+            {isExpandingRoot ? '?' : '?+'}
           </button>
         </div>
       </div>
       <div className="sg-settings-section">
-        <h4>Fluidez</h4>
+        <h4>{t('fluidity')}</h4>
         <div className="sg-setting-row">
           <div>
-            <div className="sg-setting-row__lbl">Priorizar fluidez</div>
+            <div className="sg-setting-row__lbl">{t('prioritizeFluidity')}</div>
             <div className="sg-setting-row__desc">
-              Reduce conexiones visibles cuando el rendimiento cae. Estado: {lowPerformanceConnectionStatusLabel}.
+              {t('prioritizeFluidityDesc', { status: lowPerformanceConnectionStatusLabel })}
             </div>
           </div>
           <button
@@ -1303,8 +1373,8 @@ function PerformanceOptionsPanel({
             onClick={onToggleHideConnectionsOnLowPerformance}
             title={
               hideConnectionsOnLowPerformance
-                ? 'Desactivar LOD de conexiones por rendimiento'
-                : 'Activar LOD de conexiones por rendimiento'
+                ? t('disableConnectionLod')
+                : t('enableConnectionLod')
             }
             type="button"
           />
@@ -1312,31 +1382,30 @@ function PerformanceOptionsPanel({
         {isMobileViewport && (
           <div className="sg-setting-row">
             <div>
-              <div className="sg-setting-row__lbl">Modo celular degradado</div>
+              <div className="sg-setting-row__lbl">{t('mobileDegraded')}</div>
               <div className="sg-setting-row__desc">
-                Reduce límites para optimizar el rendimiento en celulares.
+                {t('mobileDegradedDesc')}
               </div>
             </div>
             <button
               aria-pressed={mobileDegradedMode}
               className={`sg-toggle${mobileDegradedMode ? ' sg-toggle--on' : ''}`}
               onClick={onToggleMobileDegradedMode}
-              title={mobileDegradedMode ? 'Desactivar degradado' : 'Activar degradado'}
+              title={mobileDegradedMode ? t('disableDegraded') : t('enableDegraded')}
               type="button"
             />
           </div>
         )}
       </div>
       <div className="sg-settings-section">
-        <h4>Diagnostico</h4>
+        <h4>{t('diagnostics')}</h4>
         <div className="sg-setting-row">
           <div>
-            <div className="sg-setting-row__lbl">Inspector de runtime</div>
+            <div className="sg-setting-row__lbl">{t('runtimeInspector')}</div>
             <div className="sg-setting-row__desc">
-              Muestra el boton para abrir snapshots del tiempo de ejecucion.
               {isRuntimeInspectorButtonLocked
-                ? ' En desarrollo queda visible por defecto.'
-                : ' En produccion queda oculto hasta activarlo.'}
+                ? t('runtimeInspectorDescLocked')
+                : t('runtimeInspectorDescUnlocked')}
             </div>
           </div>
           <button
@@ -1346,23 +1415,24 @@ function PerformanceOptionsPanel({
             onClick={onToggleRuntimeInspectorButton}
             title={
               isRuntimeInspectorButtonLocked
-                ? 'Visible por defecto en desarrollo'
+                ? t('runtimeVisibleByDefault')
                 : runtimeInspectorButtonVisible
-                  ? 'Ocultar boton del inspector de runtime'
-                  : 'Mostrar boton del inspector de runtime'
+                  ? t('hideRuntimeButton')
+                  : t('showRuntimeButton')
             }
             type="button"
           />
         </div>
       </div>
       <div className="sg-settings-section">
-        <h4>Datos locales</h4>
+        <h4>{t('localData')}</h4>
         <div className="sg-setting-row">
           <div>
-            <div className="sg-setting-row__lbl">Cache del navegador</div>
+            <div className="sg-setting-row__lbl">{t('browserCache')}</div>
             <div className="sg-setting-row__desc">
-              Borra datos persistidos de esta pagina y recarga el explorador.
-              {cacheClearMessage ? ` ${cacheClearMessage}` : ''}
+              {t('browserCacheDesc', {
+                message: cacheClearMessage ? ` ${cacheClearMessage}` : '',
+              })}
             </div>
           </div>
           <button
@@ -1371,17 +1441,17 @@ function PerformanceOptionsPanel({
             onClick={onClearSiteCache}
             type="button"
           >
-            {isClearingSiteCache ? 'Borrando...' : 'Borrar cache'}
+            {isClearingSiteCache ? t('clearing') : t('clearCache')}
           </button>
         </div>
       </div>
       <div className="sg-settings-section">
-        <h4>Avatares</h4>
+        <h4>{t('avatars')}</h4>
         <div className="sg-setting-row">
           <div>
-            <div className="sg-setting-row__lbl">Fotos de avatares</div>
+            <div className="sg-setting-row__lbl">{t('avatarPhotos')}</div>
             <div className="sg-setting-row__desc">
-              Las fotos reales cuestan mas carga de red, decode y dibujo.
+              {t('avatarPhotosDesc')}
             </div>
           </div>
           <button
@@ -1390,17 +1460,17 @@ function PerformanceOptionsPanel({
             onClick={onToggleAvatarPhotos}
             title={
               avatarPhotosEnabled
-                ? 'Desactivar fotos para ahorrar rendimiento'
-                : 'Activar fotos de avatares'
+                ? t('disableAvatarPhotos')
+                : t('enableAvatarPhotos')
             }
             type="button"
           />
         </div>
         <div className="sg-setting-row">
           <div>
-            <div className="sg-setting-row__lbl">Ocultar durante movimiento</div>
+            <div className="sg-setting-row__lbl">{t('hideOnMove')}</div>
             <div className="sg-setting-row__desc">
-              Pasa a monograma durante pan, drag o movimiento rapido de nodos.
+              {t('hideOnMoveDesc')}
             </div>
           </div>
           <button
@@ -1414,9 +1484,9 @@ function PerformanceOptionsPanel({
         </div>
         <div className="sg-setting-row">
           <div>
-            <div className="sg-setting-row__lbl">Ocultar al alejar la vista</div>
+            <div className="sg-setting-row__lbl">{t('hideWhenZoomedOut')}</div>
             <div className="sg-setting-row__desc">
-              Pasa a monograma cuando los nodos se ven muy pequeños en la pantalla.
+              {t('hideWhenZoomedOutDesc')}
             </div>
           </div>
           <button
@@ -1436,7 +1506,6 @@ function PerformanceOptionsPanel({
     </div>
   )
 }
-
 function AdvancedAvatarOptionsPanel({
   avatarRuntimeOptions,
   avatarPerfSnapshot,
@@ -1446,11 +1515,18 @@ function AdvancedAvatarOptionsPanel({
   avatarPerfSnapshot: PerfBudgetSnapshot | null
   onAvatarRuntimeOptionsChange: (options: AvatarRuntimeOptions) => void
 }) {
+  const locale = useLocale()
   const perfStatusLabel = avatarPerfSnapshot
     ? avatarPerfSnapshot.isDegraded
-      ? `degradado a ${avatarPerfSnapshot.tier}`
-      : `base ${avatarPerfSnapshot.tier}`
-    : 'sin datos'
+      ? locale === 'en'
+        ? `degraded to ${avatarPerfSnapshot.tier}`
+        : `degradado a ${avatarPerfSnapshot.tier}`
+      : locale === 'en'
+        ? `base ${avatarPerfSnapshot.tier}`
+        : `base ${avatarPerfSnapshot.tier}`
+    : locale === 'en'
+      ? 'no data'
+      : 'sin datos'
   const adaptiveVisualsActive = avatarPerfSnapshot
     ? avatarPerfSnapshot.isDegraded || avatarPerfSnapshot.budget.maxBucket <= 64
     : false
@@ -1463,11 +1539,11 @@ function AdvancedAvatarOptionsPanel({
 
   return (
     <div className="sg-settings-section">
-      <h4>Avatares dev</h4>
+      <h4>{locale === 'en' ? 'Avatar dev' : 'Avatares dev'}</h4>
       <div className="sg-setting-row">
         <div>
-          <div className="sg-setting-row__lbl">Monogramas en zoom-out</div>
-          <div className="sg-setting-row__desc">Dibuja fallbacks visibles aunque el nodo sea chico</div>
+          <div className="sg-setting-row__lbl">{locale === 'en' ? 'Monograms when zoomed out' : 'Monogramas en zoom-out'}</div>
+          <div className="sg-setting-row__desc">{locale === 'en' ? 'Draws visible fallbacks even when the node is small.' : 'Dibuja fallbacks visibles aunque el nodo sea chico.'}</div>
         </div>
         <button
           className={`sg-toggle${avatarRuntimeOptions.showZoomedOutMonograms ? ' sg-toggle--on' : ''}`}
@@ -1480,8 +1556,8 @@ function AdvancedAvatarOptionsPanel({
       </div>
       <div className="sg-setting-row">
         <div>
-          <div className="sg-setting-row__lbl">Fondo de monograma</div>
-          <div className="sg-setting-row__desc">Círculo de color cuando no hay foto lista</div>
+          <div className="sg-setting-row__lbl">{locale === 'en' ? 'Monogram background' : 'Fondo de monograma'}</div>
+          <div className="sg-setting-row__desc">{locale === 'en' ? 'Shows a color circle when the photo is not ready.' : 'Circulo de color cuando no hay foto lista.'}</div>
         </div>
         <button
           className={`sg-toggle${avatarRuntimeOptions.showMonogramBackgrounds ? ' sg-toggle--on' : ''}`}
@@ -1494,7 +1570,7 @@ function AdvancedAvatarOptionsPanel({
       </div>
       <div className="sg-slider-row">
         <div className="sg-slider-row__head">
-          <span className="sg-slider-row__lbl">Radio mínimo</span>
+          <span className="sg-slider-row__lbl">{locale === 'en' ? 'Minimum radius' : 'Radio minimo'}</span>
           <span className="sg-slider-row__val">{avatarRuntimeOptions.sizeThreshold.toFixed(0)}px</span>
         </div>
         <input
@@ -1511,8 +1587,8 @@ function AdvancedAvatarOptionsPanel({
       </div>
       <div className="sg-slider-row">
         <div className="sg-slider-row__head">
-          <span className="sg-slider-row__lbl">Zoom máx para fotos</span>
-          <span className="sg-slider-row__val">{avatarRuntimeOptions.zoomThreshold.toFixed(2)}×</span>
+          <span className="sg-slider-row__lbl">{locale === 'en' ? 'Max zoom for photos' : 'Zoom maximo para fotos'}</span>
+          <span className="sg-slider-row__val">{avatarRuntimeOptions.zoomThreshold.toFixed(2)}x</span>
         </div>
         <input
           className="sg-slider"
@@ -1528,8 +1604,8 @@ function AdvancedAvatarOptionsPanel({
       </div>
       <div className="sg-setting-row">
         <div>
-          <div className="sg-setting-row__lbl">Todas las fotos visibles</div>
-          <div className="sg-setting-row__desc">Muestra fotos en todos los nodos visibles; reescala buckets según el zoom</div>
+          <div className="sg-setting-row__lbl">{locale === 'en' ? 'All visible photos' : 'Todas las fotos visibles'}</div>
+          <div className="sg-setting-row__desc">{locale === 'en' ? 'Shows photos on every visible node and rescales buckets based on zoom.' : 'Muestra fotos en todos los nodos visibles y reescala buckets segun el zoom.'}</div>
         </div>
         <button
           className={`sg-toggle${avatarRuntimeOptions.showAllVisibleImages ? ' sg-toggle--on' : ''}`}
@@ -1543,8 +1619,8 @@ function AdvancedAvatarOptionsPanel({
 
       <div className="sg-setting-row">
         <div>
-          <div className="sg-setting-row__lbl">Bucket interactivo max</div>
-          <div className="sg-setting-row__desc">Limita calidad durante navegacion</div>
+          <div className="sg-setting-row__lbl">{locale === 'en' ? 'Max interactive bucket' : 'Bucket interactivo maximo'}</div>
+          <div className="sg-setting-row__desc">{locale === 'en' ? 'Limits quality while navigating.' : 'Limita calidad durante la navegacion.'}</div>
         </div>
         <select
           className="sg-select"
@@ -1565,21 +1641,21 @@ function AdvancedAvatarOptionsPanel({
         style={{ width: '100%', marginTop: 8 }}
         type="button"
       >
-        Reset avatares
+        {locale === 'en' ? 'Reset avatars' : 'Reset avatares'}
       </button>
       <div style={{ marginTop: 12, border: '1px solid var(--sg-stroke)', borderRadius: 8, padding: '10px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 12, color: 'var(--sg-fg-muted)' }}>Adaptivo</span>
+          <span style={{ fontSize: 12, color: 'var(--sg-fg-muted)' }}>{locale === 'en' ? 'Adaptive' : 'Adaptivo'}</span>
           <span style={{ fontFamily: 'var(--sg-font-mono)', fontSize: 11, color: 'var(--sg-fg-muted)' }}>{perfStatusLabel}</span>
         </div>
         <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
           {[
             ['FPS EMA', formatFpsWithFrameMs(avatarPerfSnapshot?.emaFrameMs)],
-            ['Base', avatarPerfSnapshot?.baseTier ?? 'n/a'],
-            ['Loads', avatarPerfSnapshot?.budget.concurrency ?? 'n/a'],
+            [locale === 'en' ? 'Base' : 'Base', avatarPerfSnapshot?.baseTier ?? 'n/a'],
+            [locale === 'en' ? 'Loads' : 'Cargas', avatarPerfSnapshot?.budget.concurrency ?? 'n/a'],
             ['Bucket', avatarPerfSnapshot ? `${avatarPerfSnapshot.budget.maxBucket}px` : 'n/a'],
-            ['Radio eff', `${effectiveSizeThreshold.toFixed(0)}px`],
-            ['Zoom eff', `${effectiveZoomThreshold.toFixed(2)}×`],
+            [locale === 'en' ? 'Effective radius' : 'Radio efectivo', `${effectiveSizeThreshold.toFixed(0)}px`],
+            [locale === 'en' ? 'Effective zoom' : 'Zoom efectivo', `${effectiveZoomThreshold.toFixed(2)}x`],
           ].map(([k, v]) => (
             <div key={k as string} style={{ background: 'oklch(100% 0 0 / 0.03)', borderRadius: 6, padding: '4px 8px' }}>
               <div style={{ fontSize: 10, color: 'var(--sg-fg-faint)' }}>{k}</div>
@@ -1614,7 +1690,7 @@ function mapCanonicalNodeToSavedRootProfile(node: CanonicalNode): SavedRootProfi
   }
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface SigmaRootLoadChromeProps {
   bridge: LegacyKernelBridge
@@ -1723,6 +1799,12 @@ const SigmaTopBarRootLoadBridge = memo(function SigmaTopBarRootLoadBridge({
   rootLoadOverride,
   ...topBarProps
 }: SigmaTopBarRootLoadBridgeProps) {
+  const loadingT = useTranslations('sigma.loading')
+  const locale = useLocale()
+  const progressCopy = useMemo(
+    () => buildRootLoadProgressCopy({ locale, t: loadingT }),
+    [loadingT, locale],
+  )
   const subscribedRootLoad = useSyncExternalStore(
     bridge.subscribeUi,
     () => bridge.getUiState().rootLoad,
@@ -1740,6 +1822,7 @@ const SigmaTopBarRootLoadBridge = memo(function SigmaTopBarRootLoadBridge({
     }
 
     const progress = buildRootLoadProgressViewModel({
+      copy: progressCopy,
       rootLoad,
       identityLabel,
       nodeCount: displayNodeCount,
@@ -1754,6 +1837,7 @@ const SigmaTopBarRootLoadBridge = memo(function SigmaTopBarRootLoadBridge({
     displayNodeCount,
     fallbackMessage,
     identityLabel,
+    progressCopy,
     rootLoad,
     shouldShowSearchLoadProgress,
   ])
@@ -1794,6 +1878,8 @@ const RuntimeInspectorUiStateBridge = memo(function RuntimeInspectorUiStateBridg
 })
 
 export default function GraphAppV2() {
+  const tSigma = useTranslations('sigma')
+  const locale = useLocale()
   const searchParams = useSearchParams()
   const fixtureName = searchParams.get('fixture')
   const fixtureSource = searchParams.get('fixtureSource')
@@ -1877,7 +1963,7 @@ export default function GraphAppV2() {
   const [personSearchQuery, setPersonSearchQuery] = useState('')
   const personSearchInputRef = useRef<HTMLInputElement | null>(null)
   const [isRootLoadScreenOpen, setIsRootLoadScreenOpen] = useState(false)
-  // Rail toggles — direct controls, decoupled from the settings panel
+  // Rail toggles â€” direct controls, decoupled from the settings panel
   const [physicsEnabled, setPhysicsEnabled] = useState(true)
   const [avatarPhotosEnabled, setAvatarPhotosEnabled] = useState(
     readStoredAvatarPhotosEnabled,
@@ -2734,7 +2820,7 @@ export default function GraphAppV2() {
       return false
     }
     
-    // Animar el zap si al menos un nodo está presente en el renderizado
+    // Animar el zap si al menos un nodo estÃ¡ presente en el renderizado
     const hasVisibleFrom = visibleNodeSet.has(zap.fromPubkey)
     const hasVisibleTo = visibleNodeSet.has(zap.toPubkey)
     if (!hasVisibleFrom && !hasVisibleTo) {
@@ -2862,14 +2948,23 @@ export default function GraphAppV2() {
   const shouldEnableLiveZapFeed = canRunZapFeed && zapFeedMode === 'live'
   const shouldEnableRecentZapReplay =
     canRunZapFeed && zapFeedMode === 'recent'
-  const selectedZapReplayWindowLabel = formatRecentZapReplayWindowLabel(
+  const formatReplayWindowLabel = useCallback(
+    (hours: number) =>
+      locale === 'en'
+        ? (hours === 1 ? 'last hour' : `last ${hours} hours`)
+        : formatRecentZapReplayWindowLabel(hours),
+    [locale],
+  )
+  const selectedZapReplayWindowLabel = formatReplayWindowLabel(
     recentZapReplayLookbackHours,
   )
-  const appliedZapReplayWindowLabel = formatRecentZapReplayWindowLabel(
+  const appliedZapReplayWindowLabel = formatReplayWindowLabel(
     appliedRecentZapReplayLookbackHours,
   )
   const appliedZapReplayWindowText =
-    appliedRecentZapReplayLookbackHours === 1
+    locale === 'en'
+      ? appliedZapReplayWindowLabel
+      : appliedRecentZapReplayLookbackHours === 1
       ? `la ${appliedZapReplayWindowLabel}`
       : `las ${appliedZapReplayWindowLabel}`
   const handleLiveZap = useCallback((zap: ParsedZap) => {
@@ -2912,7 +3007,33 @@ export default function GraphAppV2() {
   const recentZapReplayWorking =
     shouldEnableRecentZapReplay &&
     (recentZapReplay.phase === 'loading' || recentZapReplay.phase === 'playing')
-  const recentZapReplayStatusLabel = getZapReplayStatusLabel(recentZapReplay)
+  const recentZapReplayStatusLabel = useMemo(() => {
+    if (locale !== 'en') {
+      return getZapReplayStatusLabel(recentZapReplay)
+    }
+
+    if (recentZapReplay.playbackPaused) {
+      return recentZapReplay.stage === 'collecting' || recentZapReplay.stage === 'decoding'
+        ? 'Replay paused after collection'
+        : 'Replay paused'
+    }
+
+    switch (recentZapReplay.stage) {
+      case 'collecting':
+        return 'Querying relays'
+      case 'decoding':
+        return 'Closing collection'
+      case 'playing':
+        return 'Playing timeline'
+      case 'done':
+        return 'Replay ready'
+      case 'error':
+        return 'Replay error'
+      case 'idle':
+      default:
+        return 'Replay waiting'
+    }
+  }, [locale, recentZapReplay])
   const recentZapReplayCollectionProgressValue = formatProgressValue(
     recentZapReplayCollection.progress,
   )
@@ -2922,8 +3043,9 @@ export default function GraphAppV2() {
     recentZapReplayPlaybackProgress,
   )
   const recentZapReplayStatusDetail =
-    recentZapReplay.message ??
-    `Ventana activa: ${appliedZapReplayWindowLabel}.`
+    locale === 'en'
+      ? tSigma('zaps.panel.configuredWindow', { window: appliedZapReplayWindowLabel })
+      : recentZapReplay.message ?? `Ventana activa: ${appliedZapReplayWindowLabel}.`
   const displayedZapReplayProgress =
     recentZapReplayScrubProgress ?? recentZapReplay.timelineProgress
   const displayedZapReplayCreatedAt =
@@ -3082,9 +3204,20 @@ export default function GraphAppV2() {
   const settingsTabs = useMemo(
     () =>
       isDev || isFixtureMode
-        ? [...PUBLIC_SIGMA_SETTINGS_TABS, DEV_SIGMA_SETTINGS_TAB]
-        : PUBLIC_SIGMA_SETTINGS_TABS,
-    [isDev, isFixtureMode],
+        ? [
+            { id: 'performance' as const, label: tSigma('settingsTabs.performance') },
+            { id: 'visuals' as const, label: tSigma('settingsTabs.visuals') },
+            { id: 'zaps' as const, label: tSigma('settingsTabs.zaps') },
+            { id: 'relays' as const, label: tSigma('settingsTabs.relays') },
+            { id: 'dev' as const, label: tSigma('settingsTabs.dev') },
+          ]
+        : [
+            { id: 'performance' as const, label: tSigma('settingsTabs.performance') },
+            { id: 'visuals' as const, label: tSigma('settingsTabs.visuals') },
+            { id: 'zaps' as const, label: tSigma('settingsTabs.zaps') },
+            { id: 'relays' as const, label: tSigma('settingsTabs.relays') },
+          ],
+    [isDev, isFixtureMode, tSigma],
   )
 
   useEffect(() => {
@@ -3112,10 +3245,10 @@ export default function GraphAppV2() {
     hideConnectionsOnLowPerformance &&
     isLowPerformanceForConnections
   const lowPerformanceConnectionStatusLabel = lowPerformanceConnectionHidingActive
-    ? 'ocultando conexiones'
+    ? (locale === 'en' ? 'hiding connections' : 'ocultando conexiones')
     : isLowPerformanceForConnections
-      ? 'bajo rendimiento detectado'
-      : 'rendimiento estable'
+      ? (locale === 'en' ? 'low performance detected' : 'bajo rendimiento detectado')
+      : (locale === 'en' ? 'stable performance' : 'rendimiento estable')
   const handleAvatarPerfSnapshot = useCallback(
     (snapshot: PerfBudgetSnapshot | null) => { setAvatarPerfSnapshot(snapshot) },
     [],
@@ -3133,7 +3266,7 @@ export default function GraphAppV2() {
     appendZapActivity({ fromPubkey, toPubkey, sats }, 'simulated', played)
     setZapFeedback(
       played
-        ? `Zap simulado: ${sats} sats ${fromPubkey.slice(0, 8)}… → ${toPubkey.slice(0, 8)}…`
+        ? `Zap simulado: ${sats} sats ${fromPubkey.slice(0, 8)}â€¦ â†’ ${toPubkey.slice(0, 8)}â€¦`
         : 'No se pudo reproducir el zap simulado.',
     )
   }, [appendZapActivity, findSimulationPair, handleZap])
@@ -3163,7 +3296,7 @@ export default function GraphAppV2() {
       return
     }
     const result = await bridge.revertRelays()
-    setActionFeedback(result?.message ?? 'No había override activo para revertir.')
+    setActionFeedback(result?.message ?? 'No habÃ­a override activo para revertir.')
   }, [bridge, isFixtureMode, updateFixtureState])
 
   const openSettingsTab = useCallback((tab: SigmaSettingsTab) => {
@@ -3332,7 +3465,7 @@ export default function GraphAppV2() {
     const savedRoot = savedRoots[0]
     if (!savedRoot) {
       realDragLabAutoloadAttemptedRef.current = true
-      setLoadFeedback('Elegí una identidad real para usar el laboratorio drag-local.')
+      setLoadFeedback('ElegÃ­ una identidad real para usar el laboratorio drag-local.')
       setIsRootSheetOpen(true)
       return
     }
@@ -3363,7 +3496,7 @@ export default function GraphAppV2() {
     [removeSavedRoot],
   )
 
-  // ── Derived values for UI components ───────────────────────────────────────
+  // â”€â”€ Derived values for UI components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const hasRoot = sceneState.rootPubkey !== null
   const nodeExpansionLoadProgress = useMemo(
@@ -3384,7 +3517,7 @@ export default function GraphAppV2() {
   )
 
   // Saved-roots profile snapshot as fallback while the kernel is still
-  // hydrating `currentRootNode` — prevents empty avatar / display name on
+  // hydrating `currentRootNode` â€” prevents empty avatar / display name on
   // first paint after selecting a saved root.
   const savedRootProfile = useMemo(() => {
     if (!sceneState.rootPubkey) return null
@@ -3411,48 +3544,48 @@ export default function GraphAppV2() {
   const filterPills: FilterPill[] = useMemo(() => [
     {
       id: 'all',
-      label: 'Toda la red',
+      label: tSigma('filters.all.label'),
       count: deferredScene.render.diagnostics.nodeCount,
       swatch: 'oklch(55% 0.02 230)',
-      hint: 'Vista base: raiz, follows salientes, followers entrantes y nodos expandidos.',
+      hint: tSigma('filters.all.hint'),
     },
     {
       id: 'following',
-      label: 'A quienes sigo',
+      label: tSigma('filters.following.label'),
       count: null,
       swatch: '#84c7ff',
-      hint: 'A quienes sigo: follows salientes desde la raiz y desde nodos expandidos.',
+      hint: tSigma('filters.following.hint'),
     },
     {
       id: 'followers',
-      label: 'Me siguen',
+      label: tSigma('filters.followers.label'),
       count: null,
       swatch: '#ffb86b',
-      hint: 'Me siguen: follows entrantes hacia la raiz y nodos expandidos.',
+      hint: tSigma('filters.followers.hint'),
     },
     {
       id: 'mutuals',
-      label: 'Mutuos',
+      label: tSigma('filters.mutuals.label'),
       count: null,
       swatch: '#5fd39d',
-      hint: 'Mutuos: relacion de ida y vuelta confirmada.',
+      hint: tSigma('filters.mutuals.hint'),
     },
     {
       id: 'oneway',
-      label: 'Sin reciprocidad',
+      label: tSigma('filters.oneway.label'),
       count: null,
       swatch: 'oklch(60% 0.06 80)',
-      hint: 'Sin reciprocidad: vinculo confirmado de un solo lado.',
+      hint: tSigma('filters.oneway.hint'),
     },
     {
       id: 'connections',
-      label: 'Conexiones',
+      label: tSigma('filters.connections.label'),
       count: null,
-      caption: 'mutuos',
+      caption: tSigma('filters.connections.caption'),
       swatch: 'oklch(76% 0.1 180)',
-      hint: 'Conexiones: solo mutuos de raiz y expandidos.',
+      hint: tSigma('filters.connections.hint'),
     },
-  ], [deferredScene.render.diagnostics.nodeCount])
+  ], [deferredScene.render.diagnostics.nodeCount, tSigma])
 
   const handleFilterSelect = useCallback((id: FilterPill['id']) => {
     if (id === 'all')       { toggleLayer('graph'); return }
@@ -3473,11 +3606,11 @@ export default function GraphAppV2() {
 
   // HUD stats
   const hudStats: HudStat[] = useMemo(() => [
-    { k: 'Nodos',   v: String(deferredScene.render.diagnostics.nodeCount) },
-    { k: 'Aristas', v: String(deferredScene.physics.diagnostics.edgeCount) },
-    { k: 'Visibles', v: String(deferredScene.render.diagnostics.visibleEdgeCount) },
+    { k: tSigma('hud.nodes'),   v: String(deferredScene.render.diagnostics.nodeCount) },
+    { k: tSigma('hud.edges'), v: String(deferredScene.physics.diagnostics.edgeCount) },
+    { k: tSigma('hud.visible'), v: String(deferredScene.render.diagnostics.visibleEdgeCount) },
     {
-      k: 'Física',
+      k: 'FÃ­sica',
       v: physicsEnabled ? 'activa' : 'pausa',
       tone: physicsEnabled ? 'good' : 'warn',
     },
@@ -3490,7 +3623,7 @@ export default function GraphAppV2() {
       k: 'FPS',
       v: avatarPerfSnapshot
         ? formatFpsFromFrameMs(avatarPerfSnapshot.emaFrameMs)
-        : '—',
+        : 'â€”',
       tone: avatarPerfSnapshot && avatarPerfSnapshot.emaFrameMs > 20 ? 'warn' : 'default',
     },
   ], [
@@ -3501,9 +3634,10 @@ export default function GraphAppV2() {
     physicsEnabled,
     relayState.isGraphStale,
     relayState.urls.length,
+    tSigma,
   ])
 
-  // Rail buttons — every entry is a DIRECT action or toggle.
+  // Rail buttons â€” every entry is a DIRECT action or toggle.
   // Panel entries toggle themselves and replace each other; outside clicks stay inert.
   // Layer controls below remain direct toggles.
   const handleOpenRootSheet = useCallback(() => {
@@ -3712,19 +3846,19 @@ export default function GraphAppV2() {
 
   const handleDownloadAvatarRuntimeDebug = useCallback(() => {
     if (!isAvatarRuntimeDebugDownloadEnabled()) {
-      setActionFeedback('El debug runtime de avatares sólo se descarga en dev.')
+      setActionFeedback('El debug runtime de avatares sÃ³lo se descarga en dev.')
       return
     }
 
     const host = sigmaHostRef.current
     if (!host) {
-      setActionFeedback('El grafo todavía no está listo para debug de avatares.')
+      setActionFeedback('El grafo todavÃ­a no estÃ¡ listo para debug de avatares.')
       return
     }
 
     const state = host.getAvatarRuntimeDebugSnapshot({ includeOverlayNodes: true })
     if (!state) {
-      setActionFeedback('No hay snapshot runtime de avatares disponible todavía.')
+      setActionFeedback('No hay snapshot runtime de avatares disponible todavÃ­a.')
       return
     }
 
@@ -3765,14 +3899,14 @@ export default function GraphAppV2() {
     const drawnImages = payload.counts.drawnImages ?? 0
     const loadCandidates = payload.counts.loadCandidates ?? 0
     setActionFeedback(
-      `Debug de avatares descargado. ${drawnImages}/${withPicture} fotos dibujadas; ${loadCandidates}/${visibleNodes} nodos visibles en cola útil.`,
+      `Debug de avatares descargado. ${drawnImages}/${withPicture} fotos dibujadas; ${loadCandidates}/${visibleNodes} nodos visibles en cola Ãºtil.`,
     )
   }, [deferredScene.render.nodes, sceneState.nodesByPubkey])
 
   const railButtons: RailButton[] = useMemo(() => [
     {
       id: 'settings',
-      tip: isSettingsOpen ? 'Cerrar ajustes' : 'Ajustes',
+      tip: isSettingsOpen ? tSigma('rail.closeSettings') : tSigma('rail.settings'),
       icon: <GearIcon />,
       active: isSettingsOpen,
       onClick: handleOpenSettings,
@@ -3780,8 +3914,8 @@ export default function GraphAppV2() {
     {
       id: 'notifications',
       tip: isNotificationsOpen
-        ? 'Cerrar notificaciones'
-        : `Notificaciones (${notificationHistory.length})`,
+        ? tSigma('rail.closeNotifications')
+        : tSigma('rail.notifications', { count: notificationHistory.length }),
       icon: <BellIcon />,
       active: isNotificationsOpen,
       badge: notificationHistory.length,
@@ -3791,8 +3925,8 @@ export default function GraphAppV2() {
       ? [{
           id: 'runtime',
           tip: isRuntimeInspectorOpen
-            ? 'Cerrar inspector de runtime'
-            : 'Inspector de runtime (Shift + D)',
+            ? tSigma('rail.closeRuntime')
+            : tSigma('rail.runtime'),
           icon: <PulseIcon />,
           active: isRuntimeInspectorOpen,
           onClick: handleOpenRuntimeInspector,
@@ -3800,7 +3934,7 @@ export default function GraphAppV2() {
       : []),
     {
       id: 'physics',
-      tip: physicsEnabled ? 'Pausar física' : 'Reanudar física',
+      tip: physicsEnabled ? 'Pausar fÃ­sica' : 'Reanudar fÃ­sica',
       icon: <AtomIcon />,
       active: physicsEnabled,
       pressed: physicsEnabled,
@@ -3811,8 +3945,8 @@ export default function GraphAppV2() {
       tip: recentZapReplayWorking
         ? `${recentZapReplayStatusLabel}: sigue trabajando`
         : isZapsPanelOpen
-          ? 'Cerrar panel de zaps'
-          : 'Zaps',
+          ? tSigma('rail.closeZaps')
+          : tSigma('rail.zaps'),
       icon: <ZapIcon />,
       active: isZapsPanelOpen,
       attention: recentZapReplayWorking,
@@ -3821,13 +3955,13 @@ export default function GraphAppV2() {
     },
     {
       id: 'recenter',
-      tip: 'Ajustar vista',
+      tip: tSigma('rail.view'),
       icon: <TargetIcon />,
       onClick: handleFitView,
     },
     {
       id: 'stale',
-      tip: relayState.isGraphStale ? 'Revertir relays' : 'Relays al dia',
+      tip: relayState.isGraphStale ? tSigma('rail.relaysRevert') : tSigma('rail.relaysCurrent'),
       icon: <ClockIcon />,
       active: relayState.isGraphStale,
       onClick: handleStaleRelays,
@@ -3851,27 +3985,28 @@ export default function GraphAppV2() {
     recentZapReplayStatusLabel,
     recentZapReplayWorking,
     relayState.isGraphStale,
+    tSigma,
   ])
 
   const mobileNavButtons: MobileNavButton[] = useMemo(() => [
     {
       id: 'filters',
-      label: 'Filtros',
+      label: tSigma('rail.filters'),
       tip: mobileUtilityPanel === 'filters'
-        ? 'Cerrar filtros de conexiones'
-        : 'Filtros de conexiones',
+        ? tSigma('rail.closeFilters')
+        : tSigma('rail.filters'),
       icon: <FilterIcon />,
       active: mobileUtilityPanel === 'filters',
       onClick: () => handleOpenMobileUtilityPanel('filters', 'mid'),
     },
     {
       id: 'zaps',
-      label: 'Zaps',
+      label: tSigma('rail.zaps'),
       tip: recentZapReplayWorking
         ? `${recentZapReplayStatusLabel}: sigue trabajando`
         : isZapsPanelOpen
-          ? 'Cerrar zaps'
-          : 'Zaps en vivo',
+          ? tSigma('rail.closeZaps')
+          : tSigma('rail.liveZaps'),
       icon: <ZapIcon />,
       active: isZapsPanelOpen,
       badge: zapActivityLog.length,
@@ -3881,10 +4016,10 @@ export default function GraphAppV2() {
     ...(canUseRuntimeInspector
       ? [{
           id: 'runtime',
-          label: 'Runtime',
+          label: tSigma('rail.runtimeShort'),
           tip: isRuntimeInspectorOpen
-            ? 'Cerrar inspector de runtime'
-            : 'Inspector de runtime',
+            ? tSigma('rail.closeRuntime')
+            : tSigma('rail.runtimeShort'),
           icon: <PulseIcon />,
           active: isRuntimeInspectorOpen,
           onClick: handleOpenRuntimeInspector,
@@ -3892,15 +4027,15 @@ export default function GraphAppV2() {
       : []),
     {
       id: 'view',
-      label: 'Vista',
-      tip: 'Ajustar vista',
+      label: tSigma('rail.viewShort'),
+      tip: tSigma('rail.view'),
       icon: <TargetIcon />,
       onClick: handleFitView,
     },
     {
       id: 'settings',
-      label: 'Ajustes',
-      tip: isSettingsOpen ? 'Cerrar ajustes' : 'Ajustes',
+      label: tSigma('rail.settings'),
+      tip: isSettingsOpen ? tSigma('rail.closeSettings') : tSigma('rail.settings'),
       icon: <GearIcon />,
       active: isSettingsOpen,
       onClick: handleOpenSettings,
@@ -3918,10 +4053,11 @@ export default function GraphAppV2() {
     handleFitView,
     recentZapReplayStatusLabel,
     recentZapReplayWorking,
+    tSigma,
     zapActivityLog.length,
   ])
 
-  // Toasts — combine feedback sources
+  // Toasts â€” combine feedback sources
   const toastEntries: SigmaToast[] = useMemo(() => {
     const entries: SigmaToast[] = []
     if (actionFeedback) entries.push({ id: 'action', msg: actionFeedback, tone: 'default' })
@@ -4029,7 +4165,7 @@ export default function GraphAppV2() {
     [],
   )
 
-  // ── Settings panel content ─────────────────────────────────────────────────
+  // â”€â”€ Settings panel content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const renderSettingsContent = () => {
     switch (activeSettingsTab) {
@@ -4096,16 +4232,14 @@ export default function GraphAppV2() {
               relayUrls={relayState.urls}
             />
             <div className="sg-settings-section">
-              <h4>Estado de relays</h4>
+              <h4>{tSigma('settings.relays.state')}</h4>
               <div className="sg-setting-row">
                 <div>
                   <div className="sg-setting-row__lbl">
-                    {relayState.isGraphStale ? 'Relays personalizados' : 'Relays base'}
+                    {relayState.isGraphStale ? tSigma('settings.relays.custom') : tSigma('settings.relays.base')}
                   </div>
                   <div className="sg-setting-row__desc">
-                    {relayState.isGraphStale
-                      ? 'La sesion esta usando una lista personalizada.'
-                      : 'La sesion usa la configuracion base del explorador.'}
+                    {relayState.isGraphStale ? tSigma('settings.relays.customDesc') : tSigma('settings.relays.baseDesc')}
                   </div>
                 </div>
                 {relayState.isGraphStale ? (
@@ -4114,7 +4248,7 @@ export default function GraphAppV2() {
                     onClick={handleStaleRelays}
                     type="button"
                   >
-                    Revertir
+                    {tSigma('settings.relays.revert')}
                   </button>
                 ) : null}
               </div>
@@ -4126,12 +4260,14 @@ export default function GraphAppV2() {
           <div>
             {isDev ? (
               <div className="sg-settings-section">
-                <h4>ForceAtlas dev</h4>
+                <h4>{locale === 'en' ? 'ForceAtlas dev' : 'ForceAtlas dev'}</h4>
                 <div className="sg-setting-row">
                   <div>
                     <div className="sg-setting-row__lbl">Auto-freeze</div>
                     <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 0' }}>
-                      Cuando esta apagado, el supervisor ignora convergencia y max iterations.
+                      {locale === 'en'
+                        ? 'When disabled, the supervisor ignores convergence and max iterations.'
+                        : 'Cuando esta apagado, el supervisor ignora convergencia y max iterations.'}
                     </p>
                   </div>
                   <input
@@ -4162,18 +4298,24 @@ export default function GraphAppV2() {
               />
             ) : null}
             <div className="sg-settings-section">
-              <h4>Diagnóstico runtime</h4>
+              <h4>{locale === 'en' ? 'Runtime diagnostics' : 'Diagnostico runtime'}</h4>
               {[
-                ['Topología render', String(deferredScene.render.diagnostics.topologySignature)],
-                ['Topología física', String(deferredScene.physics.diagnostics.topologySignature)],
-                ['Relays',       String(relayState.urls.length)],
-                ['Pinned',       String(sceneState.pinnedNodePubkeys.size)],
-                ['Viewport',     isFixtureMode
-                  ? (lastViewportRatio ? `${lastViewportRatio.toFixed(2)}×` : 'idle')
-                  : (controller.getLastViewport() ? `${controller.getLastViewport()?.ratio.toFixed(2)}×` : 'idle')],
-                ['Capa activa',  sceneState.activeLayer],
-                ['Root',         sceneState.rootPubkey ? 'cargado' : 'vacío'],
-                ['Tuning de red', `${getKernelNetworkTuning().nodeExpandConnectTimeoutMs}ms conn / ${getKernelNetworkTuning().nodeExpandPageTimeoutMs}ms page / ${getKernelNetworkTuning().nodeExpandHardTimeoutMs}ms max`],
+                [locale === 'en' ? 'Render topology' : 'Topologia render', String(deferredScene.render.diagnostics.topologySignature)],
+                [locale === 'en' ? 'Physics topology' : 'Topologia fisica', String(deferredScene.physics.diagnostics.topologySignature)],
+                ['Relays', String(relayState.urls.length)],
+                ['Pinned', String(sceneState.pinnedNodePubkeys.size)],
+                [
+                  'Viewport',
+                  isFixtureMode
+                    ? (lastViewportRatio ? `${lastViewportRatio.toFixed(2)}x` : 'idle')
+                    : (controller.getLastViewport() ? `${controller.getLastViewport()?.ratio.toFixed(2)}x` : 'idle'),
+                ],
+                [locale === 'en' ? 'Active layer' : 'Capa activa', sceneState.activeLayer],
+                [locale === 'en' ? 'Root' : 'Root', sceneState.rootPubkey ? (locale === 'en' ? 'loaded' : 'cargado') : (locale === 'en' ? 'empty' : 'vacio')],
+                [
+                  locale === 'en' ? 'Network tuning' : 'Tuning de red',
+                  `${getKernelNetworkTuning().nodeExpandConnectTimeoutMs}ms conn / ${getKernelNetworkTuning().nodeExpandPageTimeoutMs}ms page / ${getKernelNetworkTuning().nodeExpandHardTimeoutMs}ms max`,
+                ],
               ].map(([k, v]) => (
                 <div className="sg-diag-row" key={k as string}>
                   <span className="sg-diag-row__k">{k}</span>
@@ -4183,9 +4325,11 @@ export default function GraphAppV2() {
             </div>
             {isDev ? (
               <div className="sg-settings-section">
-                <h4>Debug de avatares</h4>
+                <h4>{locale === 'en' ? 'Avatar debug' : 'Debug de avatares'}</h4>
                 <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '0 0 10px' }}>
-                  Descarga el frame visible, la caché, los bloqueos y los eventos recientes del scheduler.
+                  {locale === 'en'
+                    ? 'Downloads the visible frame, cache state, locks, and recent scheduler events.'
+                    : 'Descarga el frame visible, la cache, los bloqueos y los eventos recientes del scheduler.'}
                 </p>
                 <button
                   className="sg-btn sg-btn--primary"
@@ -4193,13 +4337,13 @@ export default function GraphAppV2() {
                   style={{ width: '100%' }}
                   type="button"
                 >
-                  Descargar debug de avatares
+                  {locale === 'en' ? 'Download avatar debug' : 'Descargar debug de avatares'}
                 </button>
               </div>
             ) : null}
             {isDev ? (
               <div className="sg-settings-section">
-                <h4>Zaps dev</h4>
+                <h4>{locale === 'en' ? 'Zaps dev' : 'Zaps dev'}</h4>
                 <button
                   className={`sg-btn${!simulationPair ? ' ' : ' sg-btn--primary'}`}
                   disabled={!simulationPair}
@@ -4207,7 +4351,9 @@ export default function GraphAppV2() {
                   style={{ width: '100%' }}
                   type="button"
                 >
-                  {simulationPair ? 'Simular zap' : 'Sin pares conectados'}
+                  {simulationPair
+                    ? (locale === 'en' ? 'Simulate zap' : 'Simular zap')
+                    : (locale === 'en' ? 'No connected pair available' : 'Sin pares conectados')}
                 </button>
                 {zapFeedback ? (
                   <p style={{ marginTop: 8, fontSize: 11, color: 'var(--sg-fg-muted)' }}>{zapFeedback}</p>
@@ -4219,36 +4365,36 @@ export default function GraphAppV2() {
     }
   }
 
-  // ── Detail panel content ───────────────────────────────────────────────────
+  // Detail panel content
 
   const renderZapSettingsContent = () => (
     <div>
       <div className="sg-settings-section">
-        <h4>Visualizacion</h4>
+        <h4>{tSigma('zaps.settings.visualization')}</h4>
         <div className="sg-setting-row">
           <div>
-            <div className="sg-setting-row__lbl">Mostrar zaps en el grafo</div>
+            <div className="sg-setting-row__lbl">{tSigma('zaps.settings.showInGraph')}</div>
             <div className="sg-setting-row__desc">
-              Controla si las conexiones y animaciones de zaps se dibujan sobre la escena.
+              {tSigma('zaps.settings.showInGraphDesc')}
             </div>
           </div>
           <button
             aria-pressed={showZaps}
             className={`sg-toggle${showZaps ? ' sg-toggle--on' : ''}`}
             onClick={handleToggleZaps}
-            title={showZaps ? 'Ocultar zaps' : 'Mostrar zaps'}
+            title={showZaps ? tSigma('zaps.settings.hideZaps') : tSigma('zaps.settings.showZaps')}
             type="button"
           />
         </div>
       </div>
 
       <div className="sg-settings-section">
-        <h4>Proteccion operativa</h4>
+        <h4>{tSigma('zaps.settings.operationalProtection')}</h4>
         <div className="sg-setting-row">
           <div>
-            <div className="sg-setting-row__lbl">Pausar live en escenas grandes</div>
+            <div className="sg-setting-row__lbl">{tSigma('zaps.settings.pauseLargeScenes')}</div>
             <div className="sg-setting-row__desc">
-              Limita filtros de relay cuando hay mas de {MAX_ZAP_FILTER_PUBKEYS} nodos visibles.
+              {tSigma('zaps.settings.pauseLargeScenesDesc', { limit: MAX_ZAP_FILTER_PUBKEYS })}
             </div>
           </div>
           <button
@@ -4259,8 +4405,8 @@ export default function GraphAppV2() {
             }}
             title={
               pauseLiveZapsWhenSceneIsLarge
-                ? 'Desactivar limite de zaps live'
-                : 'Activar pausa de zaps live en escenas grandes'
+                ? tSigma('zaps.settings.disableLargeSceneLimit')
+                : tSigma('zaps.settings.enableLargeSceneLimit')
             }
             type="button"
           />
@@ -4282,7 +4428,7 @@ export default function GraphAppV2() {
     ? 'Live'
     : zapFeedMode === 'recent'
       ? selectedZapReplayWindowLabel
-      : 'Pausado'
+      : tSigma('zaps.panel.statusPaused')
   const recentZapReplayCollectionClassName = `sg-zap-replay-collection sg-zap-replay-collection--${recentZapReplayCollection.status}${
     recentZapReplayCollection.isIndeterminate ? ' sg-zap-replay-collection--waiting' : ''
   }`
@@ -4296,14 +4442,14 @@ export default function GraphAppV2() {
   const recentZapReplayPlaybackIsPaused =
     recentZapReplayPlaybackPaused || recentZapReplay.playbackPaused
   const recentZapReplayPlayButtonLabel = recentZapReplayPlaybackIsPaused
-    ? 'Reanudar replay'
-    : 'Pausar replay'
+    ? tSigma('zaps.panel.resumeReplay')
+    : tSigma('zaps.panel.pauseReplay')
 
   const renderZapsContent = () => (
     <div className="sg-zap-feed">
       <div className="sg-zap-feed__head">
         <div className="sg-zap-feed__summary">
-          <span className="sg-section-label">Zaps visibles</span>
+          <span className="sg-section-label">{tSigma('zaps.panel.visible')}</span>
           <strong>{zapActivityLog.length} zap{zapActivityLog.length === 1 ? '' : 's'}</strong>
         </div>
         <div className="sg-zap-feed__actions">
@@ -4316,7 +4462,7 @@ export default function GraphAppV2() {
       </div>
 
       <div className="sg-zap-console">
-        <div className="sg-zap-console__mode" role="group" aria-label="Modo de zaps">
+        <div className="sg-zap-console__mode" role="group" aria-label={tSigma('zaps.panel.modeAria')}>
           <button
             aria-pressed={zapFeedMode === 'live'}
             className={`sg-zap-console__mode-btn${zapFeedMode === 'live' ? ' sg-zap-console__mode-btn--active' : ''}`}
@@ -4353,8 +4499,8 @@ export default function GraphAppV2() {
               <strong>{recentZapReplayStatusLabel}</strong>
               <span>
                 {recentZapReplayWorking
-                  ? 'Sigue trabajando aunque cierres este panel.'
-                  : `Replay configurado para ${appliedZapReplayWindowText}.`}
+                  ? tSigma('zaps.panel.keepWorking')
+                  : tSigma('zaps.panel.configuredWindow', { window: appliedZapReplayWindowText })}
               </span>
             </div>
             <span className="sg-zap-replay-console__percent">
@@ -4364,11 +4510,11 @@ export default function GraphAppV2() {
 
           <div className="sg-zap-replay-window">
             <div className="sg-slider-row__head">
-              <span className="sg-slider-row__lbl">Ventana historica</span>
+              <span className="sg-slider-row__lbl">{tSigma('zaps.panel.historicalWindow')}</span>
               <span className="sg-slider-row__val">{selectedZapReplayWindowLabel}</span>
             </div>
             <input
-              aria-label="Horas de zaps recientes"
+              aria-label={tSigma('zaps.panel.recentHoursAria')}
               className="sg-slider"
               max={RECENT_ZAP_REPLAY_MAX_LOOKBACK_HOURS}
               min={RECENT_ZAP_REPLAY_MIN_LOOKBACK_HOURS}
@@ -4387,11 +4533,11 @@ export default function GraphAppV2() {
 
           <div className={recentZapReplayCollectionClassName}>
             <div className="sg-zap-replay-section-head">
-              <span>Recoleccion</span>
+              <span>{tSigma('zaps.panel.collection')}</span>
               <span>{recentZapReplayCollectionProgressValue}%</span>
             </div>
             <div
-              aria-label="Avance de recoleccion de zaps"
+              aria-label={tSigma('zaps.panel.collectionProgressAria')}
               aria-valuemax={100}
               aria-valuemin={0}
               aria-valuenow={recentZapReplayCollectionProgressValue}
@@ -4402,33 +4548,33 @@ export default function GraphAppV2() {
             </div>
             <dl className="sg-zap-replay-metrics">
               <div>
-                <dt>Objetivos</dt>
+                <dt>{tSigma('zaps.panel.targets')}</dt>
                 <dd>{formatInteger(recentZapReplay.targetCount)}</dd>
               </div>
               <div>
-                <dt>Batches</dt>
+                <dt>{tSigma('zaps.panel.batches')}</dt>
                 <dd>
                   {formatInteger(recentZapReplay.completedBatchCount)}/{formatInteger(recentZapReplay.batchCount)}
                 </dd>
               </div>
               <div>
-                <dt>Cache</dt>
+                <dt>{tSigma('zaps.panel.cache')}</dt>
                 <dd>{formatInteger(recentZapReplay.cachedCount)}</dd>
               </div>
               <div>
-                <dt>Nuevos</dt>
+                <dt>{tSigma('zaps.panel.new')}</dt>
                 <dd>{formatInteger(recentZapReplay.fetchedCount)}</dd>
               </div>
               <div>
-                <dt>Timeouts</dt>
+                <dt>{tSigma('zaps.panel.timeouts')}</dt>
                 <dd>{formatInteger(recentZapReplay.timedOutBatchCount)}</dd>
               </div>
               <div>
-                <dt>Limite</dt>
+                <dt>{tSigma('zaps.panel.limit')}</dt>
                 <dd>
                   {recentZapReplay.truncatedTargetCount > 0
-                    ? `${formatInteger(recentZapReplay.truncatedTargetCount)} omitidos`
-                    : 'OK'}
+                    ? tSigma('zaps.panel.omitted', { count: formatInteger(recentZapReplay.truncatedTargetCount) })
+                    : tSigma('zaps.panel.ok')}
                 </dd>
               </div>
             </dl>
@@ -4436,9 +4582,12 @@ export default function GraphAppV2() {
 
           <div className="sg-zap-replay-playback">
             <div className="sg-zap-replay-section-head">
-              <span>Reproduccion</span>
+              <span>{tSigma('zaps.panel.playback')}</span>
               <span>
-                {formatInteger(recentZapReplay.playedCount)} visibles / {formatInteger(recentZapReplay.droppedCount)} descartados
+                {tSigma('zaps.panel.playbackSummary', {
+                  visible: formatInteger(recentZapReplay.playedCount),
+                  dropped: formatInteger(recentZapReplay.droppedCount),
+                })}
               </span>
             </div>
             <div className="sg-zap-replay-controls">
@@ -4453,7 +4602,7 @@ export default function GraphAppV2() {
                 type="button"
               >
                 {recentZapReplayPlaybackIsPaused ? <PlayIcon /> : <PauseIcon />}
-                <span>{recentZapReplayPlaybackIsPaused ? 'Play' : 'Pausa'}</span>
+                <span>{recentZapReplayPlaybackIsPaused ? tSigma('zaps.panel.play') : tSigma('zaps.panel.pause')}</span>
               </button>
               <button
                 className="sg-mini-action"
@@ -4464,7 +4613,7 @@ export default function GraphAppV2() {
                 }}
                 type="button"
               >
-                Reproducir cache
+                {tSigma('zaps.panel.replayCache')}
               </button>
               <button
                 className="sg-mini-action"
@@ -4475,18 +4624,18 @@ export default function GraphAppV2() {
                 }}
                 type="button"
               >
-                Actualizar
+                {tSigma('zaps.panel.refresh')}
               </button>
             </div>
 
             <div className="sg-zap-replay-timeline">
               <div className="sg-zap-replay-timeline__head">
-                <span>Linea de tiempo</span>
+                <span>{tSigma('zaps.panel.timeline')}</span>
                 <span>{displayedZapReplayProgressValue}% - {recentZapReplayCurrentTimeLabel}</span>
               </div>
               <div
                 aria-disabled={!canSeekRecentZapReplay}
-                aria-label={`Mover replay dentro de ${appliedZapReplayWindowText}`}
+                aria-label={tSigma('zaps.panel.moveReplay', { window: appliedZapReplayWindowText })}
                 aria-valuemax={100}
                 aria-valuemin={0}
                 aria-valuenow={displayedZapReplayProgressValue}
@@ -4517,15 +4666,15 @@ export default function GraphAppV2() {
               </div>
               <div className="sg-zap-replay-timeline__labels">
                 <span>
-                  <strong>Inicio</strong>
+                  <strong>{tSigma('zaps.panel.start')}</strong>
                   <time>{recentZapReplayWindowStartLabel}</time>
                 </span>
                 <span>
-                  <strong>Actual</strong>
+                  <strong>{tSigma('zaps.panel.current')}</strong>
                   <time>{recentZapReplayCurrentTimeLabel}</time>
                 </span>
                 <span>
-                  <strong>Fin</strong>
+                  <strong>{tSigma('zaps.panel.end')}</strong>
                   <time>{recentZapReplayWindowEndLabel}</time>
                 </span>
               </div>
@@ -4544,7 +4693,10 @@ export default function GraphAppV2() {
         <div className="sg-zap-feed__list">
           {zapActivityLog.map((entry) => (
             <article
-              aria-label={`Reproducir zap de ${getZapActorLabel(entry.fromPubkey)} a ${getZapActorLabel(entry.toPubkey)}`}
+              aria-label={tSigma('zaps.panel.replayZap', {
+                from: getZapActorLabel(entry.fromPubkey),
+                to: getZapActorLabel(entry.toPubkey),
+              })}
               className={`sg-zap-feed__item${entry.played ? '' : ' sg-zap-feed__item--dropped'}`}
               key={entry.id}
               onClick={() => handleReplayZapActivity(entry)}
@@ -4571,14 +4723,14 @@ export default function GraphAppV2() {
                 <span>{getZapActorLabel(entry.toPubkey)}</span>
               </p>
               <span className="sg-zap-feed__result">
-                {entry.played ? 'Mostrado en el grafo' : 'Fuera de la vista actual'}
+                {entry.played ? tSigma('zaps.panel.shownInGraph') : tSigma('zaps.panel.outsideView')}
               </span>
             </article>
           ))}
         </div>
       ) : (
         <p className="sg-zap-feed__empty">
-          Todavia no hay zaps visibles en esta sesion.
+          {tSigma('zaps.panel.empty')}
         </p>
       )}
     </div>
@@ -4640,11 +4792,8 @@ export default function GraphAppV2() {
   const renderFilterContent = () => (
     <div className="sg-mobile-filter-panel">
       <div className="sg-mobile-panel-intro">
-        <span className="sg-section-label">Filtro de conexiones</span>
-        <p>
-          Elegi que relaciones queres ver en el grafo. Esto cambia la proyeccion visible,
-          no los datos cargados ni la evidencia exportable.
-        </p>
+        <span className="sg-section-label">{tSigma('filtersPanel.title')}</span>
+        <p>{tSigma('filtersPanel.description')}</p>
       </div>
       <div className="sg-mobile-filter-list">
         {filterPills.map((pill) => (
@@ -4679,10 +4828,10 @@ export default function GraphAppV2() {
     if (!detail.node) return null
 
     const isRootNode = detail.pubkey === sceneState.rootPubkey
-    const relBadge = isRootNode ? 'IDENTIDAD RAÍZ' :
-      (detail.mutualCount > 0) ? 'MUTUO' :
-      detail.followingCount > 0 ? 'LO SIGO' :
-      detail.followerCount > 0 ? 'ME SIGUE' : 'SIN RECIPROCIDAD'
+    const relBadge = isRootNode ? tSigma('detail.rootIdentity') :
+      (detail.mutualCount > 0) ? tSigma('detail.mutual') :
+      detail.followingCount > 0 ? tSigma('detail.following') :
+      detail.followerCount > 0 ? tSigma('detail.follower') : tSigma('detail.oneWay')
 
     const relBadgeClass = isRootNode ? 'sg-badge--accent' :
       (detail.mutualCount > 0) ? 'sg-badge--ok' :
@@ -4692,17 +4841,27 @@ export default function GraphAppV2() {
     const detailNpub = encodePubkeyAsNpub(detail.pubkey)
     const primalProfileUrl = detailNpub ? `https://primal.net/p/${detailNpub}` : null
     const jumbleProfileUrl = detailNpub ? `https://jumble.social/users/${detailNpub}` : null
-    const pinActionLabel = detail.isPinned ? 'Desanclar perfil' : 'Anclar perfil'
+    const pinActionLabel = detail.isPinned ? tSigma('detail.unpin') : tSigma('detail.pin')
     const expansionState = detail.node.nodeExpansionState
     const isExpansionLoading = expansionState?.status === 'loading'
     const exploreActionLabel = detail.isExpanded
-      ? 'Conexiones exploradas'
+      ? tSigma('detail.connectionsExplored')
       : isExpansionLoading
-        ? 'Expandiendo...'
-        : 'Explorar conexiones'
+        ? tSigma('detail.expanding')
+        : tSigma('detail.exploreConnections')
+    const expansionStatusLabels = locale === 'en'
+      ? {
+          idle: 'not expanded',
+          loading: 'loading',
+          ready: 'ready',
+          partial: 'partial',
+          empty: 'no new connections',
+          error: 'error',
+        }
+      : NODE_EXPANSION_STATUS_LABELS
     const expansionStatusLabel = expansionState
-      ? NODE_EXPANSION_STATUS_LABELS[expansionState.status]
-      : NODE_EXPANSION_STATUS_LABELS.idle
+      ? expansionStatusLabels[expansionState.status]
+      : expansionStatusLabels.idle
     const expansionMessage = expansionState?.message?.trim() || null
     const expansionVisibilityHint = buildExpansionVisibilityHint({
       activeLayer: sceneState.activeLayer,
@@ -4718,13 +4877,13 @@ export default function GraphAppV2() {
     const detailTitle = hasProfileName
       ? detail.displayName
       : isProfileLoading
-        ? 'Cargando perfil...'
+        ? tSigma('detail.loadingProfile')
         : detail.displayName
     const bioCopy = detail.about?.trim()
       ? detail.about.trim()
       : isProfileLoading
-        ? 'Cargando perfil desde relays y cache...'
-        : 'Sin bio conocida.'
+        ? tSigma('detail.loadingProfileBio')
+        : tSigma('detail.noBio')
 
     return (
       <div>
@@ -4742,7 +4901,7 @@ export default function GraphAppV2() {
               )}
             </div>
             {detail.isPinned && (
-              <div className="sg-node-hero__pin">◆</div>
+              <div className="sg-node-hero__pin">?</div>
             )}
           </div>
           <div className="sg-node-hero__content">
@@ -4753,7 +4912,7 @@ export default function GraphAppV2() {
             <div className="sg-node-hero__badges">
               <span className={`sg-badge ${relBadgeClass}`}>{relBadge}</span>
               {detail.nip05 && <span className="sg-badge sg-badge--ok">nip05</span>}
-              {detail.isExpanded && <span className="sg-badge">conexiones exploradas</span>}
+              {detail.isExpanded && <span className="sg-badge">{tSigma('detail.connectionsExplored')}</span>}
             </div>
           </div>
         </div>
@@ -4783,20 +4942,20 @@ export default function GraphAppV2() {
               type="button"
             >
               <PinIcon />
-              <span>{detail.isPinned ? 'Anclado' : 'Anclar'}</span>
+              <span>{detail.isPinned ? tSigma('detail.pinned') : tSigma('detail.pinAction')}</span>
             </button>
           ) : null}
         </div>
 
         {shouldShowIdentityHelp ? (
           <div className="sg-identity-help">
-            <p>Abriste una identidad. Explorá sus conexiones o anclala para compararla.</p>
+            <p>{tSigma('detail.identityHelp')}</p>
             <button
               className="sg-btn"
               onClick={dismissIdentityHelp}
               type="button"
             >
-              Entendido
+              {tSigma('detail.understood')}
             </button>
           </div>
         ) : null}
@@ -4807,15 +4966,15 @@ export default function GraphAppV2() {
 
         <div className="sg-metric-grid">
           <div className="sg-metric">
-            <div className="sg-metric__k">Sigo</div>
+            <div className="sg-metric__k">{tSigma('detail.followingCount')}</div>
             <div className="sg-metric__v">{detail.followingCount}</div>
           </div>
           <div className="sg-metric">
-            <div className="sg-metric__k">Me siguen</div>
+            <div className="sg-metric__k">{tSigma('detail.followersCount')}</div>
             <div className="sg-metric__v">{detail.followerCount}</div>
           </div>
           <div className="sg-metric">
-            <div className="sg-metric__k">Mutuos</div>
+            <div className="sg-metric__k">{tSigma('detail.mutualsCount')}</div>
             <div className="sg-metric__v">{detail.mutualCount}</div>
           </div>
         </div>
@@ -4827,12 +4986,12 @@ export default function GraphAppV2() {
           </div>
         )}
 
-        <div className="sg-section-label">Identidad</div>
+        <div className="sg-section-label">{tSigma('detail.identitySection')}</div>
         <div className="sg-npub-row">
           <div className="sg-npub-row__body">
             <span className="sg-npub-row__label">npub</span>
             <code className={`sg-npub-row__value${detailNpub ? '' : ' sg-npub-row__value--missing'}`}>
-              {detailNpub ?? 'No disponible'}
+              {detailNpub ?? tSigma('detail.notAvailable')}
             </code>
           </div>
           <div className="sg-npub-row__actions">
@@ -4843,11 +5002,11 @@ export default function GraphAppV2() {
                 if (!detailNpub) return
                 handleCopyNpub(detailNpub)
               }}
-              title="Copiar npub completo"
+              title={tSigma('detail.copyNpub')}
               type="button"
             >
               <CopyIcon />
-              <span>Copiar</span>
+              <span>{tSigma('detail.copy')}</span>
             </button>
             {primalProfileUrl ? (
               <a
@@ -4855,7 +5014,7 @@ export default function GraphAppV2() {
                 href={primalProfileUrl}
                 rel="noopener noreferrer"
                 target="_blank"
-                title="Abrir cuenta en Primal"
+                title={tSigma('detail.openPrimal')}
               >
                 <ExternalLinkIcon />
                 <span>Primal</span>
@@ -4867,7 +5026,7 @@ export default function GraphAppV2() {
                 href={jumbleProfileUrl}
                 rel="noopener noreferrer"
                 target="_blank"
-                title="Abrir cuenta en Jumble"
+                title={tSigma('detail.openJumble')}
               >
                 <ExternalLinkIcon />
                 <span>Jumble</span>
@@ -4878,17 +5037,17 @@ export default function GraphAppV2() {
         <div className="sg-field">
           <span className="sg-field__k">nip05</span>
           <span className={`sg-field__v${detail.nip05 ? '' : ' sg-field__v--missing'}`}>
-            {detail.nip05?.trim() || (isProfileLoading ? 'cargando...' : '—')}
+            {detail.nip05?.trim() || (isProfileLoading ? tSigma('detail.loadingInline') : '—')}
           </span>
         </div>
         <div className="sg-field">
           <span className="sg-field__k">lud16</span>
           <span className={`sg-field__v${detail.lud16 ? '' : ' sg-field__v--missing'}`}>
-            {detail.lud16?.trim() || (isProfileLoading ? 'cargando...' : '—')}
+            {detail.lud16?.trim() || (isProfileLoading ? tSigma('detail.loadingInline') : '—')}
           </span>
         </div>
         <div className="sg-field">
-          <span className="sg-field__k">Expansión</span>
+          <span className="sg-field__k">{tSigma('detail.expansion')}</span>
           <span className="sg-field__v sg-field__v--stack">
             <span>{expansionStatusLabel}</span>
             {expansionMessage ? (
@@ -4907,7 +5066,7 @@ export default function GraphAppV2() {
     )
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // -- Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const isPersonSearchDropdownOpen = isPersonSearchOpen && !isRootSheetOpen && hasRoot
   const isMobileUtilityPanelOpen = mobileUtilityPanel !== null && !isRootSheetOpen && hasRoot
@@ -4953,7 +5112,7 @@ export default function GraphAppV2() {
       data-graph-loading={isRootLoadScreenOpen ? 'true' : undefined}
       data-graph-v2=""
     >
-      {/* Canvas — always present, full bleed under all chrome */}
+      {/* Canvas â€” always present, full bleed under all chrome */}
       <SigmaCanvasHost
         avatarImagesEnabled={avatarPhotosEnabled}
         avatarRuntimeOptions={stableAvatarRuntimeOptions}
@@ -5001,7 +5160,7 @@ export default function GraphAppV2() {
         searchExpanded={isPersonSearchDropdownOpen}
         searchInputRef={personSearchInputRef}
         searchMatches={personSearchMatches}
-        searchPlaceholder={hasRoot ? 'Buscar persona en el grafo' : 'Cargá una identidad para buscar'}
+        searchPlaceholder={hasRoot ? 'Buscar persona en el grafo' : 'CargÃ¡ una identidad para buscar'}
         searchQuery={personSearchQuery}
         searchTotalNodeCount={deferredScene.render.nodes.length}
         onSearchChange={handleChangePersonSearch}
@@ -5011,7 +5170,7 @@ export default function GraphAppV2() {
         onSearchSubmit={handleSubmitPersonSearch}
       />
 
-      {/* Filter bar + rail + HUD + minimap — only when a root is loaded */}
+      {/* Filter bar + rail + HUD + minimap â€” only when a root is loaded */}
       {hasRoot && (
         <>
           <SigmaFilterBar
@@ -5040,7 +5199,7 @@ export default function GraphAppV2() {
         </>
       )}
 
-      {/* Side panel — detail or tools (right), one at a time */}
+      {/* Side panel â€” detail or tools (right), one at a time */}
       {canUseRuntimeInspector && isRuntimeInspectorOpen && hasRoot ? (
         <RuntimeInspectorUiStateBridge bridge={bridge} fixtureUiState={fixtureUiState}>
           {(uiState) => (
@@ -5074,14 +5233,14 @@ export default function GraphAppV2() {
         <SigmaSidePanel
           eyebrow={
             isSettingsOpen
-              ? 'AJUSTES'
+              ? tSigma('panelEyebrow.settings')
               : isZapsPanelOpen
-                ? 'ZAPS'
+                ? tSigma('panelEyebrow.zaps')
                 : isNotificationsOpen
-                  ? 'NOTIFICACIONES'
+                  ? tSigma('panelEyebrow.notifications')
                   : mobileUtilityPanel === 'filters'
-                    ? 'FILTROS'
-                    : 'IDENTIDAD'
+                    ? tSigma('panelEyebrow.filters')
+                    : tSigma('panelEyebrow.identity')
           }
           mobileSnap={mobilePanelSnap}
           mobileSnapResetKey={isIdentityPanelOpen ? (detail.pubkey ?? undefined) : undefined}
@@ -5140,9 +5299,9 @@ export default function GraphAppV2() {
                 onClick={handleSelectSessionRoot}
                 type="button"
               >
-                <span className="sigma-root-session__eyebrow">Sesion conectada</span>
+                <span className="sigma-root-session__eyebrow">{tSigma('sessionRoot.eyebrow')}</span>
                 <span className="sigma-root-session__main">
-                  Explorar mi identidad
+                  {tSigma('sessionRoot.main')}
                 </span>
                 <span className="sigma-root-session__meta">
                   {sessionIdentity.profile.displayName ??
@@ -5166,7 +5325,7 @@ export default function GraphAppV2() {
         />
       )}
 
-      {/* Empty state — when no root and loader not open */}
+      {/* Empty state â€” when no root and loader not open */}
       {!hasRoot && !isRootSheetOpen && (
         <SigmaEmptyState onLoadIdentity={() => setIsRootSheetOpen(true)} />
       )}
@@ -5176,3 +5335,4 @@ export default function GraphAppV2() {
     </main>
   )
 }
+

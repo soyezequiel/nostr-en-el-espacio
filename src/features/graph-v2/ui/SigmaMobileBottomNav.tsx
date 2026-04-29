@@ -2,6 +2,7 @@
 
 import { memo } from 'react'
 import type { ReactNode } from 'react'
+import { useTranslations } from 'next-intl'
 
 export interface MobileNavButton {
   id: string
@@ -21,8 +22,10 @@ interface Props {
 export const SigmaMobileBottomNav = memo(function SigmaMobileBottomNav({
   buttons,
 }: Props) {
+  const t = useTranslations('sigma.mobileNav')
+
   return (
-    <nav className="sg-mobile-nav" aria-label="Navegacion principal del grafo">
+    <nav className="sg-mobile-nav" aria-label={t('aria')}>
       {buttons.map((button) => (
         <button
           aria-label={button.tip}

@@ -175,7 +175,6 @@ export interface AvatarOverlayRendererDeps {
   scheduler: AvatarScheduler
   budget: PerfBudget
   isMoving: () => boolean
-  getSelectedNodePubkey?: () => string | null
   getHoveredNodePubkey?: () => string | null
   getForcedAvatarPubkey?: () => string | null
   getHoveredNeighborPubkeys?: () => ReadonlySet<string>
@@ -475,7 +474,6 @@ export class AvatarOverlayRenderer {
   private readonly scheduler: AvatarScheduler
   private readonly budget: PerfBudget
   private readonly isMoving: () => boolean
-  private readonly getSelectedNodePubkey: () => string | null
   private readonly getHoveredNodePubkey: () => string | null
   private readonly getForcedAvatarPubkey: () => string | null
   private readonly getHoveredNeighborPubkeys: () => ReadonlySet<string>
@@ -501,7 +499,6 @@ export class AvatarOverlayRenderer {
     this.scheduler = deps.scheduler
     this.budget = deps.budget
     this.isMoving = deps.isMoving
-    this.getSelectedNodePubkey = deps.getSelectedNodePubkey ?? (() => null)
     this.getHoveredNodePubkey = deps.getHoveredNodePubkey ?? (() => null)
     this.getForcedAvatarPubkey = deps.getForcedAvatarPubkey ?? (() => null)
     this.getHoveredNeighborPubkeys = deps.getHoveredNeighborPubkeys ?? (() => EMPTY_SET)

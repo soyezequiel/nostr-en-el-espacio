@@ -2940,8 +2940,6 @@ export class SigmaRendererAdapter implements RendererAdapter {
         budget: this.avatarBudget,
         isMoving: () => this.hideAvatarsOnMove && this.cameraMotionActive,
         getBlockedAvatar: (urlKey) => this.avatarLoader?.getBlockedEntry(urlKey) ?? null,
-        getSelectedNodePubkey: () =>
-          this.scene?.render.selection.selectedNodePubkey ?? null,
         getHoveredNodePubkey: () => this.resolveRendererFocus().pubkey,
         getForcedAvatarPubkey: () =>
           this.draggedNodePubkey ?? this.resolveRendererFocus().pubkey,

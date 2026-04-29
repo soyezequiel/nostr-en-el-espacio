@@ -1,64 +1,66 @@
+[English](./README.md) | [Espa&ntilde;ol](./README.es.md)
+
 <div align="center">
 
 # Nostr Espacial
 
-### Explorador relay-aware de identidad Nostr con Sigma
+### Relay-aware Nostr identity explorer powered by Sigma
 
-[![Demo en vivo](https://img.shields.io/badge/Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://nostr-en-el-espacio.vercel.app/)
+[![Live Demo](https://img.shields.io/badge/Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://nostr-en-el-espacio.vercel.app/)
 [![Hackathon](https://img.shields.io/badge/La%20Crypta-IDENTITY%202026-f7931a?style=for-the-badge)](https://github.com/lacrypta/hackathons-2026)
 [![Next.js](https://img.shields.io/badge/Next.js-16-111111?style=for-the-badge&logo=nextdotjs)](https://nextjs.org/)
 [![Nostr](https://img.shields.io/badge/Nostr-Graph%20First-6f42c1?style=for-the-badge)](https://github.com/nostr-protocol/nostr)
 
-[Ver demo](https://nostr-en-el-espacio.vercel.app/) - [Hackathon La Crypta](https://github.com/lacrypta/hackathons-2026) - [Arquitectura actual](./docs/current-codebase.md)
+[View demo](https://nostr-en-el-espacio.vercel.app/) - [La Crypta Hackathon](https://github.com/lacrypta/hackathons-2026) - [Current architecture (Spanish)](./docs/current-codebase.md)
 
 <br />
 
-<img src="./public/graph-explorer-preview.png" alt="Captura panoramica del explorador Sigma de Nostr Espacial" width="1040" />
+<img src="./public/graph-explorer-preview.png" alt="Panoramic preview of the Nostr Espacial Sigma explorer" width="1040" />
 
-<sub>Vista graph-first para explorar identidades, relaciones, capas sociales y senales de confianza con lectura relay-aware.</sub>
+<sub>A graph-first view for exploring identities, relationships, social layers, and trust signals with relay-aware reads.</sub>
 
 </div>
 
-> Proyecto participante de **IDENTITY**, el desafio de **abril de 2026** dentro de **Lightning Hackathons 2026** de **La Crypta**.
+> Project submitted to **IDENTITY**, the **April 2026** challenge within **Lightning Hackathons 2026** by **La Crypta**.
 
-**Nostr Espacial**, una experiencia **graph-first** para explorar identidad en Nostr, leer contexto social y observar los zaps en vivo.
+**Nostr Espacial** is a **graph-first** experience for exploring identity in Nostr, reading social context, and watching live zaps as they happen.
 
 ## Demo
 
-**Deploy publico:** [https://nostr-en-el-espacio.vercel.app/](https://nostr-en-el-espacio.vercel.app/)
+**Public deploy:** [https://nostr-en-el-espacio.vercel.app/](https://nostr-en-el-espacio.vercel.app/)
 
-## Que resuelve este proyecto
+## What this project solves
 
-- Explora vecindarios de identidad a partir de un `npub` o `nprofile`
-- Descubre conexiones, mutuals, zaps en vivo
-- Trabaja con relays reales, mostrando salud, cobertura parcial
-- Integra informacion como perfiles y zaps
-- Mantiene una lectura visual clara del estado del grafo, sus capas y sus datos parciales
-## Por que encaja bien en IDENTITY
+- Explore identity neighborhoods starting from an `npub` or `nprofile`
+- Discover connections, mutuals, and live zaps
+- Work against real relays while exposing relay health and partial coverage
+- Integrate profile and zap information into the graph reading
+- Keep the graph state, its layers, and partial data visually understandable
 
-La propuesta no se limita a "ver un perfil". El foco esta en **identidad como red**:
+## Why it fits IDENTITY
 
-- identidad relacional
-- senales de zaps entre los conexiones presentes
+The proposal does not stop at "viewing a profile". The core idea is **identity as a network**:
 
+- relational identity
+- live zap signals between the connections currently in view
 
-## Cómo interactuar con el grafo
+## How to interact with the graph
 
-El explorador de identidades de nostr espacial ofrece varias interacciones clave para navegar la red Nostr y descubrir conexiones:
+The Nostr Espacial identity explorer offers a few core interactions to navigate the Nostr network and discover relationships:
 
-- **Expandir nodos:** Puedes expandir cualquier nodo para descubrir y cargar sus conexiones directas (follows y followers). Para hacerlo, haz **doble clic** sobre el nodo, o bien selecciónalo y usa el botón de "Expandir conexiones" en el panel lateral.
-- **Fijar (Anclar) nodos:** Para organizar visualmente el grafo y mantener la estructura estable, puedes "fijar" un nodo en una posición de la pantalla, evitando que el motor de físicas lo mueva. Para anclar o desanclar un nodo, simplemente **arrástralo y suéltalo** libremente en el lienzo, o utiliza el botón de anclar en el panel del perfil seleccionado.
+- **Expand nodes:** Expand any node to discover and load its direct connections (follows and followers). You can do this by **double-clicking** the node, or by selecting it and using the **Expand connections** button in the side panel.
+- **Pin nodes:** To keep the graph visually stable while you inspect it, you can pin a node to a screen position so the physics engine does not move it. To pin or unpin a node, simply **drag and drop** it on the canvas, or use the pin button in the selected profile panel.
 
-## Superficies del producto
+## Product surfaces
 
-| Ruta | Para que sirve |
+| Route | Purpose |
 | --- | --- |
-| `/{locale}` | Landing de entrada con narrativa de producto y selector de idioma |
-| `/{locale}/labs/sigma` | Explorador principal del grafo de identidad con Sigma y captura PNG social |
-| `/{locale}/profile` | Vista clasica del perfil conectado |
-| `/{locale}/badges` | Vista de badges NIP-58 del perfil conectado |
+| `/{locale}` | Entry landing page with product narrative and language switcher |
+| `/{locale}/labs/sigma` | Main identity graph explorer powered by Sigma, plus social PNG capture |
+| `/{locale}/profile` | Classic connected-account profile view |
+| `/{locale}/badges` | Connected-account NIP-58 badges view |
 
-Locales iniciales soportados: `es`, `en`.
+Initial supported locales: `es`, `en`.
 
 ## Stack
 
@@ -77,47 +79,47 @@ Locales iniciales soportados: `es`, `en`.
 - qrcode.react
 - fflate
 
-## Desarrollo local
+## Local development
 
 ```bash
 npm install
 npm run dev
 ```
 
-### Configuracion opcional
+### Optional configuration
 
-Para mostrar el boton **Zapea al desarrollador** en la landing, configura:
+To show the **Zap the developer** button on the landing page, configure:
 
 ```bash
 NEXT_PUBLIC_DEV_ZAP_LIGHTNING_ADDRESS=naranja@walletofsatoshi.com
 ```
 
-Para definir la URL canonica usada en metadata localizada y `hreflang`, puedes configurar:
+To define the canonical URL used in localized metadata and `hreflang`, configure:
 
 ```bash
 NEXT_PUBLIC_SITE_URL=https://nostr-en-el-espacio.vercel.app
 ```
 
-## Internacionalizacion
+## Internationalization
 
-- Las rutas publicas usan prefijo obligatorio de locale, por ejemplo: `/es`, `/en`, `/es/profile`.
-- La resolucion de idioma prioriza:
-  1. locale explicito en la URL
-  2. cookie `NEXT_LOCALE`
-  3. header `Accept-Language`
-  4. fallback `es`
-- La primera entrega traduce landing, navbar, login modal, profile, badges y metadata publica.
-- Sigma ya entra por rutas localizadas, pero su UI interna sigue igual por ahora.
+- Public routes use a required locale prefix, for example: `/es`, `/en`, `/es/profile`.
+- Locale resolution follows this priority:
+  1. explicit locale in the URL
+  2. `NEXT_LOCALE` cookie
+  3. `Accept-Language` header
+  4. `es` fallback
+- The first delivery translates the landing page, navbar, login modal, profile view, badges view, and public metadata.
+- Sigma already enters through localized routes, but its internal UI is still largely unchanged for now.
 
-### Agregar un idioma nuevo
+### Add a new language
 
-1. Registra el locale en `src/i18n/routing.ts`.
-2. Copia `messages/es/` como `messages/<nuevo-locale>/`.
-3. Traduce los valores.
-4. Registra ese locale en `src/i18n/messages.ts`.
-5. Corre `npm run lint` y `npm run build`.
+1. Register the locale in `src/i18n/routing.ts`.
+2. Copy `messages/es/` to `messages/<new-locale>/`.
+3. Translate the values.
+4. Register the locale in `src/i18n/messages.ts`.
+5. Run `npm run lint` and `npm run build`.
 
-## Validacion
+## Validation
 
 ```bash
 npm run lint
@@ -125,24 +127,23 @@ npm run build
 npx tsx --test src/i18n/messages.test.ts src/i18n/proxy.test.ts
 ```
 
-## Arquitectura rapida
+## Architecture snapshot
 
 ```text
 src/
-|-- app/                  # Rutas Next.js
-|-- components/           # Navbar, login, profile, badges
-|-- features/graph-v2/    # Sigma UI, dominio, proyecciones y renderer
-|-- features/graph-runtime/ # Store, kernel, relays, DB, analysis y workers del grafo
-|-- lib/                  # Helpers compartidos de Nostr y media
-|-- store/                # Estado compartido de autenticacion
-`-- types/                # Tipados
+|-- app/                    # Next.js routes
+|-- components/             # Navbar, login, profile, badges
+|-- features/graph-v2/      # Sigma UI, domain, projections, and renderer
+|-- features/graph-runtime/ # Store, kernel, relays, DB, analysis, and graph workers
+|-- lib/                    # Shared Nostr and media helpers
+|-- store/                  # Shared auth state
+`-- types/                  # Type definitions
 ```
-## Nota importante
 
-La superficie principal del producto es el grafo Sigma en `/{locale}/labs/sigma`. `/{locale}` funciona como landing de entrada para orientar la demo y enviar a las rutas clave; `profile` sigue siendo util, pero la historia mas fuerte del proyecto esta en la exploracion de identidad y la visualizacion de los zaps en vivo.
+## Important note
 
-## Solución de problemas
+The main product surface is the Sigma graph at `/{locale}/labs/sigma`. `/{locale}` acts as the public landing page that frames the demo and routes people into the key surfaces; `profile` is still useful, but the strongest story in this project is identity exploration plus live zap visualization.
 
-Si experimentas algún error de sincronización, datos desactualizados o problemas al cargar el grafo de una identidad, puedes probar limpiar la caché local. Para hacer esto, simplemente abre el selector de perfiles y haz clic en el botón de "Limpiar caché local" (ícono de escoba).
+## Troubleshooting
 
-
+If you run into sync errors, stale data, or issues loading the graph for an identity, try clearing the local cache. Open the profile selector and click the **Clear local cache** button (broom icon).

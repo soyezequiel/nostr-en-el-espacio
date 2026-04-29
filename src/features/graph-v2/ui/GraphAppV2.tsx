@@ -2472,7 +2472,7 @@ export default function GraphAppV2() {
       const prevParts = prev.split('|')
       const nextParts = sig.split('|')
       const KEYS = ['rootPubkey','activeLayer','connectionsSourceLayer','selectedNodePubkey','graphRevision','inboundGraphRevision','connectionsLinksRevision','nodeVisualRevision','expandedNodePubkeys','nodeCount','edgeCount','pinnedNodePubkeys']
-      const changed = KEYS.filter((k, i) => prevParts[i] !== nextParts[i])
+      const changed = KEYS.filter((_, i) => prevParts[i] !== nextParts[i])
       traceGraphPerf('ui.sceneSignature.changed', {
         changed,
         activeLayer: sceneState.activeLayer,

@@ -128,7 +128,7 @@ export const getDefaultImageQualityModeForProfile = (
 ): ImageQualityMode => DEVICE_PROFILE_DEFAULT_IMAGE_QUALITY_MODE[profile]
 
 export const clampImageQualityModeForProfile = (
-  profile: DevicePerformanceProfile,
+  _profile: DevicePerformanceProfile,
   mode: ImageQualityMode,
 ): ImageQualityMode => mode
 

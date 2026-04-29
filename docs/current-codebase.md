@@ -49,7 +49,7 @@ Limites importantes:
 - Procesamiento caro no va en render paths de React.
 - Estilos de Sigma viven en `src/features/graph-v2/ui/graph-v2.css` y deben quedar scopeados bajo `[data-graph-v2]`.
 - El runtime de avatares de Sigma vive en `src/features/graph-v2/renderer/avatar/`; no agregar caches paralelos de imagenes.
-- La captura PNG social vive en `src/features/graph-v2/renderer/socialGraphCapture.ts` y usa el cache/loader de avatares. Para maximizar fotos reales sin taint de canvas, precarga imagenes por el proxy acotado `src/app/api/social-avatar/route.ts`. Es una salida visual, no el export auditable.
+- No existe una captura PNG social activa en el arbol actual. Si vuelve a aparecer una salida visual de ese tipo, mantenerla separada del export auditable y de su pipeline deterministico.
 
 ## Runtime de grafo
 

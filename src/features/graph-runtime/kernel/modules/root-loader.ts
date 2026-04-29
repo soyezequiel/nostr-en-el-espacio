@@ -2043,7 +2043,8 @@ export function createRootLoaderModule(
   ): RootGraphReplacementResult {
     const state = ctx.store.getState()
     const previousRootPubkey = state.rootNodePubkey
-    const previousNodes = state.nodes
+    const previousNodes =
+      previousRootPubkey === rootPubkey ? state.nodes : {}
     state.resetGraphAnalysis()
     state.resetZapLayer()
     state.setSelectedNodePubkey(null)

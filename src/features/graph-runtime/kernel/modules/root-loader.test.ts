@@ -43,7 +43,12 @@ interface CapturedSubscription {
 
 const createDeterministicAdapter = (options: {
   inboundEnvelope: { pubkey: string; relayUrl: string }
-  contactListEnvelope: { pubkey: string; relayUrl: string; relayHints?: string[] }
+  contactListEnvelope: {
+    pubkey: string
+    relayUrl: string
+    followPubkeys?: string[]
+    relayHints?: string[]
+  }
 }) => {
   const captured: { calls: CapturedSubscription[] } = { calls: [] }
   const adapter = {
@@ -77,6 +82,10 @@ const createDeterministicAdapter = (options: {
                   kind: 3,
                   created_at: 999,
                   tags: [
+                    ...(options.contactListEnvelope.followPubkeys?.map((pubkey) => [
+                      'p',
+                      pubkey,
+                    ]) ?? []),
                     ...(options.contactListEnvelope.relayHints?.map((hint) => [
                       'p',
                       'follow-target',
@@ -132,7 +141,12 @@ const createRootLoaderForTest = (overrides: {
   } | null
   defaultRelayUrls?: string[]
   inboundEnvelope: { pubkey: string; relayUrl: string }
-  contactListEnvelope: { pubkey: string; relayUrl: string; relayHints?: string[] }
+  contactListEnvelope: {
+    pubkey: string
+    relayUrl: string
+    followPubkeys?: string[]
+    relayHints?: string[]
+  }
 }) => {
   const store = createBaseStore()
   store.getState().setRelayUrls(overrides.defaultRelayUrls ?? [])
@@ -323,6 +337,72 @@ test('loadRoot expone metricas de inboundDiscovery en visibleLinkProgress', asyn
     discovery.contributingRelayCount >= 1,
     `expected contributingRelayCount >= 1, got ${discovery.contributingRelayCount}`,
   )
+})
+
+test('loadRoot no reutiliza perfiles en memoria al cambiar de root', async () => {
+  const defaultRelays = ['wss://default-1.example', 'wss://default-2.example']
+  const { store, rootLoader } = createRootLoaderForTest({
+    defaultRelayUrls: defaultRelays,
+    cachedContactList: {
+      follows: ['shared-follow'],
+      relayHints: [],
+    },
+    contactListEnvelope: {
+      pubkey: 'root-b',
+      relayUrl: defaultRelays[0],
+      followPubkeys: ['shared-follow'],
+    },
+    inboundEnvelope: {
+      pubkey: 'inbound-author',
+      relayUrl: defaultRelays[1],
+    },
+  })
+
+  store.getState().replaceGraphSnapshot({
+    rootNodePubkey: 'root-a',
+    nodes: [
+      {
+        pubkey: 'root-a',
+        profileState: 'loading',
+        keywordHits: 0,
+        discoveredAt: 1,
+        source: 'root',
+      },
+      {
+        pubkey: 'shared-follow',
+        label: 'Perfil del root anterior',
+        picture: 'https://example.com/old-avatar.png',
+        about: 'Dato en memoria de la sesion anterior',
+        nip05: 'old@example.com',
+        lud16: 'old@example.com',
+        profileFetchedAt: 500,
+        profileEventId: 'old-profile-event',
+        profileSource: 'relay',
+        profileState: 'ready',
+        keywordHits: 0,
+        discoveredAt: 1,
+        source: 'follow',
+      },
+    ],
+    links: [
+      {
+        source: 'root-a',
+        target: 'shared-follow',
+        relation: 'follow',
+      },
+    ],
+    inboundLinks: [],
+  })
+
+  await rootLoader.loadRoot('root-b', { useDefaultRelays: true })
+  await flushMicrotasks()
+
+  const sharedNode = store.getState().nodes['shared-follow']
+  assert.ok(sharedNode, 'expected shared-follow to remain visible')
+  assert.equal(sharedNode.profileState, 'loading')
+  assert.equal(sharedNode.label, undefined)
+  assert.equal(sharedNode.picture, undefined)
+  assert.equal(sharedNode.profileEventId, undefined)
 })
 
 test('loadRoot dispara inbound suplementario sobre relays nuevos descubiertos en hints del contact list live (cold-start)', async () => {

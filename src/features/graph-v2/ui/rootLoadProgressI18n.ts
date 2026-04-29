@@ -1,3 +1,5 @@
+type TranslationValues = Record<string, string | number | Date>
+
 export interface RootLoadProgressCopy {
   locale: string
   defaultIdentity: string
@@ -30,7 +32,7 @@ export function buildRootLoadProgressCopy({
   t,
 }: {
   locale: string
-  t: (key: string, values?: Record<string, unknown>) => string
+  t: (key: string, values?: TranslationValues) => string
 }): RootLoadProgressCopy {
   return {
     locale,

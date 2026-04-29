@@ -38,6 +38,8 @@ interface TerminalLine {
   tone?: 'dim' | 'good' | 'warn'
 }
 
+type TranslationValues = Record<string, string | number | Date>
+
 function GraphLoader({ size = 190, seed = 1 }: { size?: number; seed?: number }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -198,7 +200,7 @@ const buildTerminalLines = (
   rootLoad: RootLoadState,
   relayState: CanonicalRelayState,
   progressLabel: string,
-  loadingT: (key: string, values?: Record<string, unknown>) => string,
+  loadingT: (key: string, values?: TranslationValues) => string,
 ): TerminalLine[] => {
   const lines: TerminalLine[] = [
     { text: loadingT('terminal.resolveProfileRelays'), tone: 'dim' },

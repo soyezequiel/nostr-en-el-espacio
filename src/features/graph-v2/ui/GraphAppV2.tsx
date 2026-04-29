@@ -679,6 +679,24 @@ interface ZapReplayStageRow {
   status: ZapReplayStageStatus
 }
 
+const getZapReplayStatusLabel = (replay: RecentZapReplaySnapshot) => {
+  switch (replay.stage) {
+    case 'collecting':
+      return 'Consultando relays'
+    case 'decoding':
+      return 'Preparando replay'
+    case 'playing':
+      return 'Reproduciendo timeline'
+    case 'done':
+      return 'Replay listo'
+    case 'error':
+      return 'Replay con error'
+    case 'idle':
+    default:
+      return 'Replay en espera'
+  }
+}
+
 function buildZapReplayStageRows(
   replay: RecentZapReplaySnapshot,
 ): ZapReplayStageRow[] {
@@ -2960,6 +2978,27 @@ export default function GraphAppV2() {
     () => buildZapReplayStageRows(recentZapReplay),
     [recentZapReplay],
   )
+  const recentZapReplayWorking =
+    shouldEnableRecentZapReplay &&
+    (recentZapReplay.phase === 'loading' || recentZapReplay.phase === 'playing')
+  const recentZapReplayStatusLabel = getZapReplayStatusLabel(recentZapReplay)
+  const activeRecentZapReplayStage =
+    recentZapReplayStages.find((stage) => stage.status === 'active') ??
+    recentZapReplayStages.find((stage) => stage.status === 'pending') ??
+    recentZapReplayStages.at(-1)
+  const recentZapReplayWorkProgress =
+    recentZapReplay.phase === 'playing'
+      ? recentZapReplay.timelineProgress
+      : recentZapReplay.phase === 'done'
+        ? 1
+        : activeRecentZapReplayStage?.value ?? 0
+  const recentZapReplayProgressValue = formatProgressValue(recentZapReplayWorkProgress)
+  const recentZapReplayStatusDetail =
+    recentZapReplay.message ??
+    `Ventana activa: ${appliedZapReplayWindowLabel}.`
+  const recentZapReplayCurrentTimeLabel = formatZapReplayTime(
+    recentZapReplay.currentZapCreatedAt,
+  )
 
   useEffect(() => {
     if (!shouldEnableLiveZapFeed || !pauseLiveZapsWhenSceneIsLarge) {
@@ -3683,9 +3722,14 @@ export default function GraphAppV2() {
     },
     {
       id: 'zaps',
-      tip: isZapsPanelOpen ? 'Cerrar panel de zaps' : 'Zaps',
+      tip: recentZapReplayWorking
+        ? `${recentZapReplayStatusLabel}: sigue trabajando`
+        : isZapsPanelOpen
+          ? 'Cerrar panel de zaps'
+          : 'Zaps',
       icon: <ZapIcon />,
       active: isZapsPanelOpen,
+      attention: recentZapReplayWorking,
       onClick: handleOpenZapsPanel,
       dividerAfter: true,
     },
@@ -3718,6 +3762,8 @@ export default function GraphAppV2() {
     isZapsPanelOpen,
     notificationHistory.length,
     physicsEnabled,
+    recentZapReplayStatusLabel,
+    recentZapReplayWorking,
     relayState.isGraphStale,
   ])
 
@@ -3735,10 +3781,15 @@ export default function GraphAppV2() {
     {
       id: 'zaps',
       label: 'Zaps',
-      tip: isZapsPanelOpen ? 'Cerrar zaps' : 'Zaps en vivo',
+      tip: recentZapReplayWorking
+        ? `${recentZapReplayStatusLabel}: sigue trabajando`
+        : isZapsPanelOpen
+          ? 'Cerrar zaps'
+          : 'Zaps en vivo',
       icon: <ZapIcon />,
       active: isZapsPanelOpen,
       badge: zapActivityLog.length,
+      attention: recentZapReplayWorking,
       onClick: handleOpenZapsPanel,
     },
     ...(canUseRuntimeInspector
@@ -3779,6 +3830,8 @@ export default function GraphAppV2() {
     isZapsPanelOpen,
     mobileUtilityPanel,
     handleFitView,
+    recentZapReplayStatusLabel,
+    recentZapReplayWorking,
     zapActivityLog.length,
   ])
 
@@ -4196,8 +4249,8 @@ export default function GraphAppV2() {
             </div>
             <div className="sg-zap-replay-timeline">
               <div className="sg-zap-replay-timeline__head">
-                <span>Momento mostrado</span>
-                <span>{formatZapReplayTime(recentZapReplay.currentZapCreatedAt)}</span>
+                <span>Linea de tiempo del replay</span>
+                <span>{recentZapReplayProgressValue}% - {recentZapReplayCurrentTimeLabel}</span>
               </div>
               <div
                 aria-label={`Avance dentro de ${appliedZapReplayWindowText}`}
@@ -4207,6 +4260,8 @@ export default function GraphAppV2() {
                 className="sg-zap-replay-timeline__rail"
                 role="progressbar"
               >
+                <span className="sg-zap-replay-timeline__tick sg-zap-replay-timeline__tick--start" />
+                <span className="sg-zap-replay-timeline__tick sg-zap-replay-timeline__tick--end" />
                 <span
                   className="sg-zap-replay-timeline__fill"
                   style={{
@@ -4221,8 +4276,18 @@ export default function GraphAppV2() {
                 />
               </div>
               <div className="sg-zap-replay-timeline__labels">
-                <span>{formatZapReplayTime(recentZapReplay.windowStartAt)}</span>
-                <span>{formatZapReplayTime(recentZapReplay.windowEndAt)}</span>
+                <span>
+                  <strong>Inicio</strong>
+                  <time>{formatZapReplayTime(recentZapReplay.windowStartAt)}</time>
+                </span>
+                <span>
+                  <strong>Representando</strong>
+                  <time>{recentZapReplayCurrentTimeLabel}</time>
+                </span>
+                <span>
+                  <strong>Fin</strong>
+                  <time>{formatZapReplayTime(recentZapReplay.windowEndAt)}</time>
+                </span>
               </div>
             </div>
             <div className="sg-zap-replay-actions">
@@ -4306,7 +4371,7 @@ export default function GraphAppV2() {
         </div>
         <div className="sg-zap-feed__actions">
           <span
-            className={`sg-zap-feed__status${shouldEnableLiveZapFeed ? ' sg-zap-feed__status--live' : ''}`}
+            className={`sg-zap-feed__status${shouldEnableLiveZapFeed ? ' sg-zap-feed__status--live' : ''}${recentZapReplayWorking ? ' sg-zap-feed__status--working' : ''}`}
           >
             {zapFeedStatus}
           </span>
@@ -4319,6 +4384,43 @@ export default function GraphAppV2() {
           </button>
         </div>
       </div>
+
+      {zapFeedMode === 'recent' ? (
+        <div
+          aria-live={recentZapReplayWorking ? 'polite' : 'off'}
+          className={`sg-zap-replay-ambient${recentZapReplayWorking ? ' sg-zap-replay-ambient--working' : ''}`}
+        >
+          <div className="sg-zap-replay-ambient__head">
+            <span className="sg-zap-replay-ambient__dot" aria-hidden="true" />
+            <div>
+              <strong>{recentZapReplayStatusLabel}</strong>
+              <span>
+                {recentZapReplayWorking
+                  ? 'Sigue trabajando aunque cierres este panel.'
+                  : `Replay configurado para ${appliedZapReplayWindowText}.`}
+              </span>
+            </div>
+            <span className="sg-zap-replay-ambient__percent">
+              {recentZapReplayProgressValue}%
+            </span>
+          </div>
+          <div
+            aria-label="Avance del trabajo de replay"
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={recentZapReplayProgressValue}
+            className="sg-zap-replay-ambient__bar"
+            role="progressbar"
+          >
+            <span
+              style={{
+                width: `${recentZapReplayProgressValue}%`,
+              }}
+            />
+          </div>
+          <p>{recentZapReplayStatusDetail}</p>
+        </div>
+      ) : null}
 
       {liveZapFeedFeedback ? (
         <p className="sg-zap-feed__feedback">{liveZapFeedFeedback}</p>

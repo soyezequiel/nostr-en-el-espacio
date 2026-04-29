@@ -10,6 +10,7 @@ export interface MobileNavButton {
   icon: ReactNode
   active?: boolean
   badge?: number
+  attention?: boolean
   onClick: () => void
 }
 
@@ -25,7 +26,7 @@ export const SigmaMobileBottomNav = memo(function SigmaMobileBottomNav({
       {buttons.map((button) => (
         <button
           aria-label={button.tip}
-          className={`sg-mobile-nav__item${button.active ? ' sg-mobile-nav__item--active' : ''}`}
+          className={`sg-mobile-nav__item${button.active ? ' sg-mobile-nav__item--active' : ''}${button.attention ? ' sg-mobile-nav__item--attention' : ''}`}
           key={button.id}
           onClick={button.onClick}
           type="button"

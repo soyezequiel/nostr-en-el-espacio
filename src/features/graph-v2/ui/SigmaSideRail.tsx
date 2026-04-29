@@ -10,6 +10,7 @@ export interface RailButton {
   active?: boolean
   pressed?: boolean
   badge?: number
+  attention?: boolean
   onClick: () => void
   dividerAfter?: boolean
 }
@@ -26,7 +27,7 @@ export const SigmaSideRail = memo(function SigmaSideRail({ buttons }: Props) {
           <button
             aria-label={btn.tip}
             aria-pressed={btn.pressed}
-            className={`sg-rail-btn${btn.active ? ' sg-rail-btn--active' : ''}`}
+            className={`sg-rail-btn${btn.active ? ' sg-rail-btn--active' : ''}${btn.attention ? ' sg-rail-btn--attention' : ''}`}
             data-tip={btn.tip}
             onClick={btn.onClick}
             type="button"

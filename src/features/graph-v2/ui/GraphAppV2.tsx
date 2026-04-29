@@ -2193,7 +2193,7 @@ export default function GraphAppV2() {
   }, [zapFeedback])
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') {
         if (mobileUtilityPanel) { setMobileUtilityPanel(null); return }
         if (isPersonSearchOpen) { setIsPersonSearchOpen(false); return }

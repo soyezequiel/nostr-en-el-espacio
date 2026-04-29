@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import BrandLogo from '@/components/BrandLogo'
+import DeveloperZapButton from '@/components/landing/DeveloperZapButton'
 import IdentityPulse from '@/components/landing/IdentityPulse'
 import LandingMotionProvider from '@/components/landing/LandingMotionProvider'
 import Reveal from '@/components/landing/Reveal'
@@ -91,6 +92,9 @@ const protocolKinds = [
   },
 ] as const
 
+const developerZapLightningAddress =
+  process.env.NEXT_PUBLIC_DEV_ZAP_LIGHTNING_ADDRESS
+
 export default function LandingPage() {
   return (
     <LandingMotionProvider>
@@ -139,6 +143,9 @@ export default function LandingPage() {
                 >
                   Explorar conexiones
                 </Link>
+                <DeveloperZapButton
+                  lightningAddress={developerZapLightningAddress}
+                />
                 <div className="flex flex-wrap gap-3 text-sm">
                   <span className="inline-flex items-center gap-2 rounded-full border border-[#ffffff1f] bg-[#ffffff08] px-3 py-2 text-[#ada59b]">
                     <span className="h-2.5 w-2.5 rounded-full border border-[#ada59b]/60" />

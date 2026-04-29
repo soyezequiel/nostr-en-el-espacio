@@ -21,9 +21,15 @@ interface NostrWindow {
   nip04?: Nip04;
 }
 
+interface WebLnProvider {
+  enable(): Promise<void>;
+  sendPayment(paymentRequest: string): Promise<unknown>;
+}
+
 declare global {
   interface Window {
     nostr?: NostrWindow;
+    webln?: WebLnProvider;
   }
 }
 

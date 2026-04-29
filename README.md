@@ -81,6 +81,14 @@ npm install
 npm run dev
 ```
 
+### Configuracion opcional
+
+Para mostrar el boton **Zapea al desarrollador** en la landing, configura:
+
+```bash
+NEXT_PUBLIC_DEV_ZAP_LIGHTNING_ADDRESS=naranja@walletofsatoshi.com
+```
+
 ## Validacion
 
 ```bash

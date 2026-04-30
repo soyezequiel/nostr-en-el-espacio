@@ -2390,6 +2390,7 @@ export default function GraphAppV2() {
   const [zapActorLabelsByPubkey, setZapActorLabelsByPubkey] =
     useState<Record<string, string>>({})
   const zapActivitySequenceRef = useRef(0)
+  const activityRootPubkeyRef = useRef<string | null>(null)
   const zapActorProfileAttemptedRef = useRef(new Set<string>())
   const zapActorProfileInflightRef = useRef(new Set<string>())
   const sigmaHostRef = useRef<SigmaCanvasHostHandle | null>(null)
@@ -3305,6 +3306,10 @@ export default function GraphAppV2() {
     key: K, value: DragNeighborhoodInfluenceTuning[K],
   ) { setDragInfluenceTuning((current) => ({ ...current, [key]: value })) }, [])
 
+  useEffect(() => {
+    activityRootPubkeyRef.current = sceneState.rootPubkey
+  }, [sceneState.rootPubkey])
+
   const visibleNodeSet = useMemo(() => new Set(visiblePubkeys), [visiblePubkeys])
   const sceneConnectionLookup = useMemo(
     () => buildSceneConnectionIndex(sceneState.edgesById),
@@ -3343,6 +3348,10 @@ export default function GraphAppV2() {
   }, [])
 
   const handleZap = useCallback((zap: Pick<ParsedZap, 'fromPubkey' | 'toPubkey' | 'sats'>) => {
+    if (activityRootPubkeyRef.current !== sceneState.rootPubkey) {
+      return false
+    }
+
     const shouldTrace = shouldTraceZapPair(zap)
 
     if (!showZaps) {
@@ -3396,13 +3405,23 @@ export default function GraphAppV2() {
     }
 
     return played
-  }, [sceneConnectionLookup, sceneState.activeLayer, showZaps, visibleNodeSet])
+  }, [
+    sceneConnectionLookup,
+    sceneState.activeLayer,
+    sceneState.rootPubkey,
+    showZaps,
+    visibleNodeSet,
+  ])
 
   const handleGraphEvent = useCallback(
     (
       event: ParsedGraphEvent,
       source: GraphEventActivitySource = 'live',
     ): boolean => {
+      if (activityRootPubkeyRef.current !== sceneState.rootPubkey) {
+        return false
+      }
+
       const hasVisibleFrom = visibleNodeSet.has(event.fromPubkey)
       const hasVisibleTo = visibleNodeSet.has(event.toPubkey)
       if (!hasVisibleFrom && !hasVisibleTo) {
@@ -3422,7 +3441,7 @@ export default function GraphAppV2() {
       })
       return played
     },
-    [visibleNodeSet],
+    [sceneState.rootPubkey, visibleNodeSet],
   )
 
   const handleReplayZapActivity = useCallback((entry: ZapActivityLogEntry) => {
@@ -4037,6 +4056,7 @@ export default function GraphAppV2() {
       setIsActivitiesPanelOpen(false)
       setIsRuntimeInspectorOpen(false)
       if (isChangingRoot && !isFixtureMode) {
+        activityRootPubkeyRef.current = pubkey
         setZapFeedMode('live')
         setRecentZapReplayPlaybackPaused(false)
         setRecentZapReplayScrubProgress(null)
@@ -4047,7 +4067,12 @@ export default function GraphAppV2() {
           progress: 0,
         }))
         setZapActivityLog([])
+        setGraphEventActivityLog([])
+        setSelectedZapDetailId(null)
+        setSelectedGraphEventDetailId(null)
+        setSelectedZapOffGraphIdentity(null)
         setZapActorLabelsByPubkey({})
+        zapActivitySequenceRef.current = 0
         zapActorProfileAttemptedRef.current.clear()
         zapActorProfileInflightRef.current.clear()
         setLiveZapFeedFeedback(null)
@@ -4084,6 +4109,9 @@ export default function GraphAppV2() {
             setIsRootLoadScreenOpen(false)
           })
           .catch((error) => {
+            if (isChangingRoot) {
+              activityRootPubkeyRef.current = sceneState.rootPubkey
+            }
             setLoadFeedback(error instanceof Error ? error.message : 'No se pudo cargar el root.')
             setIsRootLoadScreenOpen(false)
             setIsRootSheetOpen(true)

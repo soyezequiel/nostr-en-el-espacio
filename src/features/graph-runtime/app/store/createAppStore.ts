@@ -28,7 +28,7 @@ import type {
   GraphEventToggleState,
 } from '@/features/graph-v2/events/types'
 
-const PERSIST_VERSION = 2
+const PERSIST_VERSION = 3
 
 interface PersistedAppState {
   savedRoots?: SavedRootEntry[]
@@ -91,13 +91,23 @@ export const createAppStore = (): AppStoreApi =>
             const seededSavedRoots =
               version < 1 ? seedDefaultSavedRoots(savedRoots) : savedRoots
 
-            // v2 introduces persisted graph-event toggles. Older snapshots
-            // simply lack the new keys; sanitiser fills them with defaults.
+            const persistedEventToggles = getPersistedRecord(
+              persistedState,
+              'eventToggles',
+            )
+            // v2 originally introduced the toggles with every non-zap event
+            // off by default. v3 makes "included" literal: new activity starts
+            // enabled, while preserving a deliberate zap-off choice.
+            const migratedEventToggles =
+              version < 3
+                ? sanitizeEventToggles({
+                    zap: persistedEventToggles?.zap,
+                  })
+                : sanitizeEventToggles(persistedEventToggles)
+
             return {
               savedRoots: seededSavedRoots,
-              eventToggles: sanitizeEventToggles(
-                getPersistedRecord(persistedState, 'eventToggles'),
-              ),
+              eventToggles: migratedEventToggles,
               eventFeedMode: sanitizeEventFeedMode(
                 getPersistedRecord(persistedState, 'eventFeedMode'),
               ),

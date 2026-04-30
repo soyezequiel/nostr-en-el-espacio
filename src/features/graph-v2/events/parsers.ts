@@ -29,9 +29,30 @@ const findAllTags = (
   name: string,
 ): readonly (readonly string[])[] => tags.filter((tag) => tag[0] === name)
 
+const findLastTag = (
+  tags: readonly (readonly string[])[],
+  name: string,
+): readonly string[] | undefined => {
+  for (let index = tags.length - 1; index >= 0; index -= 1) {
+    const tag = tags[index]
+    if (tag[0] === name) return tag
+  }
+  return undefined
+}
+
 const lower = (value: string | undefined | null): string | null => {
   if (!value || typeof value !== 'string') return null
   return value.toLowerCase()
+}
+
+const parseEmbeddedEventAuthor = (content: string): string | null => {
+  if (!content.trim()) return null
+  try {
+    const embedded = JSON.parse(content) as { pubkey?: unknown }
+    return typeof embedded.pubkey === 'string' ? lower(embedded.pubkey) : null
+  } catch {
+    return null
+  }
 }
 
 // NIP-25 reactions (kind 7). Target is the recipient via 'p' tag; the note
@@ -39,7 +60,10 @@ const lower = (value: string | undefined | null): string | null => {
 export const parseLikeEvent = (event: RawNostrEvent): ParsedGraphEvent | null => {
   if (event.kind !== 7) return null
   const fromPubkey = lower(event.pubkey)
-  const toPubkey = lower(findTag(event.tags, 'p')?.[1])
+  // NIP-25 says the target pubkey should be the last p tag when multiple are
+  // present. Using the first p makes live #p subscriptions look empty because
+  // the UI gate can discard an event that did match the relay filter.
+  const toPubkey = lower(findLastTag(event.tags, 'p')?.[1])
   if (!fromPubkey || !toPubkey) return null
 
   const eTags = findAllTags(event.tags, 'e')
@@ -71,7 +95,8 @@ export const parseLikeEvent = (event: RawNostrEvent): ParsedGraphEvent | null =>
 export const parseRepostEvent = (event: RawNostrEvent): ParsedGraphEvent | null => {
   if (event.kind !== 6 && event.kind !== 16) return null
   const fromPubkey = lower(event.pubkey)
-  const toPubkey = lower(findTag(event.tags, 'p')?.[1])
+  const embeddedAuthor = parseEmbeddedEventAuthor(event.content)
+  const toPubkey = embeddedAuthor ?? lower(findLastTag(event.tags, 'p')?.[1])
   if (!fromPubkey || !toPubkey) return null
 
   const repostedEventId = lower(findTag(event.tags, 'e')?.[1] ?? null)
@@ -215,9 +240,10 @@ export const parseCommentEvent = (event: RawNostrEvent): ParsedGraphEvent | null
   const rootEventId = lower(findTag(event.tags, 'E')?.[1] ?? null)
   const parentEventId = lower(findTag(event.tags, 'e')?.[1] ?? rootEventId)
   // NIP-22 'P' (uppercase) is the root author; lowercase 'p' is the parent
-  // author. Prefer the parent.
+  // author. Prefer the last lowercase p: relays can match any p tag, and the
+  // parent/notification target is commonly appended after root metadata.
   const parentAuthor =
-    lower(findTag(event.tags, 'p')?.[1] ?? null) ??
+    lower(findLastTag(event.tags, 'p')?.[1] ?? null) ??
     lower(findTag(event.tags, 'P')?.[1] ?? null)
   if (!parentAuthor) return null
 
@@ -247,9 +273,10 @@ export const parseCommentEvent = (event: RawNostrEvent): ParsedGraphEvent | null
 export interface KindParserSpec {
   // Nostr kinds to subscribe to.
   kinds: number[]
-  // 'p' filter applies to most reaction-style kinds. Saves (lists) are
-  // authored by the saver themselves, so the filter is `authors`.
-  filterMode: 'p-tag' | 'authors'
+  // Most activity should be visible when it targets a node (`#p`) or when it
+  // is authored by a node (`authors`). Saves (lists) are only authored by the
+  // saver, so they stay `authors`.
+  filterMode: 'p-tag-or-authors' | 'authors'
   parse: (event: RawNostrEvent) => ParsedGraphEvent[]
 }
 
@@ -266,12 +293,12 @@ export const KIND_PARSER_SPECS: Record<
 > = {
   like: {
     kinds: [7],
-    filterMode: 'p-tag',
+    filterMode: 'p-tag-or-authors',
     parse: wrapSingle(parseLikeEvent),
   },
   repost: {
     kinds: [6, 16],
-    filterMode: 'p-tag',
+    filterMode: 'p-tag-or-authors',
     parse: wrapSingle(parseRepostEvent),
   },
   save: {
@@ -281,12 +308,12 @@ export const KIND_PARSER_SPECS: Record<
   },
   quote: {
     kinds: [1],
-    filterMode: 'p-tag',
+    filterMode: 'p-tag-or-authors',
     parse: wrapSingle(parseQuoteEvent),
   },
   comment: {
     kinds: [1111],
-    filterMode: 'p-tag',
+    filterMode: 'p-tag-or-authors',
     parse: wrapSingle(parseCommentEvent),
   },
 }

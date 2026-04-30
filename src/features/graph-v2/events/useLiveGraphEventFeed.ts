@@ -27,7 +27,7 @@ interface UseLiveGraphEventFeedOptions {
   onEvent: (event: ParsedGraphEvent) => void
 }
 
-const buildBatches = (
+export const buildLiveGraphEventTargetBatches = (
   pubkeys: readonly string[],
   batchSize = MAX_ZAP_FILTER_PUBKEYS,
 ): string[][] => {
@@ -38,7 +38,7 @@ const buildBatches = (
   return batches
 }
 
-const buildFilters = (
+export const buildLiveGraphEventFilters = (
   spec: KindParserSpec,
   batch: string[],
   sinceSeconds: number,
@@ -48,6 +48,7 @@ const buildFilters = (
   }
   return [
     { kinds: spec.kinds, '#p': [...batch], since: sinceSeconds },
+    { kinds: spec.kinds, authors: [...batch], since: sinceSeconds },
   ]
 }
 
@@ -93,7 +94,7 @@ export function useLiveGraphEventFeed({
 
     const spec = KIND_PARSER_SPECS[kind]
     const pubkeys = signature.split(',').filter(Boolean)
-    const batches = buildBatches(pubkeys)
+    const batches = buildLiveGraphEventTargetBatches(pubkeys)
     if (batches.length === 0) return
 
     let disposed = false
@@ -158,7 +159,7 @@ export function useLiveGraphEventFeed({
 
       subscriptions = batches.map((batch) => {
         const subscription = ndk.subscribe(
-          buildFilters(spec, batch, sinceSeconds),
+          buildLiveGraphEventFilters(spec, batch, sinceSeconds),
           { closeOnEose: false },
         )
         subscription.on('event', handleEvent)

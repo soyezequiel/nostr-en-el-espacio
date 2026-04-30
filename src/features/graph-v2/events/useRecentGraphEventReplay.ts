@@ -96,7 +96,7 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   return batches
 }
 
-function buildFilters(
+export function buildRecentGraphEventReplayFilters(
   spec: KindParserSpec,
   batch: readonly string[],
   since: number,
@@ -109,7 +109,10 @@ function buildFilters(
   if (spec.filterMode === 'authors') {
     return [{ kinds: spec.kinds, authors: [...batch], since, until, limit }]
   }
-  return [{ kinds: spec.kinds, '#p': [...batch], since, until, limit }]
+  return [
+    { kinds: spec.kinds, '#p': [...batch], since, until, limit },
+    { kinds: spec.kinds, authors: [...batch], since, until, limit },
+  ]
 }
 
 async function runWithConcurrencyLimit<T>(
@@ -162,7 +165,7 @@ async function collectGraphEventReplayBatch({
     }, RECENT_GRAPH_EVENT_REPLAY_FETCH_TIMEOUT_MS)
 
     subscription = ndk.subscribe(
-      buildFilters(spec, batch, since, until),
+      buildRecentGraphEventReplayFilters(spec, batch, since, until),
       { closeOnEose: true },
     )
     subscription.on('event', (event: NDKEvent) => {

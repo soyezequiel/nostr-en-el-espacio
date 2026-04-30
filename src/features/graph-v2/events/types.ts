@@ -110,11 +110,11 @@ export type GraphEventFeedMode = 'live' | 'recent'
 
 export const DEFAULT_GRAPH_EVENT_TOGGLES: GraphEventToggleState = {
   zap: true,
-  like: false,
-  repost: false,
-  save: false,
-  quote: false,
-  comment: false,
+  like: true,
+  repost: true,
+  save: true,
+  quote: true,
+  comment: true,
 }
 
 export const GRAPH_EVENT_KIND_LABELS: Record<GraphEventKind, string> = {

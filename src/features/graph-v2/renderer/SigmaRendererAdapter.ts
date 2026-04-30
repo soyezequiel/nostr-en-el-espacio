@@ -2265,6 +2265,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       RenderEdgeAttributes
     > & {
       getBBox?: () => SigmaGraphExtent
+      getCustomBBox?: () => SigmaGraphExtent | null
     }) | null
 
     if (!sigma || typeof sigma.getBBox !== 'function') {
@@ -2282,11 +2283,24 @@ export class SigmaRendererAdapter implements RendererAdapter {
       return false
     }
 
-    // 1. Capture state in old (locked) BBox space
+    // 1. Capture state in old (locked) BBox space.
+    // While locked Sigma's normalisation runs against `customBBox`, but
+    // `getBBox()` returns `nodeExtent` which keeps drifting every render as
+    // the dragged node moves (especially noticeable for off-graph zap nodes
+    // placed far from the cluster).  Using nodeExtent here makes oldBBox and
+    // newBBox effectively identical and the remap collapses into a no-op,
+    // letting the camera jump on the next render when normalisation switches
+    // back to nodeExtent.  Read the actual locked BBox instead.
     const oldState = camera.getState()
-    const oldBBox = sigma.getBBox()
+    const lockedCustomBBox =
+      typeof sigma.getCustomBBox === 'function'
+        ? sigma.getCustomBBox()
+        : null
+    const oldBBox = lockedCustomBBox ?? sigma.getBBox()
 
-    // 2. Unlock → Sigma recalculates BBox from real node extents
+    // 2. Unlock → Sigma will adopt nodeExtent on the next render.  The cached
+    // nodeExtent has been refreshed every frame during the drag, so reading
+    // getBBox() right now matches what the next render will normalise against.
     this.setGraphBoundsLocked(false)
 
     const newBBox = sigma.getBBox()
@@ -2337,6 +2351,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
     this.traceRendererEvent('remapCameraAcrossBBoxUnlock', {
       oldBBox,
+      oldBBoxSource: lockedCustomBBox ? 'customBBox' : 'nodeExtent',
       newBBox,
       oldState,
       newState: { x: newX, y: newY, ratio: newRatio },

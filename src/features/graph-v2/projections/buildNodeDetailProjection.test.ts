@@ -75,3 +75,34 @@ test('allows toggling the root pin state through the same detail model', () => {
   assert.equal(detail.isFixed, true)
   assert.equal(detail.canTogglePin, true)
 })
+
+test('keeps visible expansion separate from explored connections', () => {
+  const detail = buildNodeDetailProjection(createState())
+
+  assert.equal(detail.isExpanded, true)
+  assert.equal(detail.hasExploredConnections, false)
+})
+
+test('marks connections as explored only after a terminal expansion state', () => {
+  const detail = buildNodeDetailProjection(
+    createState({
+      nodesByPubkey: {
+        root: {
+          ...createState().nodesByPubkey.root,
+          nodeExpansionState: {
+            status: 'ready',
+            message: null,
+            phase: 'idle',
+            step: null,
+            totalSteps: null,
+            startedAt: 10,
+            updatedAt: 20,
+          },
+        },
+      },
+    }),
+  )
+
+  assert.equal(detail.isExpanded, true)
+  assert.equal(detail.hasExploredConnections, true)
+})

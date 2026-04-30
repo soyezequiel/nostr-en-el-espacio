@@ -127,6 +127,7 @@ export interface NodeDetailProjection {
   isFixed: boolean
   canTogglePin: boolean
   isExpanded: boolean
+  hasExploredConnections: boolean
 }
 
 export interface GraphInteractionCallbacks {

@@ -1,5 +1,12 @@
-import type { CanonicalGraphSceneState } from '@/features/graph-v2/domain/types'
+import type { CanonicalGraphSceneState, CanonicalNode } from '@/features/graph-v2/domain/types'
 import type { NodeDetailProjection } from '@/features/graph-v2/renderer/contracts'
+
+const EXPLORED_CONNECTION_STATUSES = new Set(['ready', 'partial', 'empty'])
+
+export const hasNodeExploredConnections = (node: CanonicalNode | null): boolean => {
+  const status = node?.nodeExpansionState?.status
+  return status ? EXPLORED_CONNECTION_STATUSES.has(status) : false
+}
 
 export const buildNodeDetailProjection = (
   state: CanonicalGraphSceneState,
@@ -22,6 +29,7 @@ export const buildNodeDetailProjection = (
       isFixed: false,
       canTogglePin: false,
       isExpanded: false,
+      hasExploredConnections: false,
     }
   }
 
@@ -54,5 +62,6 @@ export const buildNodeDetailProjection = (
     isFixed: isPinned,
     canTogglePin: true,
     isExpanded: node?.isExpanded ?? false,
+    hasExploredConnections: hasNodeExploredConnections(node),
   }
 }

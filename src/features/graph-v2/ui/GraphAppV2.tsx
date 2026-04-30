@@ -67,7 +67,10 @@ import {
   getSnapshotCacheStats,
 } from '@/features/graph-v2/projections/buildGraphSceneSnapshot'
 import { getProjectionCacheStats } from '@/features/graph-v2/projections/buildLayerProjection'
-import { buildNodeDetailProjection } from '@/features/graph-v2/projections/buildNodeDetailProjection'
+import {
+  buildNodeDetailProjection,
+  hasNodeExploredConnections,
+} from '@/features/graph-v2/projections/buildNodeDetailProjection'
 import {
   DEFAULT_GRAPH_SCENE_NODE_SIZE_CONFIG,
   getGraphSceneNodeSizeConfigSignature,
@@ -2726,9 +2729,9 @@ export default function GraphAppV2() {
     window.sessionStorage.setItem(IDENTITY_FIRST_RUN_HELP_KEY, '1')
   }, [])
 
-  const handleExploreConnections = useCallback((pubkey: string, isExpanded: boolean) => {
+  const handleExploreConnections = useCallback((pubkey: string, hasExploredConnections: boolean) => {
     dismissIdentityHelp()
-    if (isExpanded) return
+    if (hasExploredConnections) return
 
     if (!isFixtureMode) {
       const isMobileViewport = isMobileGraphViewport()
@@ -2738,7 +2741,7 @@ export default function GraphAppV2() {
       }
       if (
         shouldScheduleExpansionAutoFit({
-          isExpanded,
+          isExpanded: hasExploredConnections,
           isFixtureMode,
           isMobileViewport,
         })
@@ -2792,7 +2795,7 @@ export default function GraphAppV2() {
               )
               handleExploreConnections(
                 pubkey,
-                latestNodesByPubkeyRef.current[pubkey]?.isExpanded ?? false,
+                hasNodeExploredConnections(latestNodesByPubkeyRef.current[pubkey] ?? null),
               )
             },
             onClearSelection: () => {
@@ -2829,7 +2832,7 @@ export default function GraphAppV2() {
               controller.callbacks.onNodeDoubleClick(pubkey)
               handleExploreConnections(
                 pubkey,
-                latestNodesByPubkeyRef.current[pubkey]?.isExpanded ?? false,
+                hasNodeExploredConnections(latestNodesByPubkeyRef.current[pubkey] ?? null),
               )
             },
           },
@@ -5477,7 +5480,7 @@ export default function GraphAppV2() {
     const pinActionLabel = detail.isPinned ? tSigma('detail.unpin') : tSigma('detail.pin')
     const expansionState = detail.node.nodeExpansionState
     const isExpansionLoading = expansionState?.status === 'loading'
-    const exploreActionLabel = detail.isExpanded
+    const exploreActionLabel = detail.hasExploredConnections
       ? tSigma('detail.connectionsExplored')
       : isExpansionLoading
         ? tSigma('detail.expanding')
@@ -5545,18 +5548,20 @@ export default function GraphAppV2() {
             <div className="sg-node-hero__badges">
               <span className={`sg-badge ${relBadgeClass}`}>{relBadge}</span>
               {detail.nip05 && <span className="sg-badge sg-badge--ok">nip05</span>}
-              {detail.isExpanded && <span className="sg-badge">{tSigma('detail.connectionsExplored')}</span>}
+              {detail.hasExploredConnections && (
+                <span className="sg-badge">{tSigma('detail.connectionsExplored')}</span>
+              )}
             </div>
           </div>
         </div>
 
         <div className="sg-node-primary-actions" data-panel-no-drag>
           <button
-            className={`sg-node-primary-action${detail.isExpanded || isExpansionLoading ? '' : ' sg-node-primary-action--primary'}`}
-            disabled={detail.isExpanded || isExpansionLoading}
+            className={`sg-node-primary-action${detail.hasExploredConnections || isExpansionLoading ? '' : ' sg-node-primary-action--primary'}`}
+            disabled={detail.hasExploredConnections || isExpansionLoading}
             onClick={() => {
               if (!detail.pubkey) return
-              handleExploreConnections(detail.pubkey, detail.isExpanded)
+              handleExploreConnections(detail.pubkey, detail.hasExploredConnections)
             }}
             type="button"
           >

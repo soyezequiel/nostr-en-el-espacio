@@ -175,6 +175,7 @@ export interface AvatarOverlayRendererDeps {
   scheduler: AvatarScheduler
   budget: PerfBudget
   isMoving: () => boolean
+  isCameraMoving?: () => boolean
   getHoveredNodePubkey?: () => string | null
   getForcedAvatarPubkey?: () => string | null
   getHoveredNeighborPubkeys?: () => ReadonlySet<string>
@@ -474,6 +475,7 @@ export class AvatarOverlayRenderer {
   private readonly scheduler: AvatarScheduler
   private readonly budget: PerfBudget
   private readonly isMoving: () => boolean
+  private readonly isCameraMoving: () => boolean
   private readonly getHoveredNodePubkey: () => string | null
   private readonly getForcedAvatarPubkey: () => string | null
   private readonly getHoveredNeighborPubkeys: () => ReadonlySet<string>
@@ -499,6 +501,7 @@ export class AvatarOverlayRenderer {
     this.scheduler = deps.scheduler
     this.budget = deps.budget
     this.isMoving = deps.isMoving
+    this.isCameraMoving = deps.isCameraMoving ?? (() => false)
     this.getHoveredNodePubkey = deps.getHoveredNodePubkey ?? (() => null)
     this.getForcedAvatarPubkey = deps.getForcedAvatarPubkey ?? (() => null)
     this.getHoveredNeighborPubkeys = deps.getHoveredNeighborPubkeys ?? (() => EMPTY_SET)
@@ -514,6 +517,7 @@ export class AvatarOverlayRenderer {
     this.sigma.off('afterRender', this.boundAfterRender)
     if (this.expansionAnimationFrameId !== null) {
       cancelAnimationFrame(this.expansionAnimationFrameId)
+      this.expansionAnimationFrameId = null
     }
   }
 
@@ -761,10 +765,14 @@ export class AvatarOverlayRenderer {
       return
     }
 
-    if (expansionRingItems.length > 0 && this.expansionAnimationFrameId === null) {
+    if (
+      expansionRingItems.length > 0 &&
+      !this.isCameraMoving() &&
+      this.expansionAnimationFrameId === null
+    ) {
       this.expansionAnimationFrameId = requestAnimationFrame(() => {
         this.expansionAnimationFrameId = null
-        if (this.sigma) {
+        if (!this.disposed && !this.isCameraMoving()) {
           this.sigma.refresh()
         }
       })

@@ -98,6 +98,7 @@ const HOVER_DIM_EDGE_COLOR = '#10171f'
 const HIGHLIGHT_TRANSITION_MS = 180
 const HOVER_FOCUS_DWELL_MS = 500
 const TOUCH_TAP_MOVE_TOLERANCE_PX = 16
+const TOUCH_MOUSE_COMPATIBILITY_SUPPRESSION_MS = 400
 const STAGE_CLICK_SUPPRESS_AFTER_DRAG_MS = 160
 const OUTSIDE_NODE_CLICK_DEDUP_MS = 500
 const MOBILE_GRAPH_INTERACTION_QUERY = '(max-width: 720px)'
@@ -428,6 +429,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private pendingContainerRefreshFrame: number | null = null
 
+  private pendingAvatarSettledRefresh = false
+
   private positionLedger: NodePositionLedger | null = null
 
   private renderStore: RenderGraphStore | null = null
@@ -586,6 +589,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   private touchGestureActive = false
 
+  private touchMouseResumeTimer: ReturnType<typeof setTimeout> | null = null
+
   private gestureStartListenerCleanup: (() => void) | null = null
 
   private readonly MOTION_RESUME_MS = 140
@@ -607,6 +612,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.pendingContainerRefreshFrame = null
 
     if (!this.sigma || !hasRenderableSigmaContainer(this.container)) {
+      return
+    }
+
+    if (this.isCameraInteractionActive()) {
+      this.pendingContainerRefresh = true
       return
     }
 
@@ -643,6 +653,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
       return
     }
 
+    if (this.isCameraInteractionActive()) {
+      this.pendingContainerRefresh = true
+      return
+    }
+
     this.pendingContainerRefresh = false
     this.scheduleContainerRefresh()
   }
@@ -663,6 +678,32 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
 
     this.sigma.scheduleRender()
+  }
+
+  private isCameraInteractionActive() {
+    return this.cameraMotionActive || this.touchGestureActive
+  }
+
+  private flushDeferredCameraInteractionRefreshes() {
+    if (!this.sigma || this.isCameraInteractionActive()) {
+      return
+    }
+
+    if (!hasRenderableSigmaContainer(this.container)) {
+      return
+    }
+
+    if (this.pendingContainerRefresh) {
+      this.pendingContainerRefresh = false
+      this.pendingAvatarSettledRefresh = false
+      this.scheduleContainerRefresh()
+      return
+    }
+
+    if (this.pendingAvatarSettledRefresh) {
+      this.pendingAvatarSettledRefresh = false
+      this.sigma.scheduleRefresh()
+    }
   }
 
   private recordRenderInvalidation(
@@ -2809,8 +2850,8 @@ export class SigmaRendererAdapter implements RendererAdapter {
     const touchCaptor = sigma.getTouchCaptor()
     touchCaptor.setSettings({
       dragTimeout: sigma.getSetting('dragTimeout'),
-      inertiaDuration: sigma.getSetting('inertiaDuration'),
-      inertiaRatio: sigma.getSetting('inertiaRatio'),
+      inertiaDuration: 0,
+      inertiaRatio: 0,
       doubleClickTimeout: sigma.getSetting('doubleClickTimeout'),
       doubleClickZoomingRatio: 1.7,
       doubleClickZoomingDuration: 180,
@@ -2826,14 +2867,12 @@ export class SigmaRendererAdapter implements RendererAdapter {
   }
 
   /**
-   * Cancel any in-flight camera inertia animation when a new pan/pinch gesture
-   * starts. Sigma's TouchCaptor.handleLeave kicks off a `camera.animate(...)`
-   * for inertia (220ms). That animation keeps calling `setState` every rAF
-   * tick from its initialState + tween, so if the user starts another gesture
-   * within the inertia window, every animation tick OVERWRITES the position
-   * the new touchmove just wrote. The result is one-frame "jumps" back toward
-   * the inertia trajectory before the next touchmove corrects them — which is
-   * what shows up as juddery panning on mobile.
+   * Cancel any in-flight camera animation when a new pan/pinch gesture starts.
+   * Sigma camera animations keep calling `setState` every rAF tick from their
+   * initialState + tween, so if the user starts another gesture while one is
+   * still running, each animation tick can overwrite the position the new
+   * touchmove just wrote. The result is a one-frame jump before the next
+   * touchmove corrects it.
    *
    * Capture-phase listeners on the container fire before Sigma's TouchCaptor
    * runs `handleStart`, so we can null out `camera.nextFrame` *before*
@@ -2850,15 +2889,19 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
     const cancel = () => {
       this.cancelCameraInertiaAnimation()
+      this.suspendMouseCaptorForTouchGesture()
+    }
+    const cancelMouseAnimation = () => {
+      this.cancelCameraInertiaAnimation()
     }
 
     const options: AddEventListenerOptions = { capture: true, passive: true }
     container.addEventListener('touchstart', cancel, options)
-    container.addEventListener('mousedown', cancel, options)
+    container.addEventListener('mousedown', cancelMouseAnimation, options)
 
     this.gestureStartListenerCleanup = () => {
       container.removeEventListener('touchstart', cancel, options)
-      container.removeEventListener('mousedown', cancel, options)
+      container.removeEventListener('mousedown', cancelMouseAnimation, options)
     }
   }
 
@@ -2902,11 +2945,13 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private readonly handleTouchGestureEnd = () => {
     if (!this.touchGestureActive) return
     this.touchGestureActive = false
-    this.resumeMouseCaptorAfterTouchGesture()
+    this.scheduleMouseCaptorResumeAfterTouchGesture()
+    this.flushDeferredCameraInteractionRefreshes()
     this.callbacks?.onCanvasGestureEnd?.()
   }
 
   private suspendMouseCaptorForTouchGesture() {
+    this.clearTouchMouseResumeTimer()
     const sigma = this.sigma
     if (!sigma) return
     const mouseCaptor = sigma.getMouseCaptor()
@@ -2921,10 +2966,31 @@ export class SigmaRendererAdapter implements RendererAdapter {
     mouseCaptor.startCameraState = null
   }
 
-  private resumeMouseCaptorAfterTouchGesture() {
+  private scheduleMouseCaptorResumeAfterTouchGesture() {
+    this.clearTouchMouseResumeTimer()
+    this.touchMouseResumeTimer = setTimeout(
+      this.resumeMouseCaptorAfterTouchGesture,
+      TOUCH_MOUSE_COMPATIBILITY_SUPPRESSION_MS,
+    )
+  }
+
+  private readonly resumeMouseCaptorAfterTouchGesture = () => {
+    this.touchMouseResumeTimer = null
     const sigma = this.sigma
     if (!sigma) return
-    sigma.getMouseCaptor().enabled = true
+    const mouseCaptor = sigma.getMouseCaptor()
+    mouseCaptor.isMouseDown = false
+    mouseCaptor.isMoving = false
+    mouseCaptor.lastMouseX = null
+    mouseCaptor.lastMouseY = null
+    mouseCaptor.startCameraState = null
+    mouseCaptor.enabled = true
+  }
+
+  private clearTouchMouseResumeTimer() {
+    if (this.touchMouseResumeTimer === null) return
+    clearTimeout(this.touchMouseResumeTimer)
+    this.touchMouseResumeTimer = null
   }
 
   private readonly handleTouchMove = (event: TouchCoords) => {
@@ -3096,6 +3162,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   public dispose() {
     this.handleTouchGestureEnd()
+    this.clearTouchMouseResumeTimer()
     this.releaseDrag()
     this.cancelPendingDragFrame()
     this.cancelPendingGraphBoundsUnlock()
@@ -3114,6 +3181,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
     this.pendingContainerRefresh = false
+    this.pendingAvatarSettledRefresh = false
     this.gestureStartListenerCleanup?.()
     this.gestureStartListenerCleanup = null
     window.removeEventListener('keydown', this.handleKeyDown)
@@ -3171,6 +3239,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
         scheduler: this.avatarScheduler,
         budget: this.avatarBudget,
         isMoving: () => this.hideAvatarsOnMove && this.cameraMotionActive,
+        isCameraMoving: () => this.cameraMotionActive || this.touchGestureActive,
         getBlockedAvatar: (urlKey) => this.avatarLoader?.getBlockedEntry(urlKey) ?? null,
         getHoveredNodePubkey: () => this.resolveRendererFocus().pubkey,
         getForcedAvatarPubkey: () =>
@@ -3321,6 +3390,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
     this.cameraMotionActive = false
     this.safeRender()
+    this.flushDeferredCameraInteractionRefreshes()
   }
 
   private readonly flushTouchCameraMovementClear = () => {
@@ -3346,6 +3416,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       sigma.getMouseCaptor() as unknown as SigmaMovementCaptorShim
     mouseCaptor.isMoving = false
     this.safeRender()
+    this.flushDeferredCameraInteractionRefreshes()
   }
 
   private scheduleAvatarSettledRefresh() {
@@ -3353,11 +3424,15 @@ export class SigmaRendererAdapter implements RendererAdapter {
       return
     }
     if (!hasRenderableSigmaContainer(this.container)) {
-      this.pendingContainerRefresh = true
+      this.pendingAvatarSettledRefresh = true
+      return
+    }
+    if (this.isCameraInteractionActive()) {
+      this.pendingAvatarSettledRefresh = true
       return
     }
 
-    this.pendingContainerRefresh = false
+    this.pendingAvatarSettledRefresh = false
     this.sigma.scheduleRefresh()
   }
 

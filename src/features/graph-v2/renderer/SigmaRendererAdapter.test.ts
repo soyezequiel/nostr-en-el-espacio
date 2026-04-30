@@ -168,6 +168,234 @@ test('avatar image toggle disables and re-enables the avatar budget', async () =
   }
 })
 
+test('avatar expansion rings do not force Sigma refresh while the camera is moving', async () => {
+  const { AvatarOverlayRenderer } = await import(
+    '@/features/graph-v2/renderer/avatar/avatarOverlayRenderer'
+  )
+  const { PerfBudget } = await import(
+    '@/features/graph-v2/renderer/avatar/perfBudget'
+  )
+
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame
+  const originalCancelAnimationFrame = globalThis.cancelAnimationFrame
+  const frames = new Map<number, FrameRequestCallback>()
+  let nextFrameHandle = 1
+  let refreshCalls = 0
+  let cameraMoving = true
+  let afterRender: (() => void) | null = null
+
+  globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    const handle = nextFrameHandle
+    nextFrameHandle += 1
+    frames.set(handle, callback)
+    return handle
+  }) as typeof requestAnimationFrame
+  globalThis.cancelAnimationFrame = ((handle: number) => {
+    frames.delete(handle)
+  }) as typeof cancelAnimationFrame
+
+  const ctx = {
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {},
+    arc: () => {},
+    stroke: () => {},
+  } as unknown as CanvasRenderingContext2D
+
+  const sigma = {
+    on: (event: string, callback: () => void) => {
+      if (event === 'afterRender') {
+        afterRender = callback
+      }
+    },
+    off: () => {},
+    refresh: () => {
+      refreshCalls += 1
+    },
+    getCamera: () => ({
+      getState: () => ({ x: 0.5, y: 0.5, ratio: 1, angle: 0 }),
+    }),
+    getGraph: () => ({
+      hasNode: (pubkey: string) => pubkey === 'A' || pubkey === 'focus',
+      forEachNode: (
+        callback: (pubkey: string, attrs: Partial<RenderNodeAttributes>) => void,
+      ) => {
+        callback('A', {
+          hidden: false,
+          label: 'A',
+          color: '#7dd3a7',
+          pictureUrl: null,
+          isRoot: false,
+          isPinned: false,
+          isExpanding: true,
+          expansionProgress: 0.5,
+        })
+      },
+    }),
+    getNodeDisplayData: () => ({ x: 120, y: 80, size: 18 }),
+    scaleSize: (size: number) => size,
+    framedGraphToViewport: (point: { x: number; y: number }) => point,
+    getContainer: () => ({ clientWidth: 300, clientHeight: 200 }),
+    getCanvases: () => ({
+      labels: {
+        getContext: () => ctx,
+      },
+    }),
+  }
+
+  const overlay = new AvatarOverlayRenderer({
+    sigma: sigma as never,
+    cache: {
+      setCap: () => {},
+      get: () => null,
+      getMonogram: () => null,
+    } as never,
+    scheduler: {
+      hasInflight: () => false,
+      prime: () => {},
+      reconcile: () => {},
+    } as never,
+    budget: new PerfBudget('high'),
+    isMoving: () => false,
+    isCameraMoving: () => cameraMoving,
+    getHoveredNodePubkey: () => 'focus',
+  })
+
+  try {
+    afterRender?.()
+
+    assert.equal(frames.size, 0)
+    assert.equal(refreshCalls, 0)
+
+    cameraMoving = false
+    afterRender?.()
+
+    assert.equal(frames.size, 1)
+    const queuedFrame = frames.values().next().value
+    assert.equal(typeof queuedFrame, 'function')
+    frames.clear()
+    queuedFrame?.(16)
+
+    assert.equal(refreshCalls, 1)
+  } finally {
+    overlay.dispose()
+    frames.clear()
+    globalThis.requestAnimationFrame = originalRequestAnimationFrame
+    globalThis.cancelAnimationFrame = originalCancelAnimationFrame
+  }
+})
+
+test('avatar expansion ring refresh checks camera motion again before running', async () => {
+  const { AvatarOverlayRenderer } = await import(
+    '@/features/graph-v2/renderer/avatar/avatarOverlayRenderer'
+  )
+  const { PerfBudget } = await import(
+    '@/features/graph-v2/renderer/avatar/perfBudget'
+  )
+
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame
+  const originalCancelAnimationFrame = globalThis.cancelAnimationFrame
+  const frames = new Map<number, FrameRequestCallback>()
+  let nextFrameHandle = 1
+  let refreshCalls = 0
+  let cameraMoving = false
+  let afterRender: (() => void) | null = null
+
+  globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    const handle = nextFrameHandle
+    nextFrameHandle += 1
+    frames.set(handle, callback)
+    return handle
+  }) as typeof requestAnimationFrame
+  globalThis.cancelAnimationFrame = ((handle: number) => {
+    frames.delete(handle)
+  }) as typeof cancelAnimationFrame
+
+  const ctx = {
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {},
+    arc: () => {},
+    stroke: () => {},
+  } as unknown as CanvasRenderingContext2D
+
+  const sigma = {
+    on: (event: string, callback: () => void) => {
+      if (event === 'afterRender') {
+        afterRender = callback
+      }
+    },
+    off: () => {},
+    refresh: () => {
+      refreshCalls += 1
+    },
+    getCamera: () => ({
+      getState: () => ({ x: 0.5, y: 0.5, ratio: 1, angle: 0 }),
+    }),
+    getGraph: () => ({
+      hasNode: (pubkey: string) => pubkey === 'A' || pubkey === 'focus',
+      forEachNode: (
+        callback: (pubkey: string, attrs: Partial<RenderNodeAttributes>) => void,
+      ) => {
+        callback('A', {
+          hidden: false,
+          label: 'A',
+          color: '#7dd3a7',
+          pictureUrl: null,
+          isRoot: false,
+          isPinned: false,
+          isExpanding: true,
+          expansionProgress: 0.5,
+        })
+      },
+    }),
+    getNodeDisplayData: () => ({ x: 120, y: 80, size: 18 }),
+    scaleSize: (size: number) => size,
+    framedGraphToViewport: (point: { x: number; y: number }) => point,
+    getContainer: () => ({ clientWidth: 300, clientHeight: 200 }),
+    getCanvases: () => ({
+      labels: {
+        getContext: () => ctx,
+      },
+    }),
+  }
+
+  const overlay = new AvatarOverlayRenderer({
+    sigma: sigma as never,
+    cache: {
+      setCap: () => {},
+      get: () => null,
+      getMonogram: () => null,
+    } as never,
+    scheduler: {
+      hasInflight: () => false,
+      prime: () => {},
+      reconcile: () => {},
+    } as never,
+    budget: new PerfBudget('high'),
+    isMoving: () => false,
+    isCameraMoving: () => cameraMoving,
+    getHoveredNodePubkey: () => 'focus',
+  })
+
+  try {
+    afterRender?.()
+
+    assert.equal(frames.size, 1)
+    const queuedFrame = frames.values().next().value
+    cameraMoving = true
+    frames.clear()
+    queuedFrame?.(16)
+
+    assert.equal(refreshCalls, 0)
+  } finally {
+    overlay.dispose()
+    frames.clear()
+    globalThis.requestAnimationFrame = originalRequestAnimationFrame
+    globalThis.cancelAnimationFrame = originalCancelAnimationFrame
+  }
+})
+
 test('sigma settings disable camera rotation while keeping regular camera controls available', async () => {
   const originalWebGL2RenderingContext = globalThis.WebGL2RenderingContext
   const originalWebGLRenderingContext = globalThis.WebGLRenderingContext
@@ -359,11 +587,19 @@ test('touch taps tolerate small finger drift when selecting nodes', async () => 
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
   )
   try {
-    let appliedSettings: { tapMoveTolerance?: number; inertiaDuration?: number } | null = null
+    let appliedSettings: {
+      tapMoveTolerance?: number
+      inertiaDuration?: number
+      inertiaRatio?: number
+    } | null = null
     const adapter = new SigmaRendererAdapter() as unknown as {
       configureTouchInteraction: (sigma: {
         getTouchCaptor: () => {
-          setSettings: (settings: { tapMoveTolerance?: number; inertiaDuration?: number }) => void
+          setSettings: (settings: {
+            tapMoveTolerance?: number
+            inertiaDuration?: number
+            inertiaRatio?: number
+          }) => void
           on: () => void
         }
         getSetting: (key: string) => number
@@ -387,6 +623,7 @@ test('touch taps tolerate small finger drift when selecting nodes', async () => 
 
     assert.equal(appliedSettings?.tapMoveTolerance, 16)
     assert.equal(appliedSettings?.inertiaDuration, 0)
+    assert.equal(appliedSettings?.inertiaRatio, 0)
   } finally {
     globalThis.WebGL2RenderingContext = originalWebGL2RenderingContext
     globalThis.WebGLRenderingContext = originalWebGLRenderingContext
@@ -439,6 +676,85 @@ test('touch camera movement drives Sigma hide-edges-on-move signal', async () =>
     assert.equal(mouseCaptor.isMoving, false)
     assert.equal(renderCalls, 1)
     assert.equal(adapter.touchCameraMotionClearTimer, null)
+  } finally {
+    globalThis.WebGL2RenderingContext = originalWebGL2RenderingContext
+    globalThis.WebGLRenderingContext = originalWebGLRenderingContext
+  }
+})
+
+test('touch gestures suppress compatibility mouse panning after touchend', async () => {
+  const originalWebGL2RenderingContext = globalThis.WebGL2RenderingContext
+  const originalWebGLRenderingContext = globalThis.WebGLRenderingContext
+  globalThis.WebGL2RenderingContext ??= class {} as typeof WebGL2RenderingContext
+  globalThis.WebGLRenderingContext ??= class {} as typeof WebGLRenderingContext
+
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+  try {
+    const mouseCaptor = {
+      enabled: true,
+      isMouseDown: true,
+      isMoving: true,
+      lastMouseX: 12 as number | null,
+      lastMouseY: 18 as number | null,
+      startCameraState: { x: 0.4, y: 0.6, ratio: 1, angle: 0 } as
+        | { x: number; y: number; ratio: number; angle: number }
+        | null,
+    }
+    let gestureStarts = 0
+    let gestureEnds = 0
+    const adapter = new SigmaRendererAdapter() as unknown as {
+      sigma: {
+        getMouseCaptor: () => typeof mouseCaptor
+      }
+      callbacks: {
+        onCanvasGestureStart: () => void
+        onCanvasGestureEnd: () => void
+      }
+      handleTouchGestureStart: () => void
+      handleTouchGestureEnd: () => void
+      clearTouchMouseResumeTimer: () => void
+      touchMouseResumeTimer: ReturnType<typeof setTimeout> | null
+    }
+
+    adapter.sigma = {
+      getMouseCaptor: () => mouseCaptor,
+    }
+    adapter.callbacks = {
+      onCanvasGestureStart: () => {
+        gestureStarts += 1
+      },
+      onCanvasGestureEnd: () => {
+        gestureEnds += 1
+      },
+    }
+
+    adapter.handleTouchGestureStart()
+
+    assert.equal(mouseCaptor.enabled, false)
+    assert.equal(mouseCaptor.isMouseDown, false)
+    assert.equal(mouseCaptor.isMoving, false)
+    assert.equal(mouseCaptor.lastMouseX, null)
+    assert.equal(mouseCaptor.lastMouseY, null)
+    assert.equal(mouseCaptor.startCameraState, null)
+    assert.equal(gestureStarts, 1)
+
+    adapter.handleTouchGestureEnd()
+
+    assert.equal(mouseCaptor.enabled, false)
+    assert.ok(adapter.touchMouseResumeTimer)
+    assert.equal(gestureEnds, 1)
+
+    await wait(430)
+
+    assert.equal(mouseCaptor.enabled, true)
+    assert.equal(mouseCaptor.isMouseDown, false)
+    assert.equal(mouseCaptor.isMoving, false)
+    assert.equal(mouseCaptor.lastMouseX, null)
+    assert.equal(mouseCaptor.lastMouseY, null)
+    assert.equal(mouseCaptor.startCameraState, null)
+    assert.equal(adapter.touchMouseResumeTimer, null)
   } finally {
     globalThis.WebGL2RenderingContext = originalWebGL2RenderingContext
     globalThis.WebGLRenderingContext = originalWebGLRenderingContext
@@ -3382,6 +3698,56 @@ test('safeRefresh coalesces visible refresh requests into one animation frame', 
   }
 })
 
+test('safeRefresh defers full refresh while the camera is moving', async () => {
+  const restoreAnimationFrame = installAnimationFrameStub()
+
+  try {
+    const { SigmaRendererAdapter } = await import(
+      '@/features/graph-v2/renderer/SigmaRendererAdapter'
+    )
+
+    let refreshCalls = 0
+    const adapter = new SigmaRendererAdapter() as unknown as {
+      sigma: { refresh: () => void }
+      container: Pick<HTMLElement, 'offsetWidth' | 'offsetHeight'>
+      pendingContainerRefresh: boolean
+      cameraMotionActive: boolean
+      touchGestureActive: boolean
+      safeRefresh: () => void
+      flushDeferredCameraInteractionRefreshes: () => void
+    }
+
+    adapter.sigma = {
+      refresh: () => {
+        refreshCalls += 1
+      },
+    }
+    adapter.container = {
+      offsetWidth: 800,
+      offsetHeight: 600,
+    }
+    adapter.pendingContainerRefresh = false
+    adapter.cameraMotionActive = true
+    adapter.touchGestureActive = false
+
+    adapter.safeRefresh()
+
+    assert.equal(refreshCalls, 0)
+    assert.equal(adapter.pendingContainerRefresh, true)
+    await wait(5)
+    assert.equal(refreshCalls, 0)
+
+    adapter.cameraMotionActive = false
+    adapter.flushDeferredCameraInteractionRefreshes()
+    await wait(5)
+
+    assert.equal(refreshCalls, 1)
+    assert.equal(adapter.pendingContainerRefresh, false)
+  } finally {
+    restoreAnimationFrame()
+  }
+})
+
 test('keeps hovered neighbors on their base color while marking them highlighted', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'
@@ -5034,6 +5400,7 @@ test('avatar-settled refresh is coalesced by Sigma without forcing a synchronous
     } | null
     container: { offsetWidth: number; offsetHeight: number } | null
     pendingContainerRefresh: boolean
+    pendingAvatarSettledRefresh: boolean
     scheduleAvatarSettledRefresh: () => void
   }
 
@@ -5052,12 +5419,14 @@ test('avatar-settled refresh is coalesced by Sigma without forcing a synchronous
     offsetHeight: 900,
   }
   adapter.pendingContainerRefresh = false
+  adapter.pendingAvatarSettledRefresh = false
 
   adapter.scheduleAvatarSettledRefresh()
 
   assert.equal(scheduled, 1)
   assert.equal(refreshed, 0)
   assert.equal(adapter.pendingContainerRefresh, false)
+  assert.equal(adapter.pendingAvatarSettledRefresh, false)
 })
 
 test('avatar-settled refresh defers while the container is not renderable', async () => {
@@ -5071,6 +5440,7 @@ test('avatar-settled refresh defers while the container is not renderable', asyn
     } | null
     container: { offsetWidth: number; offsetHeight: number } | null
     pendingContainerRefresh: boolean
+    pendingAvatarSettledRefresh: boolean
     scheduleAvatarSettledRefresh: () => void
   }
 
@@ -5085,10 +5455,55 @@ test('avatar-settled refresh defers while the container is not renderable', asyn
     offsetHeight: 0,
   }
   adapter.pendingContainerRefresh = false
+  adapter.pendingAvatarSettledRefresh = false
 
   adapter.scheduleAvatarSettledRefresh()
 
   assert.equal(scheduled, 0)
-  assert.equal(adapter.pendingContainerRefresh, true)
+  assert.equal(adapter.pendingContainerRefresh, false)
+  assert.equal(adapter.pendingAvatarSettledRefresh, true)
+})
+
+test('avatar-settled refresh defers while the camera is moving', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const adapter = new SigmaRendererAdapter() as unknown as {
+    sigma: {
+      scheduleRefresh: () => void
+    } | null
+    container: { offsetWidth: number; offsetHeight: number } | null
+    cameraMotionActive: boolean
+    touchGestureActive: boolean
+    pendingAvatarSettledRefresh: boolean
+    scheduleAvatarSettledRefresh: () => void
+    flushDeferredCameraInteractionRefreshes: () => void
+  }
+
+  let scheduled = 0
+  adapter.sigma = {
+    scheduleRefresh: () => {
+      scheduled += 1
+    },
+  }
+  adapter.container = {
+    offsetWidth: 1440,
+    offsetHeight: 900,
+  }
+  adapter.cameraMotionActive = true
+  adapter.touchGestureActive = false
+  adapter.pendingAvatarSettledRefresh = false
+
+  adapter.scheduleAvatarSettledRefresh()
+
+  assert.equal(scheduled, 0)
+  assert.equal(adapter.pendingAvatarSettledRefresh, true)
+
+  adapter.cameraMotionActive = false
+  adapter.flushDeferredCameraInteractionRefreshes()
+
+  assert.equal(scheduled, 1)
+  assert.equal(adapter.pendingAvatarSettledRefresh, false)
 })
 

@@ -4903,6 +4903,63 @@ test('startDrag prefers the down-time Sigma bbox over render-store bounds', asyn
   assert.deepEqual(customBBox, downTimeBBox)
 })
 
+test('graph bounds unlock refreshes Sigma extent before remapping the camera', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  type BBox = { x: [number, number]; y: [number, number] }
+  let customBBox: BBox | null = { x: [0, 100], y: [0, 100] }
+  let graphBBox: BBox = { x: [0, 100], y: [0, 100] }
+  const nextGraphBBox: BBox = { x: [0, 500], y: [0, 500] }
+  let cameraState = { x: 0.5, y: 0.5, ratio: 1, angle: 0 }
+  let refreshCalls = 0
+
+  const adapter = new SigmaRendererAdapter() as unknown as {
+    sigma: {
+      getBBox: () => BBox
+      getCustomBBox: () => BBox | null
+      setCustomBBox: (bbox: BBox | null) => void
+      getCamera: () => {
+        getState: () => typeof cameraState
+        setState: (state: typeof cameraState) => void
+        getBoundedRatio: (ratio: number) => number
+      }
+      refresh: () => void
+    }
+    isGraphBoundsLocked: boolean
+    remapCameraAcrossBBoxUnlock: () => boolean
+  }
+
+  adapter.sigma = {
+    getBBox: () => graphBBox,
+    getCustomBBox: () => customBBox,
+    setCustomBBox: (bbox) => {
+      customBBox = bbox
+    },
+    getCamera: () => ({
+      getState: () => cameraState,
+      setState: (state) => {
+        cameraState = { ...cameraState, ...state }
+      },
+      getBoundedRatio: (ratio) => ratio,
+    }),
+    refresh: () => {
+      refreshCalls += 1
+      graphBBox = nextGraphBBox
+    },
+  }
+  adapter.isGraphBoundsLocked = true
+
+  assert.equal(adapter.remapCameraAcrossBBoxUnlock(), true)
+
+  assert.equal(refreshCalls, 1)
+  assert.equal(customBBox, null)
+  assert.ok(Math.abs(cameraState.x - 0.1) < 0.000001)
+  assert.ok(Math.abs(cameraState.y - 0.1) < 0.000001)
+  assert.ok(Math.abs(cameraState.ratio - 0.2) < 0.000001)
+})
+
 test('node drag release does not request pinning unless control is pressed', async () => {
   const { SigmaRendererAdapter } = await import(
     '@/features/graph-v2/renderer/SigmaRendererAdapter'

@@ -2266,6 +2266,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     > & {
       getBBox?: () => SigmaGraphExtent
       getCustomBBox?: () => SigmaGraphExtent | null
+      refresh?: () => unknown
     }) | null
 
     if (!sigma || typeof sigma.getBBox !== 'function') {
@@ -2298,9 +2299,13 @@ export class SigmaRendererAdapter implements RendererAdapter {
         : null
     const oldBBox = lockedCustomBBox ?? sigma.getBBox()
 
-    // 2. Unlock → Sigma will adopt nodeExtent on the next render.  The cached
-    // nodeExtent has been refreshed every frame during the drag, so reading
-    // getBBox() right now matches what the next render will normalise against.
+    // Refresh while still locked so Sigma recomputes nodeExtent from the latest
+    // graph positions without reinterpreting the current camera yet. During
+    // drag most position churn uses render-only scheduling, so getBBox() can
+    // otherwise lag behind the graphology coordinates until the next refresh.
+    sigma.refresh?.()
+
+    // 2. Unlock → Sigma will adopt the freshly computed nodeExtent.
     this.setGraphBoundsLocked(false)
 
     const newBBox = sigma.getBBox()

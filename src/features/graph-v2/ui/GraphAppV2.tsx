@@ -4297,13 +4297,9 @@ export default function GraphAppV2() {
         source: 'zap',
         pin: true,
         select: true,
-        markExpanded: false,
+        markExpanded: true,
       })
-      if (result.status === 'inserted') {
-        scheduleDetachedNodePlacement(input.pubkey)
-      } else {
-        sigmaHostRef.current?.setNodePinned(input.pubkey, true)
-      }
+      scheduleDetachedNodePlacement(input.pubkey)
       setSelectedZapOffGraphIdentity(null)
       setActionFeedback(result.message)
     } catch (error) {

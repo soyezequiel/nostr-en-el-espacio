@@ -1518,15 +1518,15 @@
 
 [data-graph-v2] .sg-zap-feed {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 [data-graph-v2] .sg-zap-feed__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding-bottom: 10px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--sg-stroke);
 }
 
@@ -1610,9 +1610,38 @@
 
 [data-graph-v2] .sg-zap-replay-console {
   display: grid;
-  gap: 12px;
-  padding: 11px 0 12px;
+  gap: 8px;
+  padding: 8px 0 8px;
   border-bottom: 1px solid var(--sg-stroke);
+}
+
+[data-graph-v2] .sg-zap-replay-details {
+  display: grid;
+  gap: 6px;
+}
+
+[data-graph-v2] .sg-zap-replay-details > summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--sg-fg-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+[data-graph-v2] .sg-zap-replay-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+[data-graph-v2] .sg-zap-replay-details > summary::before {
+  content: '+ ';
+  color: var(--sg-fg-muted);
+}
+
+[data-graph-v2] .sg-zap-replay-details[open] > summary::before {
+  content: '- ';
 }
 
 [data-graph-v2] .sg-zap-replay-console__head {
@@ -1674,8 +1703,8 @@
 [data-graph-v2] .sg-zap-replay-collection,
 [data-graph-v2] .sg-zap-replay-playback {
   display: grid;
-  gap: 9px;
-  padding-top: 2px;
+  gap: 6px;
+  padding-top: 0;
 }
 
 [data-graph-v2] .sg-zap-replay-section-head {
@@ -5070,4 +5099,5 @@
       right: max(10px, env(safe-area-inset-right));
     }
   }
+
 }

@@ -1,12 +1,7 @@
 const ENABLED_VALUE = '1'
 const DISABLED_VALUE = '0'
 
-export type RuntimeEnvironment = 'development' | 'production' | 'test' | undefined
-
-export function resolveStoredHudStatsEnabled(
-  storedValue: string | null,
-  environment: RuntimeEnvironment,
-): boolean {
+export function resolveStoredHudStatsEnabled(storedValue: string | null): boolean {
   if (storedValue === ENABLED_VALUE) {
     return true
   }
@@ -15,7 +10,7 @@ export function resolveStoredHudStatsEnabled(
     return false
   }
 
-  return environment === 'development'
+  return false
 }
 
 export function serializeHudStatsEnabled(enabled: boolean): '1' | '0' {

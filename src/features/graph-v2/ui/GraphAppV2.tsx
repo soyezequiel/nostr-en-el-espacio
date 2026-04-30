@@ -120,7 +120,6 @@ import { createDragLocalFixture } from '@/features/graph-v2/testing/fixtures/dra
 import {
   resolveStoredHudStatsEnabled,
   serializeHudStatsEnabled,
-  type RuntimeEnvironment,
 } from '@/features/graph-v2/ui/hudStatsPreference'
 import {
   resolveStoredRootLoadChromeEnabled,
@@ -338,20 +337,15 @@ const readStoredRuntimeInspectorButtonEnabled = () => {
   }
 }
 
-const readStoredHudStatsEnabled = (environment: string | undefined) => {
-  const runtimeEnvironment = environment as RuntimeEnvironment
-
+const readStoredHudStatsEnabled = () => {
   if (typeof window === 'undefined') {
-    return resolveStoredHudStatsEnabled(null, runtimeEnvironment)
+    return resolveStoredHudStatsEnabled(null)
   }
 
   try {
-    return resolveStoredHudStatsEnabled(
-      window.localStorage.getItem(HUD_STATS_STORAGE_KEY),
-      runtimeEnvironment,
-    )
+    return resolveStoredHudStatsEnabled(window.localStorage.getItem(HUD_STATS_STORAGE_KEY))
   } catch {
-    return resolveStoredHudStatsEnabled(null, runtimeEnvironment)
+    return resolveStoredHudStatsEnabled(null)
   }
 }
 
@@ -1589,7 +1583,6 @@ function PerformanceOptionsPanel({
   devicePerformanceProfile,
   hideConnectionsOnLowPerformance,
   isClearingSiteCache,
-  isRuntimeInspectorButtonLocked,
   lowPerformanceConnectionStatusLabel,
   mobileDegradedMode,
   isMobileViewport,
@@ -1617,7 +1610,6 @@ function PerformanceOptionsPanel({
   devicePerformanceProfile: AppStore['devicePerformanceProfile']
   hideConnectionsOnLowPerformance: boolean
   isClearingSiteCache: boolean
-  isRuntimeInspectorButtonLocked: boolean
   lowPerformanceConnectionStatusLabel: string
   mobileDegradedMode: boolean
   isMobileViewport: boolean
@@ -1729,22 +1721,17 @@ function PerformanceOptionsPanel({
           <div>
             <div className="sg-setting-row__lbl">{t('runtimeInspector')}</div>
             <div className="sg-setting-row__desc">
-              {isRuntimeInspectorButtonLocked
-                ? t('runtimeInspectorDescLocked')
-                : t('runtimeInspectorDescUnlocked')}
+              {t('runtimeInspectorDesc')}
             </div>
           </div>
           <button
             aria-pressed={runtimeInspectorButtonVisible}
             className={`sg-toggle${runtimeInspectorButtonVisible ? ' sg-toggle--on' : ''}`}
-            disabled={isRuntimeInspectorButtonLocked}
             onClick={onToggleRuntimeInspectorButton}
             title={
-              isRuntimeInspectorButtonLocked
-                ? t('runtimeVisibleByDefault')
-                : runtimeInspectorButtonVisible
-                  ? t('hideRuntimeButton')
-                  : t('showRuntimeButton')
+              runtimeInspectorButtonVisible
+                ? t('hideRuntimeButton')
+                : t('showRuntimeButton')
             }
             type="button"
           />
@@ -2267,7 +2254,7 @@ export default function GraphAppV2() {
     readStoredRootLoadChromeEnabled(ROOT_LOAD_HUD_ENABLED_STORAGE_KEY),
   )
   const [hudStatsEnabled, setHudStatsEnabled] = useState(() =>
-    readStoredHudStatsEnabled(process.env.NODE_ENV),
+    readStoredHudStatsEnabled(),
   )
   const [runtimeInspectorButtonEnabled, setRuntimeInspectorButtonEnabled] =
     useState(() => isDev || readStoredRuntimeInspectorButtonEnabled())
@@ -2581,7 +2568,8 @@ export default function GraphAppV2() {
     }
   }, [sceneState.rootPubkey, isFixtureMode])
 
-  const canUseRuntimeInspector = isDev || runtimeInspectorButtonEnabled
+  const runtimeInspectorButtonVisible = runtimeInspectorButtonEnabled
+  const canUseRuntimeInspector = isDev || runtimeInspectorButtonVisible
 
   const appendNotification = useCallback(
     (source: NotificationSource, msg: string, tone: SigmaNotificationLogEntry['tone']) => {
@@ -3415,6 +3403,22 @@ export default function GraphAppV2() {
     appendZapActivity(zap, 'recent', played)
     return played
   }, [appendZapActivity, handleZap])
+  const handleQuickReplay = useCallback(() => {
+    if (!canRunZapFeed) return
+    setIsZapsPanelOpen(true)
+    setZapFeedMode('recent')
+    setRecentZapReplayPlaybackPaused(false)
+    setRecentZapReplayScrubProgress(null)
+    setRecentZapReplayRequest((current) => current + 1)
+    setRecentZapReplayRefreshRequest((current) => current + 1)
+    setRecentZapReplaySeekRequest((current) => ({
+      key: current.key + 1,
+      progress: 0,
+    }))
+  }, [canRunZapFeed])
+  const handleQuickReplayPauseToggle = useCallback(() => {
+    setRecentZapReplayPlaybackPaused((current) => !current)
+  }, [])
   const isRecentZapReplayPlaybackHeld =
     recentZapReplayPlaybackPaused || recentZapReplayScrubProgress !== null
   useLiveZapFeed({
@@ -4486,7 +4490,7 @@ export default function GraphAppV2() {
       badge: notificationHistory.length,
       onClick: handleOpenNotifications,
     },
-    ...(canUseRuntimeInspector
+    ...(runtimeInspectorButtonVisible
       ? [{
           id: 'runtime',
           tip: isRuntimeInspectorOpen
@@ -4516,6 +4520,24 @@ export default function GraphAppV2() {
       active: isZapsPanelOpen,
       attention: recentZapReplayWorking,
       onClick: handleOpenZapsPanel,
+    },
+    {
+      id: 'replay',
+      tip: !canRunZapFeed
+        ? tSigma('canvas.replayShortcut.disabled')
+        : recentZapReplayWorking
+          ? recentZapReplay.playbackPaused
+            ? tSigma('rail.replayResume')
+            : tSigma('rail.replayPause')
+          : tSigma('rail.replay', { window: appliedZapReplayWindowLabel }),
+      icon: recentZapReplayWorking && !recentZapReplay.playbackPaused
+        ? <PauseIcon />
+        : <PlayIcon />,
+      active: recentZapReplayWorking,
+      attention: recentZapReplayWorking,
+      onClick: recentZapReplayWorking
+        ? handleQuickReplayPauseToggle
+        : handleQuickReplay,
       dividerAfter: true,
     },
     {
@@ -4533,12 +4555,16 @@ export default function GraphAppV2() {
       dividerAfter: true,
     },
   ], [
-    canUseRuntimeInspector,
+    appliedZapReplayWindowLabel,
+    canRunZapFeed,
+    runtimeInspectorButtonVisible,
     handleOpenZapsPanel,
     handleOpenNotifications,
     handleOpenRuntimeInspector,
     handleOpenSettings,
     handleFitView,
+    handleQuickReplay,
+    handleQuickReplayPauseToggle,
     handleStaleRelays,
     handleTogglePhysics,
     isNotificationsOpen,
@@ -4547,6 +4573,7 @@ export default function GraphAppV2() {
     isZapsPanelOpen,
     notificationHistory.length,
     physicsEnabled,
+    recentZapReplay.playbackPaused,
     recentZapReplayStatusLabel,
     recentZapReplayWorking,
     relayState.isGraphStale,
@@ -4578,7 +4605,26 @@ export default function GraphAppV2() {
       attention: recentZapReplayWorking,
       onClick: handleOpenZapsPanel,
     },
-    ...(canUseRuntimeInspector
+    {
+      id: 'replay',
+      label: tSigma('rail.replayShort'),
+      tip: !canRunZapFeed
+        ? tSigma('canvas.replayShortcut.disabled')
+        : recentZapReplayWorking
+          ? recentZapReplay.playbackPaused
+            ? tSigma('rail.replayResume')
+            : tSigma('rail.replayPause')
+          : tSigma('rail.replay', { window: appliedZapReplayWindowLabel }),
+      icon: recentZapReplayWorking && !recentZapReplay.playbackPaused
+        ? <PauseIcon />
+        : <PlayIcon />,
+      active: recentZapReplayWorking,
+      attention: recentZapReplayWorking,
+      onClick: recentZapReplayWorking
+        ? handleQuickReplayPauseToggle
+        : handleQuickReplay,
+    },
+    ...(runtimeInspectorButtonVisible
       ? [{
           id: 'runtime',
           label: tSigma('rail.runtimeShort'),
@@ -4606,16 +4652,21 @@ export default function GraphAppV2() {
       onClick: handleOpenSettings,
     },
   ], [
-    canUseRuntimeInspector,
+    appliedZapReplayWindowLabel,
+    canRunZapFeed,
+    runtimeInspectorButtonVisible,
     handleOpenMobileUtilityPanel,
     handleOpenRuntimeInspector,
     handleOpenZapsPanel,
     handleOpenSettings,
+    handleQuickReplay,
+    handleQuickReplayPauseToggle,
     isSettingsOpen,
     isRuntimeInspectorOpen,
     isZapsPanelOpen,
     mobileUtilityPanel,
     handleFitView,
+    recentZapReplay.playbackPaused,
     recentZapReplayStatusLabel,
     recentZapReplayWorking,
     tSigma,
@@ -4747,7 +4798,6 @@ export default function GraphAppV2() {
             hudStatsEnabled={hudStatsEnabled}
             hideConnectionsOnLowPerformance={hideConnectionsOnLowPerformance}
             isClearingSiteCache={cacheClearStatus === 'running'}
-            isRuntimeInspectorButtonLocked={isDev}
             mobileDegradedMode={renderConfig.mobileDegradedMode ?? false}
             isMobileViewport={isMobileViewport}
             lowPerformanceConnectionStatusLabel={lowPerformanceConnectionStatusLabel}
@@ -4770,7 +4820,7 @@ export default function GraphAppV2() {
             recommendedMaxNodes={
               runtimeInspectorStoreSnapshot.effectiveGraphCaps.maxNodes
             }
-            runtimeInspectorButtonVisible={canUseRuntimeInspector}
+            runtimeInspectorButtonVisible={runtimeInspectorButtonVisible}
             rootPubkey={sceneState.rootPubkey}
             rootLoadStatus={rootLoadStatus}
             onExpandRoot={handleExpandRoot}
@@ -5168,38 +5218,41 @@ export default function GraphAppV2() {
             >
               <span style={{ width: `${recentZapReplayCollectionProgressValue}%` }} />
             </div>
-            <dl className="sg-zap-replay-metrics">
-              <div>
-                <dt>{tSigma('zaps.panel.targets')}</dt>
-                <dd>{formatInteger(recentZapReplay.targetCount)}</dd>
-              </div>
-              <div>
-                <dt>{tSigma('zaps.panel.batches')}</dt>
-                <dd>
-                  {formatInteger(recentZapReplay.completedBatchCount)}/{formatInteger(recentZapReplay.batchCount)}
-                </dd>
-              </div>
-              <div>
-                <dt>{tSigma('zaps.panel.cache')}</dt>
-                <dd>{formatInteger(recentZapReplay.cachedCount)}</dd>
-              </div>
-              <div>
-                <dt>{tSigma('zaps.panel.new')}</dt>
-                <dd>{formatInteger(recentZapReplay.fetchedCount)}</dd>
-              </div>
-              <div>
-                <dt>{tSigma('zaps.panel.timeouts')}</dt>
-                <dd>{formatInteger(recentZapReplay.timedOutBatchCount)}</dd>
-              </div>
-              <div>
-                <dt>{tSigma('zaps.panel.limit')}</dt>
-                <dd>
-                  {recentZapReplay.truncatedTargetCount > 0
-                    ? tSigma('zaps.panel.omitted', { count: formatInteger(recentZapReplay.truncatedTargetCount) })
-                    : tSigma('zaps.panel.ok')}
-                </dd>
-              </div>
-            </dl>
+            <details className="sg-zap-replay-details">
+              <summary>{tSigma('zaps.panel.advancedDetails')}</summary>
+              <dl className="sg-zap-replay-metrics">
+                <div>
+                  <dt>{tSigma('zaps.panel.targets')}</dt>
+                  <dd>{formatInteger(recentZapReplay.targetCount)}</dd>
+                </div>
+                <div>
+                  <dt>{tSigma('zaps.panel.batches')}</dt>
+                  <dd>
+                    {formatInteger(recentZapReplay.completedBatchCount)}/{formatInteger(recentZapReplay.batchCount)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{tSigma('zaps.panel.cache')}</dt>
+                  <dd>{formatInteger(recentZapReplay.cachedCount)}</dd>
+                </div>
+                <div>
+                  <dt>{tSigma('zaps.panel.new')}</dt>
+                  <dd>{formatInteger(recentZapReplay.fetchedCount)}</dd>
+                </div>
+                <div>
+                  <dt>{tSigma('zaps.panel.timeouts')}</dt>
+                  <dd>{formatInteger(recentZapReplay.timedOutBatchCount)}</dd>
+                </div>
+                <div>
+                  <dt>{tSigma('zaps.panel.limit')}</dt>
+                  <dd>
+                    {recentZapReplay.truncatedTargetCount > 0
+                      ? tSigma('zaps.panel.omitted', { count: formatInteger(recentZapReplay.truncatedTargetCount) })
+                      : tSigma('zaps.panel.ok')}
+                  </dd>
+                </div>
+              </dl>
+            </details>
           </div>
 
           <div className="sg-zap-replay-playback">

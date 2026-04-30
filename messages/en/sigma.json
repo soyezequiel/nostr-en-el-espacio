@@ -170,7 +170,8 @@
       "replayZap": "Replay zap from {from} to {to}",
       "shownInGraph": "Shown in the graph",
       "outsideView": "Outside the current view",
-      "empty": "There are no visible zaps in this session yet."
+      "empty": "There are no visible zaps in this session yet.",
+      "advancedDetails": "Technical details"
     }
   },
   "sessionRoot": {
@@ -232,7 +233,11 @@
     "closeFilters": "Close connection filters",
     "liveZaps": "Live zaps",
     "runtimeShort": "Runtime",
-    "viewShort": "View"
+    "viewShort": "View",
+    "replay": "Replay {window}",
+    "replayShort": "Replay",
+    "replayPause": "Pause replay",
+    "replayResume": "Resume replay"
   },
   "panelEyebrow": {
     "settings": "SETTINGS",
@@ -325,7 +330,7 @@
       "enableDegraded": "Enable degraded mode",
       "diagnostics": "Diagnostics",
       "hudStats": "Metrics HUD",
-      "hudStatsDesc": "Shows the top metrics panel with nodes, edges, physics, relays, and FPS. In production it starts hidden until you enable it.",
+      "hudStatsDesc": "Shows the top metrics panel with nodes, edges, physics, relays, and FPS. It starts hidden until you enable it.",
       "hideHudStats": "Hide metrics HUD",
       "showHudStats": "Show metrics HUD",
       "advanced": "Advanced",
@@ -338,9 +343,7 @@
       "hideRootLoadHud": "Hide compact root load bar",
       "showRootLoadHud": "Show compact root load bar",
       "runtimeInspector": "Runtime inspector",
-      "runtimeInspectorDescLocked": "Shows the button to open runtime snapshots. In development it stays visible by default.",
-      "runtimeInspectorDescUnlocked": "Shows the button to open runtime snapshots. In production it stays hidden until you enable it.",
-      "runtimeVisibleByDefault": "Visible by default in development",
+      "runtimeInspectorDesc": "Shows the button to open runtime snapshots. In development it remains available with Shift + D even when you hide the button.",
       "hideRuntimeButton": "Hide runtime inspector button",
       "showRuntimeButton": "Show runtime inspector button",
       "localData": "Local data",
@@ -396,5 +399,13 @@
     "openJumble": "Open account in Jumble",
     "loadingInline": "loading...",
     "expansion": "Expansion"
+  },
+  "canvas": {
+    "replayShortcut": {
+      "label": "Replay {window}",
+      "disabled": "Load an identity to replay zaps",
+      "pauseLabel": "Pause active replay",
+      "resumeLabel": "Resume replay"
+    }
   }
 }

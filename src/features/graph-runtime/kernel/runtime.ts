@@ -1,4 +1,8 @@
-import type { UiLayer } from '@/features/graph-runtime/app/store'
+import type {
+  GraphNodeSource,
+  ProfileDataSource,
+  UiLayer,
+} from '@/features/graph-runtime/app/store'
 import { appStore } from '@/features/graph-runtime/app/store/createAppStore'
 import { createNostrGraphDatabase, createRepositories } from '@/features/graph-runtime/db'
 import type { RelayHealthSnapshot } from '@/features/graph-runtime/nostr'
@@ -62,6 +66,29 @@ export interface SelectNodeResult {
   selectedPubkey: string | null
 }
 
+export interface AddDetachedNodeInput {
+  pubkey: string
+  label?: string | null
+  picture?: string | null
+  about?: string | null
+  nip05?: string | null
+  lud16?: string | null
+  profileEventId?: string | null
+  profileFetchedAt?: number | null
+  profileSource?: ProfileDataSource | null
+  profileState?: 'idle' | 'loading' | 'ready' | 'missing'
+  discoveredAt?: number | null
+  source?: GraphNodeSource
+  select?: boolean
+  markExpanded?: boolean
+}
+
+export interface AddDetachedNodeResult {
+  status: 'inserted' | 'existing'
+  selectedPubkey: string | null
+  message: string
+}
+
 export interface NodeDetailProfile {
   eventId: string
   fetchedAt: number
@@ -96,6 +123,7 @@ export interface RootLoader {
     targetPubkey: string,
     algorithm?: 'bfs' | 'dijkstra',
   ) => Promise<FindPathResult>
+  addDetachedNode: (input: AddDetachedNodeInput) => AddDetachedNodeResult
   selectNode: (pubkey: string | null) => SelectNodeResult
   getNodeDetail: (pubkey: string) => Promise<NodeDetailProfile | null>
   prefetchNodeProfiles: (pubkeys: string[]) => Promise<string[]>

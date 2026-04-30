@@ -496,3 +496,147 @@ test('selectNode prefetches node detail metadata for the identity panel', async 
   assert.equal(store.getState().nodes.alice?.label, 'katika21')
   assert.equal(store.getState().nodes.alice?.about, 'Writer, neuroscientist')
 })
+
+test('addDetachedNode inserts a disconnected zap identity, marks it expanded, and selects it', () => {
+  const store = createStoreForNodeDetail()
+
+  const nodeDetail = createNodeDetailModule(
+    {
+      store,
+      repositories: {
+        profiles: {
+          get: async () => null,
+        },
+      },
+      eventsWorker: {
+        invoke: async () => {
+          throw new Error('events worker should not be used in this test')
+        },
+      },
+      graphWorker: {
+        invoke: async () => {
+          throw new Error('graph worker should not be used in this test')
+        },
+        dispose: () => {},
+      },
+      createRelayAdapter: () => ({
+        subscribe: () => ({
+          subscribe: () => () => {},
+        }),
+        count: async () => [],
+        getRelayHealth: () => ({}),
+        subscribeToRelayHealth: () => () => {},
+        close: () => {},
+      }),
+      defaultRelayUrls: ['wss://relay.example'],
+      now: () => 2_000,
+      emitter: createKernelEventEmitter(),
+    },
+    {
+      persistence: {
+        persistContactListEvent: async () => {},
+        persistProfileEvent: async () => {},
+      },
+      profileHydration: {
+        hydrateNodeProfiles: async () => {},
+        syncNodeProfile: () => {},
+        markNodeProfileMissing: () => {},
+      },
+    },
+  )
+
+  const result = nodeDetail.addDetachedNode({
+    pubkey: 'alice',
+    label: 'Alice desde zap',
+    about: 'bio importada',
+    profileFetchedAt: 2_000,
+    profileState: 'ready',
+    source: 'zap',
+  })
+
+  assert.equal(result.status, 'inserted')
+  assert.equal(result.selectedPubkey, 'alice')
+  assert.equal(store.getState().selectedNodePubkey, 'alice')
+  assert.equal(store.getState().openPanel, 'node-detail')
+  assert.equal(store.getState().expandedNodePubkeys.has('alice'), true)
+  assert.equal(store.getState().nodes.alice?.source, 'zap')
+  assert.equal(store.getState().nodes.alice?.label, 'Alice desde zap')
+  assert.equal(store.getState().nodes.alice?.about, 'bio importada')
+  assert.equal(store.getState().nodes.alice?.discoveredAt, 2_000)
+})
+
+test('addDetachedNode fails cleanly when the graph cap is already full', () => {
+  const store = createStoreForNodeDetail()
+  store.getState().setGraphMaxNodes(1)
+  store.getState().upsertNodes([
+    {
+      pubkey: 'root',
+      label: 'Root',
+      picture: null,
+      about: null,
+      nip05: null,
+      lud16: null,
+      keywordHits: 0,
+      discoveredAt: 1,
+      profileState: 'ready',
+      source: 'root',
+    },
+  ])
+
+  const nodeDetail = createNodeDetailModule(
+    {
+      store,
+      repositories: {
+        profiles: {
+          get: async () => null,
+        },
+      },
+      eventsWorker: {
+        invoke: async () => {
+          throw new Error('events worker should not be used in this test')
+        },
+      },
+      graphWorker: {
+        invoke: async () => {
+          throw new Error('graph worker should not be used in this test')
+        },
+        dispose: () => {},
+      },
+      createRelayAdapter: () => ({
+        subscribe: () => ({
+          subscribe: () => () => {},
+        }),
+        count: async () => [],
+        getRelayHealth: () => ({}),
+        subscribeToRelayHealth: () => () => {},
+        close: () => {},
+      }),
+      defaultRelayUrls: ['wss://relay.example'],
+      now: () => 3_000,
+      emitter: createKernelEventEmitter(),
+    },
+    {
+      persistence: {
+        persistContactListEvent: async () => {},
+        persistProfileEvent: async () => {},
+      },
+      profileHydration: {
+        hydrateNodeProfiles: async () => {},
+        syncNodeProfile: () => {},
+        markNodeProfileMissing: () => {},
+      },
+    },
+  )
+
+  assert.throws(
+    () =>
+      nodeDetail.addDetachedNode({
+        pubkey: 'alice',
+        label: 'Alice',
+        source: 'zap',
+        select: false,
+      }),
+    /No hay lugar en el grafo para agregar esa identidad aislada\./,
+  )
+  assert.equal(store.getState().nodes.alice, undefined)
+})

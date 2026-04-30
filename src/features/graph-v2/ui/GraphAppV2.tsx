@@ -593,6 +593,17 @@ const resolveZapActorProfileLabel = (profile: NostrProfile) =>
   profile.nip05?.trim() ||
   null
 
+const hasUsableZapActorProfile = (profile: NostrProfile | null) =>
+  Boolean(
+    profile &&
+      (
+        resolveZapActorProfileLabel(profile) ||
+        profile.picture?.trim() ||
+        profile.about?.trim() ||
+        profile.lud16?.trim()
+      ),
+  )
+
 const createSceneConnectionKey = (a: string, b: string) =>
   a < b ? `${a}|${b}` : `${b}|${a}`
 
@@ -4230,6 +4241,49 @@ export default function GraphAppV2() {
     setSelectedZapOffGraphIdentity({ fallbackLabel, pubkey })
   }, [bridge, isFixtureMode, sceneState.nodesByPubkey, updateFixtureState])
 
+  const handleAddZapOffGraphIdentityToGraph = useCallback((input: {
+    fallbackLabel: string
+    hasResolvedProfile: boolean
+    profile: NostrProfile | null
+    pubkey: string
+  }) => {
+    if (isFixtureMode) {
+      setActionFeedback('Agregar identidades off-graph no esta disponible en el fixture.')
+      return
+    }
+
+    const resolvedLabel = (
+      (input.profile ? resolveZapActorProfileLabel(input.profile) : null) ??
+      input.fallbackLabel.trim()
+    ) || null
+    const hasResolvedProfileData =
+      input.hasResolvedProfile && hasUsableZapActorProfile(input.profile)
+
+    try {
+      const result = bridge.addDetachedNode({
+        pubkey: input.pubkey,
+        label: resolvedLabel,
+        picture: input.profile?.picture ?? null,
+        about: input.profile?.about ?? null,
+        nip05: input.profile?.nip05 ?? null,
+        lud16: input.profile?.lud16 ?? null,
+        profileFetchedAt: hasResolvedProfileData ? Date.now() : null,
+        profileState: hasResolvedProfileData ? 'ready' : 'idle',
+        source: 'zap',
+        select: true,
+        markExpanded: true,
+      })
+      setSelectedZapOffGraphIdentity(null)
+      setActionFeedback(result.message)
+    } catch (error) {
+      setActionFeedback(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo agregar esa identidad al grafo.',
+      )
+    }
+  }, [bridge, isFixtureMode, setActionFeedback])
+
   const handleOpenRuntimeInspector = useCallback(() => {
     if (!canUseRuntimeInspector) {
       return
@@ -5850,6 +5904,7 @@ export default function GraphAppV2() {
           ) : isZapsPanelOpen && selectedZapOffGraphIdentity ? (
             <SigmaOffGraphIdentityPanel
               fallbackLabel={selectedZapOffGraphIdentity.fallbackLabel}
+              onAddToGraph={handleAddZapOffGraphIdentityToGraph}
               onBack={handleCloseZapOffGraphIdentity}
               pubkey={selectedZapOffGraphIdentity.pubkey}
             />

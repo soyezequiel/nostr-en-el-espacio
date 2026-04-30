@@ -7,6 +7,7 @@ import type {
 import {
   browserAppKernel,
   browserAppStore,
+  type AddDetachedNodeInput,
   type LoadRootOptions,
   type ReconfigureRelaysResult,
   type RootLoader,
@@ -222,6 +223,10 @@ export class LegacyKernelBridge {
 
   public selectNode(pubkey: string | null) {
     return this.runtime.selectNode(pubkey)
+  }
+
+  public addDetachedNode(input: AddDetachedNodeInput) {
+    return this.runtime.addDetachedNode(input)
   }
 
   public async getNodeDetail(pubkey: string) {

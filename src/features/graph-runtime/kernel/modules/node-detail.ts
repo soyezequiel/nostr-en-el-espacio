@@ -1,6 +1,12 @@
 ﻿import type { Filter } from 'nostr-tools'
 
-import type { FindPathResult, NodeDetailProfile, SelectNodeResult } from '@/features/graph-runtime/kernel/runtime'
+import type {
+  AddDetachedNodeInput,
+  AddDetachedNodeResult,
+  FindPathResult,
+  NodeDetailProfile,
+  SelectNodeResult,
+} from '@/features/graph-runtime/kernel/runtime'
 import type { KernelContext } from '@/features/graph-runtime/kernel/modules/context'
 import {
   NODE_DETAIL_PREVIEW_CONNECT_TIMEOUT_MS,
@@ -93,6 +99,62 @@ export function createNodeDetailModule(
     }
 
     return { previousPubkey, selectedPubkey: pubkey }
+  }
+
+  function addDetachedNode(input: AddDetachedNodeInput): AddDetachedNodeResult {
+    const state = ctx.store.getState()
+    const existingNode = state.nodes[input.pubkey]
+    const fallbackLabel = input.label?.trim() || existingNode?.label || undefined
+    const nextProfileState =
+      existingNode?.profileState === 'ready' && input.profileState !== 'ready'
+        ? 'ready'
+        : input.profileState ?? existingNode?.profileState ?? 'idle'
+
+    const result = state.upsertNodes([
+      {
+        pubkey: input.pubkey,
+        label: fallbackLabel,
+        picture: input.picture ?? existingNode?.picture ?? null,
+        about: input.about ?? existingNode?.about ?? null,
+        nip05: input.nip05 ?? existingNode?.nip05 ?? null,
+        lud16: input.lud16 ?? existingNode?.lud16 ?? null,
+        profileEventId: input.profileEventId ?? existingNode?.profileEventId ?? null,
+        profileFetchedAt: input.profileFetchedAt ?? existingNode?.profileFetchedAt ?? null,
+        profileSource: input.profileSource ?? existingNode?.profileSource ?? null,
+        profileState: nextProfileState,
+        keywordHits: existingNode?.keywordHits ?? 0,
+        discoveredAt: input.discoveredAt ?? existingNode?.discoveredAt ?? ctx.now(),
+        source: existingNode?.source ?? input.source ?? 'zap',
+      },
+    ])
+
+    if (!result.acceptedPubkeys.includes(input.pubkey)) {
+      throw new KernelCommandError(
+        'CAP_REACHED',
+        'No hay lugar en el grafo para agregar esa identidad aislada.',
+        {
+          maxNodes: state.graphCaps.maxNodes,
+          pubkey: input.pubkey,
+        },
+      )
+    }
+
+    if (input.markExpanded !== false) {
+      state.markNodeExpanded(input.pubkey)
+    }
+
+    const selectResult =
+      input.select === false
+        ? { selectedPubkey: state.selectedNodePubkey }
+        : selectNode(input.pubkey)
+
+    return {
+      status: existingNode ? 'existing' : 'inserted',
+      selectedPubkey: selectResult.selectedPubkey,
+      message: existingNode
+        ? 'Esa identidad ya estaba en el grafo.'
+        : 'Identidad agregada al grafo como nodo aislado.',
+    }
   }
 
   async function getNodeDetail(pubkey: string): Promise<NodeDetailProfile | null> {
@@ -362,6 +424,7 @@ export function createNodeDetailModule(
   }
 
   return {
+    addDetachedNode,
     findPath,
     selectNode,
     getNodeDetail,

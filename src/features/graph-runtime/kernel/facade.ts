@@ -493,6 +493,7 @@ export function createKernelFacade(dependencies: AppKernelDependencies) {
     expandNode: nodeExpansion.expandNode,
     toggleLayer,
     findPath: nodeDetail.findPath,
+    addDetachedNode: nodeDetail.addDetachedNode,
     selectNode: nodeDetail.selectNode,
     getNodeDetail: nodeDetail.getNodeDetail,
     prefetchNodeProfiles: nodeDetail.prefetchNodeProfiles,

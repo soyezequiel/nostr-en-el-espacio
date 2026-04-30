@@ -46,12 +46,19 @@ const getInitials = (label: string): string => {
 export interface SigmaOffGraphIdentityPanelProps {
   pubkey: string
   fallbackLabel: string
+  onAddToGraph: (input: {
+    fallbackLabel: string
+    hasResolvedProfile: boolean
+    profile: NostrProfile | null
+    pubkey: string
+  }) => void
   onBack: () => void
 }
 
 export function SigmaOffGraphIdentityPanel({
   pubkey,
   fallbackLabel,
+  onAddToGraph,
   onBack,
 }: SigmaOffGraphIdentityPanelProps): React.JSX.Element {
   const [state, setState] = useState<ProfileState>(() => buildLoadingProfileState(pubkey))
@@ -197,30 +204,40 @@ export function SigmaOffGraphIdentityPanel({
         ) : null}
       </div>
 
-      {primalUrl || jumbleUrl ? (
-        <div className="sg-zap-detail__actions">
-          {primalUrl ? (
-            <a
-              className="sg-btn"
-              href={primalUrl}
-              rel="noreferrer noopener"
-              target="_blank"
-            >
-              Ver en Primal
-            </a>
-          ) : null}
-          {jumbleUrl ? (
-            <a
-              className="sg-btn"
-              href={jumbleUrl}
-              rel="noreferrer noopener"
-              target="_blank"
-            >
-              Ver en Jumble
-            </a>
-          ) : null}
-        </div>
-      ) : null}
+      <div className="sg-zap-detail__actions">
+        <button
+          className="sg-btn"
+          onClick={() => onAddToGraph({
+            fallbackLabel,
+            hasResolvedProfile: isCurrentState && state.phase === 'ready',
+            profile,
+            pubkey,
+          })}
+          type="button"
+        >
+          Agregar al grafo
+        </button>
+        {primalUrl ? (
+          <a
+            className="sg-btn"
+            href={primalUrl}
+            rel="noreferrer noopener"
+            target="_blank"
+          >
+            Ver en Primal
+          </a>
+        ) : null}
+        {jumbleUrl ? (
+          <a
+            className="sg-btn"
+            href={jumbleUrl}
+            rel="noreferrer noopener"
+            target="_blank"
+          >
+            Ver en Jumble
+          </a>
+        ) : null}
+      </div>
     </div>
   )
 }

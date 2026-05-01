@@ -152,6 +152,14 @@ export class GraphEventOverlay {
     }
   }
 
+  public redrawPausedFrame(): void {
+    if (this.disposed || !this.paused || this.animations.length === 0) {
+      return
+    }
+
+    this.renderFrame(this.pausedAtMs ?? performance.now())
+  }
+
   public dispose(): void {
     this.disposed = true
     this.paused = false
@@ -290,6 +298,13 @@ export class GraphEventOverlay {
     this.rafId = null
     if (this.disposed || this.paused) return
 
+    this.renderFrame(timestamp)
+    if (this.animations.length > 0) {
+      this.ensureTicking()
+    }
+  }
+
+  private renderFrame(timestamp: number): void {
     const ctx = this.ctx
     const widthCss = this.canvas.width / this.devicePixelRatio
     const heightCss = this.canvas.height / this.devicePixelRatio
@@ -332,9 +347,6 @@ export class GraphEventOverlay {
     }
 
     this.animations = next
-    if (this.animations.length > 0) {
-      this.ensureTicking()
-    }
   }
 
   private drawZapElectron(

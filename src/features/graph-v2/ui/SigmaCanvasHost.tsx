@@ -221,6 +221,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
     let adapter: SigmaRendererAdapter | null = null
     let overlay: GraphEventOverlay | null = null
     let pendingMountFrame: number | null = null
+    let detachOverlayRenderTicks = () => {}
     let disposed = false
 
     const mountAdapter = () => {
@@ -260,6 +261,9 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       })
       overlay = nextOverlay
       overlayRef.current = nextOverlay
+      detachOverlayRenderTicks = nextAdapter.subscribeToRenderTicks(() => {
+        nextOverlay.redrawPausedFrame()
+      })
     }
 
     const scheduleMount = () => {
@@ -293,6 +297,7 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
         cancelAnimationFrame(pendingMountFrame)
       }
       resizeObserver?.disconnect()
+      detachOverlayRenderTicks()
       overlay?.dispose()
       overlayRef.current = null
       adapter?.dispose()

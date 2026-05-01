@@ -341,7 +341,7 @@
       "revert": "Revertir"
     },
     "graphCapacity": {
-      "title": "Tamaño del grafo",
+      "title": "TamaÃ±o del grafo",
       "maxNodes": "Maximo de nodos",
       "nodesValue": "{count} nodos",
       "description": "Subilo para dejar entrar mas conexiones. Bajalo si queres menos carga de layout, memoria y avatares.",
@@ -359,7 +359,7 @@
       "connectionOpacity": "Opacidad de conexiones",
       "connectionOpacityDesc": "Ajusta la opacidad base de las conexiones visibles sin afectar el resaltado por foco.",
       "connectionThickness": "Grosor base",
-      "connectionThicknessDesc": "Engrosa o adelgaza las conexiones en reposo sin convertir la vista en una maraña visual.",
+      "connectionThicknessDesc": "Engrosa o adelgaza las conexiones en reposo sin convertir la vista en una maraÃ±a visual.",
       "connectionPalette": "Paleta",
       "connectionPaletteDesc": "Define si las conexiones conservan sus colores semanticos, se calman o se unifican en monocromo.",
       "connectionPaletteModes": {
@@ -435,7 +435,23 @@
       "hideOnMove": "Ocultar durante movimiento",
       "hideOnMoveDesc": "Pasa a monograma durante pan, drag o movimiento rapido de nodos.",
       "hideWhenZoomedOut": "Ocultar al alejar la vista",
-      "hideWhenZoomedOutDesc": "Pasa a monograma cuando los nodos se ven muy pequeños en la pantalla."
+      "hideWhenZoomedOutDesc": "Pasa a monograma cuando los nodos se ven muy pequeÃ±os en la pantalla.",
+      "edgeZoomLod": "Ocultar conexiones lejanas al alejar",
+      "edgeZoomLodDesc": "Omite conexiones de bajo peso cuando la cámara está muy alejada.",
+      "enableEdgeZoomLod": "Activar LOD de conexiones por zoom",
+      "disableEdgeZoomLod": "Desactivar LOD de conexiones por zoom",
+      "collapseMutualEdges": "Colapsar follows mutuos",
+      "collapseMutualEdgesDesc": "Fusiona los pares A→B y B→A en una sola arista, reduciendo a la mitad el costo de follows mutuos.",
+      "enableCollapseMutualEdges": "Activar colapso de aristas mutuas",
+      "disableCollapseMutualEdges": "Desactivar colapso de aristas mutuas",
+      "edgeViewportCulling": "Culling de viewport para conexiones",
+      "edgeViewportCullingDesc": "Omite conexiones cuyos dos extremos estén fuera del área visible.",
+      "enableEdgeViewportCulling": "Activar culling de viewport",
+      "disableEdgeViewportCulling": "Desactivar culling de viewport",
+      "aggressiveBarnesHut": "Layout Barnes-Hut agresivo",
+      "aggressiveBarnesHutDesc": "Activa la aproximación de árbol Barnes-Hut desde 500 nodos en lugar de 2000. Layout más rápido con un leve compromiso de precisión.",
+      "enableAggressiveBarnesHut": "Activar Barnes-Hut agresivo",
+      "disableAggressiveBarnesHut": "Desactivar Barnes-Hut agresivo"
     },
     "relays": {
       "state": "Estado de relays",

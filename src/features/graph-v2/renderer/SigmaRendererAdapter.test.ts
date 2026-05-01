@@ -1412,6 +1412,8 @@ type EdgeReducerHarness = {
       source: (_edgeId: string) => string
       target: (_edgeId: string) => string
     }
+    getDimensions?: () => { width: number; height: number }
+    viewportToGraph?: (_point: { x: number; y: number }) => { x: number; y: number }
   }
   draggedNodePubkey: string | null
   draggedNodeEdgeIds: Set<string> | null

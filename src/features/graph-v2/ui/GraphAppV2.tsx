@@ -439,6 +439,19 @@ const readStoredVisibleEdgeCountLabelsEnabled = () => {
   }
 }
 
+const readStoredBoolFlag = (key: string, defaultValue = false) => {
+  if (typeof window === 'undefined') {
+    return defaultValue
+  }
+  try {
+    const stored = window.localStorage.getItem(key)
+    if (stored === null) return defaultValue
+    return stored === '1'
+  } catch {
+    return defaultValue
+  }
+}
+
 interface LoadRootInput
   extends Omit<Pick<ValidRootIdentity, 'pubkey' | 'relays' | 'evidence'>, 'relays'> {
   relays?: string[]
@@ -459,6 +472,10 @@ const INITIAL_CAMERA_ZOOM_STORAGE_KEY = 'sigma.initialCameraZoom'
 const CONNECTION_VISUAL_CONFIG_STORAGE_KEY = 'sigma.connectionVisualConfig'
 const LEGACY_CONNECTION_OPACITY_STORAGE_KEY = 'sigma.connectionOpacity'
 const NODE_SIZE_CONFIG_STORAGE_KEY = 'sigma.nodeSizeConfig'
+const EDGE_ZOOM_LOD_STORAGE_KEY = 'sigma.edgeZoomLod'
+const COLLAPSE_MUTUAL_EDGES_STORAGE_KEY = 'sigma.collapseMutualEdges'
+const EDGE_VIEWPORT_CULLING_STORAGE_KEY = 'sigma.edgeViewportCulling'
+const AGGRESSIVE_BARNES_HUT_STORAGE_KEY = 'sigma.aggressiveBarnesHut'
 const RECENT_ZAP_REPLAY_LOOKBACK_STORAGE_KEY = 'sigma.recentZapReplayLookbackHours'
 const RECENT_ZAP_REPLAY_LOOKBACK_DEBOUNCE_MS = 350
 const ZAP_REPLAY_KEYBOARD_SEEK_STEP = 0.05
@@ -2150,6 +2167,10 @@ function PerformanceOptionsPanel({
   cacheClearMessage,
   devicePerformanceProfile,
   hideConnectionsOnLowPerformance,
+  edgeZoomLodEnabled,
+  collapseMutualEdgesEnabled,
+  edgeViewportCullingEnabled,
+  aggressiveBarnesHutEnabled,
   isClearingSiteCache,
   lowPerformanceConnectionStatusLabel,
   mobileDegradedMode,
@@ -2168,6 +2189,10 @@ function PerformanceOptionsPanel({
   onGraphMaxNodesChange,
   onToggleAvatarPhotos,
   onToggleHideConnectionsOnLowPerformance,
+  onToggleEdgeZoomLod,
+  onToggleCollapseMutualEdges,
+  onToggleEdgeViewportCulling,
+  onToggleAggressiveBarnesHut,
   onAvatarRuntimeOptionsChange,
   onExpandRoot,
 }: {
@@ -2177,6 +2202,10 @@ function PerformanceOptionsPanel({
   cacheClearMessage: string | null
   devicePerformanceProfile: AppStore['devicePerformanceProfile']
   hideConnectionsOnLowPerformance: boolean
+  edgeZoomLodEnabled: boolean
+  collapseMutualEdgesEnabled: boolean
+  edgeViewportCullingEnabled: boolean
+  aggressiveBarnesHutEnabled: boolean
   isClearingSiteCache: boolean
   lowPerformanceConnectionStatusLabel: string
   mobileDegradedMode: boolean
@@ -2195,6 +2224,10 @@ function PerformanceOptionsPanel({
   onGraphMaxNodesChange: (maxNodes: number) => void
   onToggleAvatarPhotos: () => void
   onToggleHideConnectionsOnLowPerformance: () => void
+  onToggleEdgeZoomLod: () => void
+  onToggleCollapseMutualEdges: () => void
+  onToggleEdgeViewportCulling: () => void
+  onToggleAggressiveBarnesHut: () => void
   onAvatarRuntimeOptionsChange: (options: AvatarRuntimeOptions) => void
   onExpandRoot: () => void
 }) {
@@ -2269,6 +2302,58 @@ function PerformanceOptionsPanel({
             />
           </div>
         )}
+        <div className="sg-setting-row">
+          <div>
+            <div className="sg-setting-row__lbl">{t('edgeZoomLod')}</div>
+            <div className="sg-setting-row__desc">{t('edgeZoomLodDesc')}</div>
+          </div>
+          <button
+            aria-pressed={edgeZoomLodEnabled}
+            className={`sg-toggle${edgeZoomLodEnabled ? ' sg-toggle--on' : ''}`}
+            onClick={onToggleEdgeZoomLod}
+            title={edgeZoomLodEnabled ? t('disableEdgeZoomLod') : t('enableEdgeZoomLod')}
+            type="button"
+          />
+        </div>
+        <div className="sg-setting-row">
+          <div>
+            <div className="sg-setting-row__lbl">{t('collapseMutualEdges')}</div>
+            <div className="sg-setting-row__desc">{t('collapseMutualEdgesDesc')}</div>
+          </div>
+          <button
+            aria-pressed={collapseMutualEdgesEnabled}
+            className={`sg-toggle${collapseMutualEdgesEnabled ? ' sg-toggle--on' : ''}`}
+            onClick={onToggleCollapseMutualEdges}
+            title={collapseMutualEdgesEnabled ? t('disableCollapseMutualEdges') : t('enableCollapseMutualEdges')}
+            type="button"
+          />
+        </div>
+        <div className="sg-setting-row">
+          <div>
+            <div className="sg-setting-row__lbl">{t('edgeViewportCulling')}</div>
+            <div className="sg-setting-row__desc">{t('edgeViewportCullingDesc')}</div>
+          </div>
+          <button
+            aria-pressed={edgeViewportCullingEnabled}
+            className={`sg-toggle${edgeViewportCullingEnabled ? ' sg-toggle--on' : ''}`}
+            onClick={onToggleEdgeViewportCulling}
+            title={edgeViewportCullingEnabled ? t('disableEdgeViewportCulling') : t('enableEdgeViewportCulling')}
+            type="button"
+          />
+        </div>
+        <div className="sg-setting-row">
+          <div>
+            <div className="sg-setting-row__lbl">{t('aggressiveBarnesHut')}</div>
+            <div className="sg-setting-row__desc">{t('aggressiveBarnesHutDesc')}</div>
+          </div>
+          <button
+            aria-pressed={aggressiveBarnesHutEnabled}
+            className={`sg-toggle${aggressiveBarnesHutEnabled ? ' sg-toggle--on' : ''}`}
+            onClick={onToggleAggressiveBarnesHut}
+            title={aggressiveBarnesHutEnabled ? t('disableAggressiveBarnesHut') : t('enableAggressiveBarnesHut')}
+            type="button"
+          />
+        </div>
       </div>
       <div className="sg-settings-section">
         <h4>{t('diagnostics')}</h4>
@@ -2772,6 +2857,18 @@ export default function GraphAppV2() {
     hideConnectionsOnLowPerformance,
     setHideConnectionsOnLowPerformance,
   ] = useState(false)
+  const [edgeZoomLodEnabled, setEdgeZoomLodEnabled] = useState(
+    () => readStoredBoolFlag(EDGE_ZOOM_LOD_STORAGE_KEY),
+  )
+  const [collapseMutualEdgesEnabled, setCollapseMutualEdgesEnabled] = useState(
+    () => readStoredBoolFlag(COLLAPSE_MUTUAL_EDGES_STORAGE_KEY),
+  )
+  const [edgeViewportCullingEnabled, setEdgeViewportCullingEnabled] = useState(
+    () => readStoredBoolFlag(EDGE_VIEWPORT_CULLING_STORAGE_KEY),
+  )
+  const [aggressiveBarnesHutEnabled, setAggressiveBarnesHutEnabled] = useState(
+    () => readStoredBoolFlag(AGGRESSIVE_BARNES_HUT_STORAGE_KEY),
+  )
   const [
     isLowPerformanceForConnections,
     setIsLowPerformanceForConnections,
@@ -3103,6 +3200,22 @@ export default function GraphAppV2() {
       // Non-critical preference persistence.
     }
   }, [showVisibleEdgeCountLabels])
+
+  useEffect(() => {
+    try { window.localStorage.setItem(EDGE_ZOOM_LOD_STORAGE_KEY, edgeZoomLodEnabled ? '1' : '0') } catch { /* best-effort */ }
+  }, [edgeZoomLodEnabled])
+
+  useEffect(() => {
+    try { window.localStorage.setItem(COLLAPSE_MUTUAL_EDGES_STORAGE_KEY, collapseMutualEdgesEnabled ? '1' : '0') } catch { /* best-effort */ }
+  }, [collapseMutualEdgesEnabled])
+
+  useEffect(() => {
+    try { window.localStorage.setItem(EDGE_VIEWPORT_CULLING_STORAGE_KEY, edgeViewportCullingEnabled ? '1' : '0') } catch { /* best-effort */ }
+  }, [edgeViewportCullingEnabled])
+
+  useEffect(() => {
+    try { window.localStorage.setItem(AGGRESSIVE_BARNES_HUT_STORAGE_KEY, aggressiveBarnesHutEnabled ? '1' : '0') } catch { /* best-effort */ }
+  }, [aggressiveBarnesHutEnabled])
 
   useEffect(() => {
     try {
@@ -5708,6 +5821,14 @@ export default function GraphAppV2() {
             onToggleHideConnectionsOnLowPerformance={() => {
               setHideConnectionsOnLowPerformance((current) => !current)
             }}
+            edgeZoomLodEnabled={edgeZoomLodEnabled}
+            collapseMutualEdgesEnabled={collapseMutualEdgesEnabled}
+            edgeViewportCullingEnabled={edgeViewportCullingEnabled}
+            aggressiveBarnesHutEnabled={aggressiveBarnesHutEnabled}
+            onToggleEdgeZoomLod={() => setEdgeZoomLodEnabled((c) => !c)}
+            onToggleCollapseMutualEdges={() => setCollapseMutualEdgesEnabled((c) => !c)}
+            onToggleEdgeViewportCulling={() => setEdgeViewportCullingEnabled((c) => !c)}
+            onToggleAggressiveBarnesHut={() => setAggressiveBarnesHutEnabled((c) => !c)}
             recommendedMaxNodes={
               runtimeInspectorStoreSnapshot.effectiveGraphCaps.maxNodes
             }
@@ -6653,6 +6774,10 @@ export default function GraphAppV2() {
         dragInfluenceTuning={dragInfluenceTuning}
         enableDebugProbe={isTestMode}
         hideConnectionsForLowPerformance={lowPerformanceConnectionHidingActive}
+        edgeZoomLodEnabled={edgeZoomLodEnabled}
+        collapseMutualEdgesEnabled={collapseMutualEdgesEnabled}
+        edgeViewportCullingEnabled={edgeViewportCullingEnabled}
+        aggressiveBarnesHutEnabled={aggressiveBarnesHutEnabled}
         hideAvatarsOnMove={stableAvatarRuntimeOptions.hideImagesOnFastNodes}
         initialCameraZoom={initialCameraZoom}
         onAvatarPerfSnapshot={handleAvatarPerfSnapshot}

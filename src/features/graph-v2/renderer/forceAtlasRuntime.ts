@@ -32,6 +32,7 @@ const MINIMUM_RUNNING_NODES = 2
 const DENSE_GRAPH_START_NODE_COUNT = 160
 const DENSE_GRAPH_FULL_NODE_COUNT = 2200
 const BARNES_HUT_START_NODE_COUNT = 2000
+const AGGRESSIVE_BARNES_HUT_START_NODE_COUNT = 500
 const BARNES_HUT_MAX_HUB_RATIO = 0.2
 const OBSIDIAN_PHYSICS_PRESET_VERSION = 'obsidian-v2'
 const BASE_SCALING_RATIO = 4.5
@@ -600,6 +601,8 @@ export class ForceAtlasRuntime {
 
   private physicsTuning = DEFAULT_FORCE_ATLAS_PHYSICS_TUNING
 
+  private aggressiveBarnesHutEnabled = false
+
   private readonly markSettled = () => {
     this.settled = true
   }
@@ -868,6 +871,16 @@ export class ForceAtlasRuntime {
     this.lastFixedNodeSignature = null
   }
 
+  public setAggressiveBarnesHutEnabled(enabled: boolean) {
+    if (this.aggressiveBarnesHutEnabled === enabled) {
+      return
+    }
+    this.aggressiveBarnesHutEnabled = enabled
+    if (this.layoutEligible && !this.suspended) {
+      this.reheat()
+    }
+  }
+
   public dispose() {
     this.stop()
     this.kill()
@@ -878,11 +891,25 @@ export class ForceAtlasRuntime {
     // from the current positions and we want sync() to respect the layout's
     // own convergence signal, not the previous one.
     this.settled = false
+    const maxDegree = resolveMaxGraphDegree(this.graph)
+    const settings = resolveForceAtlasSettings(this.graph.order, this.physicsTuning, {
+      maxDegree,
+    })
+    // P5: Override Barnes-Hut at a lower node threshold when aggressive mode is on.
+    // The guard from BARNES_HUT_MAX_HUB_RATIO still applies via the normal path for
+    // graphs > BARNES_HUT_START_NODE_COUNT, so we only need to fill the gap between
+    // AGGRESSIVE and the normal threshold.
+    if (
+      this.aggressiveBarnesHutEnabled &&
+      !settings.barnesHutOptimize &&
+      this.graph.order > AGGRESSIVE_BARNES_HUT_START_NODE_COUNT &&
+      resolveHubRatio(this.graph.order, maxDegree) <= BARNES_HUT_MAX_HUB_RATIO
+    ) {
+      settings.barnesHutOptimize = true
+    }
     return this.layoutFactory(
       this.graph,
-      resolveForceAtlasSettings(this.graph.order, this.physicsTuning, {
-        maxDegree: resolveMaxGraphDegree(this.graph),
-      }),
+      settings,
       {
         onSettled: this.markSettled,
         autoFreezeEnabled: this.autoFreezeEnabled,

@@ -40,6 +40,10 @@ interface SigmaCanvasHostProps {
   hideAvatarsOnMove?: boolean
   avatarImagesEnabled?: boolean
   hideConnectionsForLowPerformance?: boolean
+  edgeZoomLodEnabled?: boolean
+  collapseMutualEdgesEnabled?: boolean
+  edgeViewportCullingEnabled?: boolean
+  aggressiveBarnesHutEnabled?: boolean
   avatarRuntimeOptions?: AvatarRuntimeOptions
   connectionVisualConfig?: ConnectionVisualConfig
   initialCameraZoom?: number
@@ -161,6 +165,10 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       hideAvatarsOnMove = false,
       avatarImagesEnabled = true,
       hideConnectionsForLowPerformance = false,
+      edgeZoomLodEnabled = false,
+      collapseMutualEdgesEnabled = false,
+      edgeViewportCullingEnabled = false,
+      aggressiveBarnesHutEnabled = false,
       avatarRuntimeOptions,
       connectionVisualConfig,
       initialCameraZoom,
@@ -182,6 +190,10 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
   const hideConnectionsForLowPerformanceRef = useRef(
     hideConnectionsForLowPerformance,
   )
+  const edgeZoomLodEnabledRef = useRef(edgeZoomLodEnabled)
+  const collapseMutualEdgesEnabledRef = useRef(collapseMutualEdgesEnabled)
+  const edgeViewportCullingEnabledRef = useRef(edgeViewportCullingEnabled)
+  const aggressiveBarnesHutEnabledRef = useRef(aggressiveBarnesHutEnabled)
   const avatarRuntimeOptionsRef = useRef(avatarRuntimeOptions)
   const connectionVisualConfigRef = useRef(connectionVisualConfig)
   const initialCameraZoomRef = useRef(initialCameraZoom)
@@ -196,6 +208,10 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
     avatarImagesEnabledRef.current = avatarImagesEnabled
     hideConnectionsForLowPerformanceRef.current =
       hideConnectionsForLowPerformance
+    edgeZoomLodEnabledRef.current = edgeZoomLodEnabled
+    collapseMutualEdgesEnabledRef.current = collapseMutualEdgesEnabled
+    edgeViewportCullingEnabledRef.current = edgeViewportCullingEnabled
+    aggressiveBarnesHutEnabledRef.current = aggressiveBarnesHutEnabled
     avatarRuntimeOptionsRef.current = avatarRuntimeOptions
     connectionVisualConfigRef.current = connectionVisualConfig
     initialCameraZoomRef.current = initialCameraZoom
@@ -205,6 +221,10 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
     connectionVisualConfig,
     dragInfluenceTuning,
     hideConnectionsForLowPerformance,
+    edgeZoomLodEnabled,
+    collapseMutualEdgesEnabled,
+    edgeViewportCullingEnabled,
+    aggressiveBarnesHutEnabled,
     hideAvatarsOnMove,
     initialCameraZoom,
     physicsAutoFreezeEnabled,
@@ -246,6 +266,10 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       nextAdapter.setHideConnectionsForLowPerformance(
         hideConnectionsForLowPerformanceRef.current,
       )
+      nextAdapter.setEdgeZoomLodEnabled(edgeZoomLodEnabledRef.current)
+      nextAdapter.setCollapseMutualEdgesEnabled(collapseMutualEdgesEnabledRef.current)
+      nextAdapter.setEdgeViewportCullingEnabled(edgeViewportCullingEnabledRef.current)
+      nextAdapter.setAggressiveBarnesHutEnabled(aggressiveBarnesHutEnabledRef.current)
       if (avatarRuntimeOptionsRef.current) {
         nextAdapter.setAvatarRuntimeOptions(avatarRuntimeOptionsRef.current)
       }
@@ -417,6 +441,22 @@ export const SigmaCanvasHost = forwardRef<SigmaCanvasHostHandle, SigmaCanvasHost
       hideConnectionsForLowPerformance,
     )
   }, [hideConnectionsForLowPerformance])
+
+  useEffect(() => {
+    adapterRef.current?.setEdgeZoomLodEnabled(edgeZoomLodEnabled)
+  }, [edgeZoomLodEnabled])
+
+  useEffect(() => {
+    adapterRef.current?.setCollapseMutualEdgesEnabled(collapseMutualEdgesEnabled)
+  }, [collapseMutualEdgesEnabled])
+
+  useEffect(() => {
+    adapterRef.current?.setEdgeViewportCullingEnabled(edgeViewportCullingEnabled)
+  }, [edgeViewportCullingEnabled])
+
+  useEffect(() => {
+    adapterRef.current?.setAggressiveBarnesHutEnabled(aggressiveBarnesHutEnabled)
+  }, [aggressiveBarnesHutEnabled])
 
   useEffect(() => {
     if (!connectionVisualConfig) {

@@ -128,6 +128,12 @@ const AVATAR_MAX_FAST_NODE_VELOCITY = 2000
 const AVATAR_MAX_INTERACTIVE_BUCKETS = [32, 64, 128, 256] as const
 const EMPTY_HOVER_NEIGHBORS = new Set<string>()
 
+// P2: camera ratio above this value means the user is zoomed out enough to hide lightweight edges
+const EDGE_ZOOM_LOD_CAMERA_RATIO_THRESHOLD = 1.8
+const EDGE_ZOOM_LOD_MIN_WEIGHT = 0.5
+// P4: extra viewport margin in graph units to avoid popping at the edges
+const EDGE_VIEWPORT_CULLING_MARGIN = 50
+
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
 
@@ -605,6 +611,21 @@ export class SigmaRendererAdapter implements RendererAdapter {
   private avatarImagesEnabled = true
 
   private hideConnectionsForLowPerformance = false
+
+  private edgeZoomLodEnabled = false
+
+  private collapseMutualEdgesEnabled = false
+
+  private edgeViewportCullingEnabled = false
+
+  private readonly colorWithOpacityCache = new Map<string, string>()
+
+  private cachedViewportBBox: {
+    minX: number
+    maxX: number
+    minY: number
+    maxY: number
+  } | null = null
 
   private avatarRuntimeOptions: AvatarRuntimeOptions =
     DEFAULT_AVATAR_RUNTIME_OPTIONS
@@ -1710,6 +1731,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
 
     this.connectionVisualConfig = nextConfig
+    this.colorWithOpacityCache.clear()
     this.safeRender()
   }
 
@@ -1799,6 +1821,99 @@ export class SigmaRendererAdapter implements RendererAdapter {
 
   public getAvatarPerfSnapshot(): PerfBudgetSnapshot | null {
     return this.avatarBudget?.snapshot() ?? null
+  }
+
+  // P1: Cached opacity application — avoids hex-parse + rgba template on every edge per frame.
+  private resolveColorWithOpacity(hexColor: string): string {
+    let cached = this.colorWithOpacityCache.get(hexColor)
+    if (cached === undefined) {
+      cached = applyColorOpacity(hexColor, this.connectionVisualConfig.opacity)
+      this.colorWithOpacityCache.set(hexColor, cached)
+    }
+    return cached
+  }
+
+  // P2: Toggle zoom-based LOD that hides lightweight edges when zoomed out.
+  public setEdgeZoomLodEnabled(enabled: boolean) {
+    if (this.edgeZoomLodEnabled === enabled) {
+      return
+    }
+    this.edgeZoomLodEnabled = enabled
+    this.safeRender()
+  }
+
+  // P3: Toggle that collapses A→B / B→A mutual-follow pairs into a single edge.
+  public setCollapseMutualEdgesEnabled(enabled: boolean) {
+    if (this.collapseMutualEdgesEnabled === enabled) {
+      return
+    }
+    this.collapseMutualEdgesEnabled = enabled
+    if (this.scene && this.renderStore) {
+      this.renderStore.applyScene(this.buildRenderSnapshot(this.scene.render))
+      this.safeRefresh()
+    }
+  }
+
+  private buildRenderSnapshot(
+    snapshot: GraphSceneSnapshot['render'],
+  ): GraphSceneSnapshot['render'] {
+    if (!this.collapseMutualEdgesEnabled) {
+      return snapshot
+    }
+    const seenPairs = new Set<string>()
+    const filteredEdges = snapshot.visibleEdges.filter((edge) => {
+      const reverseKey = `${edge.target}\x00${edge.source}`
+      if (seenPairs.has(reverseKey)) {
+        return false
+      }
+      seenPairs.add(`${edge.source}\x00${edge.target}`)
+      return true
+    })
+    if (filteredEdges.length === snapshot.visibleEdges.length) {
+      return snapshot
+    }
+    return { ...snapshot, visibleEdges: filteredEdges }
+  }
+
+  // P4: Toggle that hides edges whose both endpoints are outside the visible viewport.
+  public setEdgeViewportCullingEnabled(enabled: boolean) {
+    if (this.edgeViewportCullingEnabled === enabled) {
+      return
+    }
+    this.edgeViewportCullingEnabled = enabled
+    this.safeRender()
+  }
+
+  private readonly updateViewportBBox = () => {
+    const sigma = this.sigma
+    if (!sigma) {
+      this.cachedViewportBBox = null
+      return
+    }
+    const dims = sigma.getDimensions()
+    if (dims.width <= 0 || dims.height <= 0) {
+      this.cachedViewportBBox = null
+      return
+    }
+    const m = EDGE_VIEWPORT_CULLING_MARGIN
+    // Convert viewport corners (with margin) to graph-space coordinates.
+    const corners = [
+      sigma.viewportToGraph({ x: -m, y: -m }),
+      sigma.viewportToGraph({ x: dims.width + m, y: -m }),
+      sigma.viewportToGraph({ x: -m, y: dims.height + m }),
+      sigma.viewportToGraph({ x: dims.width + m, y: dims.height + m }),
+    ]
+    this.cachedViewportBBox = {
+      minX: Math.min(...corners.map((c) => c.x)),
+      maxX: Math.max(...corners.map((c) => c.x)),
+      minY: Math.min(...corners.map((c) => c.y)),
+      maxY: Math.max(...corners.map((c) => c.y)),
+    }
+  }
+
+  // P5: Toggle for Barnes-Hut optimization at a lower node-count threshold (500 vs 2000).
+  public setAggressiveBarnesHutEnabled(enabled: boolean) {
+    this.forceRuntime?.setAggressiveBarnesHutEnabled(enabled)
   }
 
   public setAvatarDebugDetailsEnabled(enabled: boolean) {
@@ -3073,7 +3188,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.positionLedger = new NodePositionLedger()
     this.renderStore = new RenderGraphStore(this.positionLedger)
     this.physicsStore = new PhysicsGraphStore(this.positionLedger)
-    this.renderStore.applyScene(initialScene.render)
+    this.renderStore.applyScene(this.buildRenderSnapshot(initialScene.render))
     this.syncSelectedSceneFocus()
     this.physicsStore.applyScene(initialScene.physics)
     this.forceRuntime = new ForceAtlasRuntime(this.physicsStore.getGraph())
@@ -3098,6 +3213,9 @@ export class SigmaRendererAdapter implements RendererAdapter {
     )
     this.initAvatarPipeline(sigma)
     this.bindEvents()
+    // P4: keep viewport bbox in sync with camera so edge culling stays accurate
+    sigma.getCamera().on('updated', this.updateViewportBBox)
+    this.updateViewportBBox()
     this.forceRuntime.sync(initialScene.physics)
     this.ensurePhysicsPositionBridge()
   }
@@ -3115,7 +3233,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     const draggedNodePosition =
       draggedNodePubkey !== null ? this.resolveCurrentDragGraphPosition() : null
     this.scene = scene
-    this.renderStore.applyScene(scene.render)
+    this.renderStore.applyScene(this.buildRenderSnapshot(scene.render))
     this.invalidateRendererFocusEdgeIds()
     this.syncSelectedSceneFocus()
     const physicsApplyResult = this.physicsStore.applyScene(scene.physics)
@@ -3198,6 +3316,9 @@ export class SigmaRendererAdapter implements RendererAdapter {
     window.removeEventListener('keydown', this.handleKeyDown)
     this.setCameraLocked(false)
     this.setGraphBoundsLocked(false)
+    this.sigma?.getCamera().off('updated', this.updateViewportBBox)
+    this.cachedViewportBBox = null
+    this.colorWithOpacityCache.clear()
     this.forceRuntime?.dispose()
     this.forceRuntime = null
     this.nodeHitTester?.dispose()
@@ -4152,6 +4273,45 @@ export class SigmaRendererAdapter implements RendererAdapter {
       return this.resolveEdgeLodAttributes(edge, data, focus)
     }
 
+    // P2: Zoom-based LOD — hide low-weight edges when camera is zoomed far out.
+    if (
+      this.edgeZoomLodEnabled &&
+      !data.hidden &&
+      !focus.pubkey &&
+      data.weight < EDGE_ZOOM_LOD_MIN_WEIGHT
+    ) {
+      const ratio = this.sigma?.getCamera().getState().ratio ?? 1
+      if (ratio > EDGE_ZOOM_LOD_CAMERA_RATIO_THRESHOLD) {
+        return { ...data, hidden: true }
+      }
+    }
+
+    // P4: Viewport culling — skip edges whose both endpoints are off-screen.
+    if (
+      this.edgeViewportCullingEnabled &&
+      !data.hidden &&
+      !focus.pubkey &&
+      this.cachedViewportBBox
+    ) {
+      const graph = this.sigma?.getGraph()
+      if (graph) {
+        const src = graph.source(edge)
+        const tgt = graph.target(edge)
+        if (graph.hasNode(src) && graph.hasNode(tgt)) {
+          const sa = graph.getNodeAttributes(src)
+          const ta = graph.getNodeAttributes(tgt)
+          const bbox = this.cachedViewportBBox
+          const bothLeft = sa.x < bbox.minX && ta.x < bbox.minX
+          const bothRight = sa.x > bbox.maxX && ta.x > bbox.maxX
+          const bothTop = sa.y < bbox.minY && ta.y < bbox.minY
+          const bothBottom = sa.y > bbox.maxY && ta.y > bbox.maxY
+          if (bothLeft || bothRight || bothTop || bothBottom) {
+            return { ...data, hidden: true }
+          }
+        }
+      }
+    }
+
     if (this.highlightTransition) {
       const amount = this.getTransitionAmount(this.highlightTransition)
       const from = this.resolveEdgeHoverAttributes(
@@ -4168,11 +4328,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
       return mixEdgeVisualAttributes(from, to, amount)
     }
 
-    const target = this.resolveEdgeHoverAttributes(
-      edge,
-      data,
-      focus,
-    )
+    const target = this.resolveEdgeHoverAttributes(edge, data, focus)
     if (focus.pubkey) {
       return target
     }
@@ -4181,12 +4337,10 @@ export class SigmaRendererAdapter implements RendererAdapter {
       return target
     }
 
+    // P1: Use cached rgba conversion to avoid hex-parse on every edge every frame.
     return {
       ...target,
-      color: applyColorOpacity(
-        target.color,
-        this.connectionVisualConfig.opacity,
-      ),
+      color: this.resolveColorWithOpacity(target.color),
     }
   }
 

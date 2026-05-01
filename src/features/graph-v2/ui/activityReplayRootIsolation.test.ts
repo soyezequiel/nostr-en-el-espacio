@@ -34,3 +34,26 @@ test('stale activity callbacks are gated by the active root', () => {
     /activityRootPubkeyRef\.current !== sceneState\.rootPubkey/,
   )
 })
+
+test('activity replay runtime is not mounted by the visible activities panel', () => {
+  const graphAppSource = source()
+
+  assert.match(graphAppSource, /usePersistentActivityReplayController\({/)
+  assert.match(
+    graphAppSource,
+    /const renderActivitiesContent = \(\) => \(\s*<SigmaActivityPanelV3 \{\.\.\.activityPanelProps\} \/>\s*\)/,
+  )
+  assert.doesNotMatch(graphAppSource, /const activityPanelContent = useMemo/)
+  assert.doesNotMatch(graphAppSource, /<SigmaActivityReplayController/)
+})
+
+test('recent replay completion returns activity mode to live', () => {
+  const graphAppSource = source()
+
+  assert.match(graphAppSource, /onRecentReplayComplete: \(\) => void/)
+  assert.match(graphAppSource, /RECENT_REPLAY_RETURN_TO_LIVE_DELAY_MS = 1_500/)
+  assert.match(
+    graphAppSource,
+    /const handleRecentReplayComplete = useCallback\(\(\) => \{[\s\S]*setZapFeedMode\('live'\)[\s\S]*setRecentZapReplayPlaybackPaused\(false\)[\s\S]*setActivityOverlayPaused\(false\)/,
+  )
+})

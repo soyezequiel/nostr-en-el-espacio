@@ -100,9 +100,10 @@ export class AvatarScheduler {
     }
 
     const now = this.now()
-    const candidateKeys = this.recordCandidateDemand(candidates, now)
+    const activeCandidates = this.resolveActiveCandidates(candidates)
+    const candidateKeys = this.recordCandidateDemand(activeCandidates, now)
     this.abortExpiredInflight(candidateKeys, now)
-    this.kickoffCandidates(candidates, budget, now)
+    this.kickoffCandidates(activeCandidates, budget, now)
   }
 
   public prime(candidates: readonly AvatarCandidate[], budget: AvatarBudget) {
@@ -111,8 +112,9 @@ export class AvatarScheduler {
     }
 
     const now = this.now()
-    this.recordCandidateDemand(candidates, now)
-    this.kickoffCandidates(candidates, budget, now)
+    const activeCandidates = this.resolveActiveCandidates(candidates)
+    this.recordCandidateDemand(activeCandidates, now)
+    this.kickoffCandidates(activeCandidates, budget, now)
   }
 
   public dispose() {
@@ -237,6 +239,30 @@ export class AvatarScheduler {
 
       this.kickoff(candidate, budget, now, { preserveReadyEntry })
     }
+  }
+
+  private resolveActiveCandidates(
+    candidates: readonly AvatarCandidate[],
+  ): AvatarCandidate[] {
+    const capacity = this.cache.capacity()
+    if (capacity <= 0 || candidates.length === 0) {
+      return []
+    }
+
+    const activeCandidates: AvatarCandidate[] = []
+    const seen = new Set<AvatarUrlKey>()
+    for (const candidate of [...candidates].sort((a, b) => a.priority - b.priority)) {
+      if (seen.has(candidate.urlKey)) {
+        continue
+      }
+      seen.add(candidate.urlKey)
+      activeCandidates.push(candidate)
+      if (activeCandidates.length >= capacity) {
+        break
+      }
+    }
+
+    return activeCandidates
   }
 
   private drainDiskCacheLane(

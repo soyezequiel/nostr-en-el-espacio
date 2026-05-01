@@ -6,7 +6,9 @@ import {
 } from '@/features/graph-v2/renderer/avatar/types'
 import {
   createAvatarUrlMetadataResolver,
+  retainAvatarDrawItemsForFrame,
   resolveAvatarCacheCap,
+  resolveAvatarCacheRetentionMode,
   resolveAvatarFrameDrawCap,
   resolveAvatarGlobalMotionActive,
   resolveAvatarDrawRadiusPx,
@@ -94,6 +96,48 @@ test('retains visible inflight avatars even when the current frame cap drops the
   )
 
   assert.deepEqual([...retained], ['root', 'alice'])
+})
+
+test('keeps ready avatar draw items when a transient frame cap drops them', () => {
+  const items = [
+    {
+      pubkey: 'root',
+      priority: 0,
+      r: 12,
+      url: 'https://example.com/root.png',
+    },
+    {
+      pubkey: 'ready-outside-cap',
+      priority: 20,
+      r: 10,
+      url: 'https://example.com/ready.png',
+    },
+    {
+      pubkey: 'missing-outside-cap',
+      priority: 30,
+      r: 10,
+      url: 'https://example.com/missing.png',
+    },
+    {
+      pubkey: 'loading-outside-cap',
+      priority: 40,
+      r: 10,
+      url: 'https://example.com/loading.png',
+    },
+  ]
+  const selected = selectAvatarDrawItemsForFrame(items, 1, new Set())
+  const retained = retainAvatarDrawItemsForFrame(
+    items,
+    selected,
+    (urlKey) =>
+      urlKey === 'ready-outside-cap::https://example.com/ready.png' ||
+      urlKey === 'loading-outside-cap::https://example.com/loading.png',
+  )
+
+  assert.deepEqual(
+    retained.map((item) => item.pubkey),
+    ['root', 'ready-outside-cap', 'loading-outside-cap'],
+  )
 })
 
 test('expanded avatar requests use device pixel ratio for sharper buckets', () => {
@@ -404,10 +448,11 @@ test('avatar image disable reason reports the first blocking condition', () => {
   )
 })
 
-test('keeps ready avatar images visible through transient performance guards', () => {
+test('movement fallback degrades ready avatar images to monograms', () => {
   for (const guard of [
     {
       expectedWithoutReady: 'global_motion_active',
+      expectedWithReady: 'global_motion_active',
       globalMotionActive: true,
       fastMoving: false,
       imageDrawCount: 0,
@@ -415,11 +460,42 @@ test('keeps ready avatar images visible through transient performance guards', (
     },
     {
       expectedWithoutReady: 'fast_moving',
+      expectedWithReady: 'fast_moving',
       globalMotionActive: false,
       fastMoving: true,
       imageDrawCount: 0,
       maxImageDrawsPerFrame: 12,
     },
+  ]) {
+    assert.equal(
+      resolveAvatarImageDisableReason({
+        selectedForImage: true,
+        globalMotionActive: guard.globalMotionActive,
+        monogramOnly: false,
+        fastMoving: guard.fastMoving,
+        imageDrawCount: guard.imageDrawCount,
+        maxImageDrawsPerFrame: guard.maxImageDrawsPerFrame,
+        hasReadyImage: false,
+      }),
+      guard.expectedWithoutReady,
+    )
+    assert.equal(
+      resolveAvatarImageDisableReason({
+        selectedForImage: true,
+        globalMotionActive: guard.globalMotionActive,
+        monogramOnly: false,
+        fastMoving: guard.fastMoving,
+        imageDrawCount: guard.imageDrawCount,
+        maxImageDrawsPerFrame: guard.maxImageDrawsPerFrame,
+        hasReadyImage: true,
+      }),
+      guard.expectedWithReady,
+    )
+  }
+})
+
+test('keeps ready avatar images visible through frame draw caps', () => {
+  for (const guard of [
     {
       expectedWithoutReady: 'image_draw_cap',
       globalMotionActive: false,
@@ -529,11 +605,15 @@ test('degraded effective mode respects the base frame draw cap', () => {
   )
 })
 
-test('degraded effective mode keeps load and cache on the base budget', () => {
+test('degraded effective mode keeps load bounded without shrinking all-visible cache', () => {
   const effectiveShowAllVisibleImages = resolveEffectiveShowAllVisibleImages({
     requestedShowAllVisibleImages: true,
     isDegraded: false,
     emaFrameMs: 58.6,
+  })
+  const cacheAllVisibleImages = resolveAvatarCacheRetentionMode({
+    requestedShowAllVisibleImages: true,
+    effectiveShowAllVisibleImages,
   })
 
   assert.equal(
@@ -548,9 +628,9 @@ test('degraded effective mode keeps load and cache on the base budget', () => {
     resolveAvatarCacheCap({
       baseCap: 96,
       visiblePhotoCount: 94,
-      showAllVisibleImages: effectiveShowAllVisibleImages,
+      showAllVisibleImages: cacheAllVisibleImages,
     }),
-    96,
+    126,
   )
 })
 
@@ -625,7 +705,7 @@ test('all visible photos mode does not invent load slots beyond visible photos',
   )
 })
 
-test('avatar runtime defaults keep all visible photos on and motion hiding enabled', () => {
+test('avatar runtime defaults keep all visible photos on and motion hiding disabled', () => {
   assert.equal(DEFAULT_AVATAR_RUNTIME_OPTIONS.showAllVisibleImages, true)
-  assert.equal(DEFAULT_AVATAR_RUNTIME_OPTIONS.hideImagesOnFastNodes, true)
+  assert.equal(DEFAULT_AVATAR_RUNTIME_OPTIONS.hideImagesOnFastNodes, false)
 })

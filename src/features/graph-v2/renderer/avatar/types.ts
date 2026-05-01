@@ -66,7 +66,7 @@ export const DEFAULT_AVATAR_RUNTIME_OPTIONS: AvatarRuntimeOptions = {
   showZoomedOutMonograms: true,
   showMonogramBackgrounds: false,
   showMonogramText: false,
-  hideImagesOnFastNodes: true,
+  hideImagesOnFastNodes: false,
   fastNodeVelocityThreshold: 240,
   allowZoomedOutImages: true,
   showAllVisibleImages: true,

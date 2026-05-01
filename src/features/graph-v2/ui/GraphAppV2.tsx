@@ -251,8 +251,6 @@ import {
 const RECENT_ZAP_REPLAY_WINDOW_PRESETS = [
   { hours: 6, label: '6 h' },
   { hours: 24, label: '24 h' },
-  { hours: 72, label: '3 d' },
-  { hours: 168, label: '7 d' },
 ]
 
 type SigmaSettingsTab = 'performance' | 'visuals' | 'zaps' | 'relays' | 'dev'

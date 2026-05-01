@@ -95,7 +95,10 @@ interface AvatarNodeMotionSample {
   t: number
 }
 
-type EffectiveAvatarBudget = AvatarBudget & AvatarRuntimeOptions
+type EffectiveAvatarBudget = AvatarBudget &
+  AvatarRuntimeOptions & {
+    readonly cacheAllVisibleImages: boolean
+  }
 
 interface AvatarDrawItem {
   pubkey: string
@@ -194,7 +197,11 @@ export interface AvatarOverlayRendererDeps {
 interface AvatarImageSelectionItem {
   pubkey: string
   url: string | null
+  urlKey?: AvatarUrlKey | null
 }
+
+const resolveAvatarSelectionUrlKey = (item: AvatarImageSelectionItem) =>
+  item.urlKey ?? (item.url ? buildAvatarUrlKey(item.pubkey, item.url) : null)
 
 export const retainInflightAvatarPubkeys = <
   T extends AvatarImageSelectionItem,
@@ -206,16 +213,42 @@ export const retainInflightAvatarPubkeys = <
   const retainedPubkeys = new Set(selectedPubkeys)
 
   for (const item of items) {
-    if (!item.url || retainedPubkeys.has(item.pubkey)) {
+    if (retainedPubkeys.has(item.pubkey)) {
       continue
     }
 
-    if (hasInflight(buildAvatarUrlKey(item.pubkey, item.url))) {
+    const urlKey = resolveAvatarSelectionUrlKey(item)
+    if (urlKey !== null && hasInflight(urlKey)) {
       retainedPubkeys.add(item.pubkey)
     }
   }
 
   return retainedPubkeys
+}
+
+export const retainAvatarDrawItemsForFrame = <
+  T extends AvatarDrawSelectionItem & AvatarImageSelectionItem,
+>(
+  items: readonly T[],
+  selectedItems: readonly T[],
+  shouldRetain: (urlKey: AvatarUrlKey) => boolean,
+): T[] => {
+  const retainedItems = [...selectedItems]
+  const retainedPubkeys = new Set(selectedItems.map((item) => item.pubkey))
+
+  for (const item of items) {
+    if (retainedPubkeys.has(item.pubkey)) {
+      continue
+    }
+
+    const urlKey = resolveAvatarSelectionUrlKey(item)
+    if (urlKey !== null && shouldRetain(urlKey)) {
+      retainedPubkeys.add(item.pubkey)
+      retainedItems.push(item)
+    }
+  }
+
+  return retainedItems
 }
 
 const withAlpha = (color: string, alpha: number) => {
@@ -360,13 +393,13 @@ export const resolveAvatarImageDisableReason = ({
   if (!selectedForImage) {
     return 'not_selected_for_image'
   }
-  if (globalMotionActive && !hasReadyImage) {
+  if (globalMotionActive) {
     return 'global_motion_active'
   }
   if (monogramOnly) {
     return 'monogram_only'
   }
-  if (fastMoving && !hasReadyImage) {
+  if (fastMoving) {
     return 'fast_moving'
   }
   if (imageDrawCount >= maxImageDrawsPerFrame && !hasReadyImage) {
@@ -429,6 +462,14 @@ export const resolveEffectiveShowAllVisibleImages = ({
   requestedShowAllVisibleImages &&
   !isDegraded &&
   (!Number.isFinite(emaFrameMs) || emaFrameMs < PERF_BUDGET_DOWNGRADE_MS)
+
+export const resolveAvatarCacheRetentionMode = ({
+  requestedShowAllVisibleImages,
+  effectiveShowAllVisibleImages,
+}: {
+  requestedShowAllVisibleImages: boolean
+  effectiveShowAllVisibleImages: boolean
+}) => requestedShowAllVisibleImages || effectiveShowAllVisibleImages
 
 export const resolveAvatarCacheCap = ({
   baseCap,
@@ -927,7 +968,7 @@ export class AvatarOverlayRenderer {
       resolveAvatarCacheCap({
         baseCap: budget.lruCap,
         visiblePhotoCount,
-        showAllVisibleImages: budget.showAllVisibleImages,
+        showAllVisibleImages: budget.cacheAllVisibleImages,
       }),
     )
     const selectedDrawItems = selectAvatarDrawItemsForFrame(
@@ -939,17 +980,16 @@ export class AvatarOverlayRenderer {
       }),
       forcedAvatarPubkeys,
     )
-    const selectedPubkeys = new Set(
-      selectedDrawItems.map((item) => item.pubkey),
-    )
-    const selectedOrInflightPubkeys = retainInflightAvatarPubkeys(
+    const orderedDrawItems = retainAvatarDrawItemsForFrame(
       resolvedDrawItems,
-      selectedPubkeys,
-      (urlKey) => this.scheduler.hasInflight(urlKey),
+      selectedDrawItems,
+      (urlKey) =>
+        this.scheduler.hasInflight(urlKey) ||
+        this.cache.peek(urlKey)?.state === 'ready',
     )
-    // Keep total overlay work bounded by the frame cap instead of only
-    // capping image candidates and then drawing monograms for the full set.
-    const orderedDrawItems = selectedDrawItems
+    const selectedForImagePubkeys = new Set(
+      orderedDrawItems.map((item) => item.pubkey),
+    )
     const maxImageDrawsPerFrame = resolveAvatarFrameDrawCap({
       baseCap: budget.maxImageDrawsPerFrame,
       visibleCount: visiblePhotoCount,
@@ -964,7 +1004,7 @@ export class AvatarOverlayRenderer {
 
     for (const item of orderedDrawItems) {
       const isPersistentAvatar = item.isPersistentAvatar
-      const selectedForImage = selectedOrInflightPubkeys.has(item.pubkey)
+      const selectedForImage = selectedForImagePubkeys.has(item.pubkey)
       const hasVisibleMonogramPart =
         item.monogramInput.showBackground !== false ||
         item.monogramInput.showText !== false
@@ -1435,6 +1475,7 @@ export class AvatarOverlayRenderer {
         fastNodeVelocityThreshold: Number.POSITIVE_INFINITY,
         allowZoomedOutImages: false,
         showAllVisibleImages: false,
+        cacheAllVisibleImages: false,
         maxInteractiveBucket: budget.maxBucket,
       }
     }
@@ -1443,6 +1484,10 @@ export class AvatarOverlayRenderer {
       requestedShowAllVisibleImages: runtimeOptions.showAllVisibleImages,
       isDegraded: snapshot.isDegraded,
       emaFrameMs: snapshot.emaFrameMs,
+    })
+    const cacheAllVisibleImages = resolveAvatarCacheRetentionMode({
+      requestedShowAllVisibleImages: runtimeOptions.showAllVisibleImages,
+      effectiveShowAllVisibleImages: showAllVisibleImages,
     })
     return {
       ...budget,
@@ -1464,6 +1509,7 @@ export class AvatarOverlayRenderer {
         : runtimeOptions.fastNodeVelocityThreshold,
       allowZoomedOutImages: runtimeOptions.allowZoomedOutImages,
       showAllVisibleImages,
+      cacheAllVisibleImages,
       maxInteractiveBucket: runtimeOptions.maxInteractiveBucket,
     }
   }

@@ -5,6 +5,7 @@ import test from 'node:test'
 
 import {
   RECENT_ZAP_REPLAY_DEFAULT_LOOKBACK_HOURS,
+  RECENT_ZAP_REPLAY_MAX_LOOKBACK_HOURS,
   buildRecentZapReplayCollectionViewModel,
   clearRecentZapReplayCoverageStorage,
   clampRecentZapReplayLookbackHours,
@@ -13,6 +14,7 @@ import {
 } from './useRecentZapReplay'
 
 test('clamps recent zap replay lookback to the supported hour range', () => {
+  assert.equal(RECENT_ZAP_REPLAY_MAX_LOOKBACK_HOURS, 24)
   assert.equal(clampRecentZapReplayLookbackHours(-3), 1)
   assert.equal(clampRecentZapReplayLookbackHours(0), 1)
   assert.equal(clampRecentZapReplayLookbackHours(1), 1)

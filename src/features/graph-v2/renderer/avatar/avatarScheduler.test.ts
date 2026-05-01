@@ -157,6 +157,67 @@ test('scheduler uses bulk drain for avatars beyond regular concurrency', async (
   }
 })
 
+test('scheduler does not bulk load more visible disk hits than memory cache can retain', async () => {
+  const restoreDocument = installDocumentStub()
+  const candidates = Array.from({ length: 40 }, (_, index) => ({
+    pubkey: `node-${index}`,
+    urlKey: `node-${index}::https://example.com/node-${index}.png`,
+    url: `https://example.com/node-${index}.png`,
+    bucket: 64 as const,
+    priority: index,
+    monogram: { label: `Node ${index}`, color: '#7dd3a7' },
+  }))
+  const loadCalls: Array<{ url: string; signal: AbortSignal }> = []
+  const bulkDrainRequests: Array<Array<{ url: string; bucket: number }>> = []
+  const fakeBitmap = { close: () => undefined } as unknown as ImageBitmap
+  const loader = {
+    isBlocked: () => false,
+    block: () => undefined,
+    load: (url: string, _bucket: number, signal: AbortSignal) => {
+      loadCalls.push({ url, signal })
+      return new Promise(() => undefined)
+    },
+    loadManyDiskCached: async (
+      requests: Array<{ url: string; bucket: number }>,
+    ) => {
+      bulkDrainRequests.push(requests)
+      return requests.map(() => ({
+        bitmap: fakeBitmap,
+        bytes: 64 * 64 * 4,
+      }))
+    },
+  }
+
+  try {
+    const cache = new AvatarBitmapCache(16)
+    const scheduler = new AvatarScheduler({
+      cache,
+      loader: loader as never,
+    })
+
+    scheduler.reconcile(candidates, budget)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    assert.equal(loadCalls.length, 1)
+    assert.equal(bulkDrainRequests.length, 1)
+    assert.equal(bulkDrainRequests[0]?.length, 15)
+    assert.deepEqual(
+      bulkDrainRequests[0]?.map((r) => r.url),
+      candidates.slice(1, 16).map((candidate) => candidate.url),
+    )
+    assert.equal(cache.size(), 16)
+
+    scheduler.reconcile(candidates, budget)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    assert.equal(bulkDrainRequests.length, 1)
+    assert.equal(cache.size(), 16)
+    scheduler.dispose()
+  } finally {
+    restoreDocument()
+  }
+})
+
 test('scheduler bulk drain miss leaves candidate for the regular network path', async () => {
   const restoreDocument = installDocumentStub()
   const candidates = Array.from({ length: 5 }, (_, index) => ({
@@ -273,7 +334,7 @@ test('scheduler caps bulk drain batch size so IDB cannot starve regular loading'
 
   try {
     const scheduler = new AvatarScheduler({
-      cache: new AvatarBitmapCache(16),
+      cache: new AvatarBitmapCache(128),
       loader: loader as never,
     })
 

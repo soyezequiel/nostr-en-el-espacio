@@ -273,10 +273,13 @@ export const parseCommentEvent = (event: RawNostrEvent): ParsedGraphEvent | null
 export interface KindParserSpec {
   // Nostr kinds to subscribe to.
   kinds: number[]
-  // Most activity should be visible when it targets a node (`#p`) or when it
-  // is authored by a node (`authors`). Saves (lists) are only authored by the
-  // saver, so they stay `authors`.
-  filterMode: 'p-tag-or-authors' | 'authors'
+  // Most activity uses 'p-tag-or-authors': both "#p" and "authors" filters,
+  // so we see activity targeting a visible node AND activity emitted by one.
+  // 'authors' is for saves (lists are only authored by the saver).
+  // 'p-tag-only' is for high-volume kinds (1, 1111) where subscribing by
+  // 'authors' would open a firehose of unrelated events (regular notes,
+  // comments) and only the #p branch carries useful signal.
+  filterMode: 'p-tag-or-authors' | 'authors' | 'p-tag-only'
   parse: (event: RawNostrEvent) => ParsedGraphEvent[]
 }
 
@@ -308,12 +311,17 @@ export const KIND_PARSER_SPECS: Record<
   },
   quote: {
     kinds: [1],
-    filterMode: 'p-tag-or-authors',
+    // kind 1 is the highest-volume Nostr kind; subscribing by 'authors' would
+    // flood the client with all notes from visible pubkeys, most of which are
+    // not quotes. '#p' is enough: it covers quotes received by visible nodes.
+    filterMode: 'p-tag-only',
     parse: wrapSingle(parseQuoteEvent),
   },
   comment: {
     kinds: [1111],
-    filterMode: 'p-tag-or-authors',
+    // Same reasoning as quote: kind 1111 authored by visible nodes includes
+    // all their comments, not just those directed at other visible nodes.
+    filterMode: 'p-tag-only',
     parse: wrapSingle(parseCommentEvent),
   },
 }

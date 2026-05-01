@@ -113,8 +113,10 @@ export const DEFAULT_GRAPH_EVENT_TOGGLES: GraphEventToggleState = {
   like: true,
   repost: true,
   save: true,
-  quote: true,
-  comment: true,
+  // quote/comment default off: kind 1 and 1111 subscriptions are high-volume
+  // even with the p-tag-only filter; user can opt in from the activity panel.
+  quote: false,
+  comment: false,
 }
 
 export const GRAPH_EVENT_KIND_LABELS: Record<GraphEventKind, string> = {

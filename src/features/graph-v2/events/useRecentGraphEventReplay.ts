@@ -109,6 +109,9 @@ export function buildRecentGraphEventReplayFilters(
   if (spec.filterMode === 'authors') {
     return [{ kinds: spec.kinds, authors: [...batch], since, until, limit }]
   }
+  if (spec.filterMode === 'p-tag-only') {
+    return [{ kinds: spec.kinds, '#p': [...batch], since, until, limit }]
+  }
   return [
     { kinds: spec.kinds, '#p': [...batch], since, until, limit },
     { kinds: spec.kinds, authors: [...batch], since, until, limit },

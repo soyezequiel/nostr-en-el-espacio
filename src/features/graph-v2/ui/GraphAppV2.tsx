@@ -2858,6 +2858,8 @@ export default function GraphAppV2() {
   const pendingRecentZapActivityEntriesRef = useRef<ZapActivityLogEntry[]>([])
   const pendingRecentGraphEventActivityEntriesRef = useRef<GraphEventActivityLogEntry[]>([])
   const pendingRecentActivityFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingLiveGraphEventActivityEntriesRef = useRef<GraphEventActivityLogEntry[]>([])
+  const pendingLiveActivityFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoActivityNodePendingRef = useRef(new Map<string, Set<string>>())
   const autoActivityNodeInflightRef = useRef(new Set<string>())
   const autoActivityPairAttemptedRef = useRef(new Set<string>())
@@ -3978,6 +3980,36 @@ export default function GraphAppV2() {
     }
   }, [])
 
+  const flushPendingLiveActivityEntries = useCallback(() => {
+    pendingLiveActivityFlushTimerRef.current = null
+    const entries = pendingLiveGraphEventActivityEntriesRef.current
+    pendingLiveGraphEventActivityEntriesRef.current = []
+    if (entries.length === 0) return
+    setGraphEventActivityLog((current) => {
+      let next = current
+      for (const entry of entries) {
+        if (next.some((item) => item.id === entry.id)) continue
+        next = [entry, ...next]
+      }
+      return next.slice(0, GRAPH_EVENT_ACTIVITY_LIMIT)
+    })
+  }, [])
+
+  const scheduleLiveActivityFlush = useCallback(() => {
+    if (pendingLiveActivityFlushTimerRef.current !== null) return
+    pendingLiveActivityFlushTimerRef.current = setTimeout(
+      flushPendingLiveActivityEntries,
+      100,
+    )
+  }, [flushPendingLiveActivityEntries])
+
+  useEffect(() => () => {
+    if (pendingLiveActivityFlushTimerRef.current !== null) {
+      clearTimeout(pendingLiveActivityFlushTimerRef.current)
+      pendingLiveActivityFlushTimerRef.current = null
+    }
+  }, [])
+
   const createZapActivityEntry = useCallback((
     zap: Pick<ParsedZap, 'fromPubkey' | 'toPubkey' | 'sats'> & {
       eventId?: string
@@ -4138,16 +4170,15 @@ export default function GraphAppV2() {
         scheduleRecentActivityFlush()
         return played
       }
-      setGraphEventActivityLog((current) => {
-        if (current.some((item) => item.id === entry.id)) return current
-        return [entry, ...current].slice(0, GRAPH_EVENT_ACTIVITY_LIMIT)
-      })
+      pendingLiveGraphEventActivityEntriesRef.current.push(entry)
+      scheduleLiveActivityFlush()
       return played
     },
     [
       enqueueAutoActivityExternalNode,
       sceneState.rootPubkey,
       scheduleRecentActivityFlush,
+      scheduleLiveActivityFlush,
       visibleNodeSet,
     ],
   )
@@ -4561,6 +4592,7 @@ export default function GraphAppV2() {
         setActivityReplayRailState(INITIAL_ACTIVITY_REPLAY_RAIL_STATE)
         pendingRecentZapActivityEntriesRef.current = []
         pendingRecentGraphEventActivityEntriesRef.current = []
+        pendingLiveGraphEventActivityEntriesRef.current = []
         setZapActivityLog([])
         setGraphEventActivityLog([])
         setSelectedZapDetailId(null)

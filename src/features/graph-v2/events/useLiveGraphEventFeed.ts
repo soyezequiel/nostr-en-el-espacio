@@ -46,6 +46,9 @@ export const buildLiveGraphEventFilters = (
   if (spec.filterMode === 'authors') {
     return [{ kinds: spec.kinds, authors: [...batch], since: sinceSeconds }]
   }
+  if (spec.filterMode === 'p-tag-only') {
+    return [{ kinds: spec.kinds, '#p': [...batch], since: sinceSeconds }]
+  }
   return [
     { kinds: spec.kinds, '#p': [...batch], since: sinceSeconds },
     { kinds: spec.kinds, authors: [...batch], since: sinceSeconds },

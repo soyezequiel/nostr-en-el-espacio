@@ -929,7 +929,7 @@ export function RuntimeInspectorDrawer({
                 </div>
               ) : (
                 <div className="sg-runtime__empty">
-                  Sin muestras end-to-end suficientes en este frame.
+                  Sin casos lentos candidato a paint en este frame.
                 </div>
               )}
               <div className="sg-runtime__subsection">Razones dominantes</div>

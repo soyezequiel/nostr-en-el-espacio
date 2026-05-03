@@ -91,12 +91,14 @@ the effective radius/zoom thresholds after adaptive limits are applied.
 ## Runtime Inspector latency
 
 The Runtime Inspector's `Avatares` section includes `Lentitud de carga`, an
-end-to-end measurement from visible profile warmup to first image paint. The
-relay does not download image bytes: it only returns the Nostr `kind:0` profile
-with `picture`. The inspector keeps those stages separate:
+operational measurement from visible avatar candidacy to first image paint, with
+profile warmup kept as context instead of being folded into the main duration.
+The relay does not download image bytes: it only returns the Nostr `kind:0`
+profile with `picture`. The inspector keeps those stages separate:
 
 - profile relay/cache latency from visible warmup to `kind:0`/profile cache
   completion;
+- visible queue latency from avatar candidacy to the relevant loader attempt;
 - image HTTP/decode latency from the loader attempt (`direct`, `proxy`,
   `image-element`; `disk` is reported separately as cache);
 - render/paint latency from decoded/ready image to the first canvas draw.
@@ -168,8 +170,9 @@ Covered:
 - `avatarLoader`: bounded recent attempts for direct, proxy, disk, and
   image-element paths.
 - `avatarBitmapCache`: bitmap close-on-evict and bounded monogram LRU.
-- `runtimeInspector`: end-to-end avatar latency, relay/image/render stage split,
-  cached-profile exclusion from fresh relay latency, and isolated-case
+- `runtimeInspector`: visible candidate-to-paint avatar latency,
+  relay/queue/image/render stage split, cached-profile exclusion from fresh relay
+  latency, and isolated-case
   suppression.
 
 Not covered with unit tests because they depend on Sigma/browser rendering:

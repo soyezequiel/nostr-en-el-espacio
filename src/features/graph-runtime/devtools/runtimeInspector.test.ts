@@ -422,7 +422,7 @@ test('runtime inspector does not label cache misses as reusable avatar failures'
   ])
 })
 
-test('runtime inspector reports end-to-end avatar latency and warns by p95', () => {
+test('runtime inspector reports visible avatar paint latency and warns by p95', () => {
   const snapshot = buildRuntimeInspectorSnapshot(
     createAvatarLatencyInput([
       { pubkey: 'lat-a', profileMs: 300, imageMs: 400, firstPaintMs: 900 },
@@ -432,12 +432,63 @@ test('runtime inspector reports end-to-end avatar latency and warns by p95', () 
   )
 
   assert.equal(snapshot.avatars.tone, 'warn')
-  assert.equal(snapshot.avatars.resumen, 'Fotos lentas end-to-end')
+  assert.equal(snapshot.avatars.resumen, 'Fotos lentas al pintar')
   assert.deepEqual(snapshot.avatars.latencia.metricas[0], {
-    label: 'End-to-end p50/p95',
+    label: 'Candidato->paint p50/p95',
     value: '1.6 s / 3.2 s',
     tone: 'warn',
   })
+})
+
+test('runtime inspector does not inflate visible avatar latency from stale warmup attempts', () => {
+  const snapshot = buildRuntimeInspectorSnapshot(
+    createAvatarLatencyInput([
+      {
+        pubkey: 'stale-a',
+        profileMs: 300,
+        imageMs: 300,
+        firstPaintMs: 900,
+        attemptedAtMs: 1_000,
+        candidateSinceMs: 200_000,
+      },
+      {
+        pubkey: 'stale-b',
+        profileMs: 300,
+        imageMs: 300,
+        firstPaintMs: 1000,
+        attemptedAtMs: 1_000,
+        candidateSinceMs: 200_000,
+      },
+      {
+        pubkey: 'stale-c',
+        profileMs: 300,
+        imageMs: 300,
+        firstPaintMs: 1100,
+        attemptedAtMs: 1_000,
+        candidateSinceMs: 200_000,
+      },
+    ]),
+  )
+
+  assert.equal(snapshot.avatars.tone, 'ok')
+  assert.deepEqual(snapshot.avatars.latencia.metricas[0], {
+    label: 'Candidato->paint p50/p95',
+    value: '1.0 s / 1.1 s',
+    tone: 'ok',
+  })
+})
+
+test('runtime inspector omits immediate avatar paints from slow latency cases', () => {
+  const snapshot = buildRuntimeInspectorSnapshot(
+    createAvatarLatencyInput([
+      { pubkey: 'instant-a', profileMs: 100, imageMs: 100, firstPaintMs: 0 },
+      { pubkey: 'instant-b', profileMs: 100, imageMs: 100, firstPaintMs: 0 },
+      { pubkey: 'instant-c', profileMs: 100, imageMs: 100, firstPaintMs: 0 },
+    ]),
+  )
+
+  assert.equal(snapshot.avatars.latencia.metricas[0]?.value, '0 ms / 0 ms')
+  assert.deepEqual(snapshot.avatars.latencia.casos, [])
 })
 
 test('runtime inspector separates relay, image, and render dominant stages', () => {
@@ -727,6 +778,8 @@ const createAvatarLatencyInput = (
     imageMs: number
     firstPaintMs: number
     source?: 'relay' | 'primal-cache' | 'profile-cache'
+    attemptedAtMs?: number
+    candidateSinceMs?: number
     host?: string
   }>,
 ) => {
@@ -754,7 +807,9 @@ const createAvatarLatencyInput = (
   }
   runtimeSnapshot.overlay.byDrawFallbackReason = {}
   runtimeSnapshot.overlay.byCacheState = { ready: durations.length }
-  runtimeSnapshot.overlay.nodes = durations.map((item, index) => ({
+  runtimeSnapshot.overlay.nodes = durations.map((item, index) => {
+    const candidateSinceMs = item.candidateSinceMs ?? 10_000
+    return {
     pubkey: item.pubkey,
     label: `Node ${index}`,
     url: `https://${item.host ?? 'cdn.example'}/${item.pubkey}.png`,
@@ -781,19 +836,21 @@ const createAvatarLatencyInput = (
     requestedBucket: 64,
     hasPictureUrl: true,
     hasSafePictureUrl: true,
-    candidateSinceMs: 10_000,
-    firstImageDrawAtMs: 10_000 + item.firstPaintMs,
-    lastImageDrawAtMs: 10_000 + item.firstPaintMs,
+    candidateSinceMs,
+    firstImageDrawAtMs: candidateSinceMs + item.firstPaintMs,
+    lastImageDrawAtMs: candidateSinceMs + item.firstPaintMs,
     imageDrawCount: 1,
-  }))
-  runtimeSnapshot.loader.recentAttempts = durations.map((item) => ({
+  }})
+  runtimeSnapshot.loader.recentAttempts = durations.map((item) => {
+    const candidateSinceMs = item.candidateSinceMs ?? 10_000
+    return {
     path: 'direct',
     stage: 'primary',
     policy: 'direct-first',
-    startedAt: 10_000 + item.profileMs,
-    responseReadyAt: 10_000 + item.profileMs + Math.floor(item.imageMs / 2),
-    decodeReadyAt: 10_000 + item.profileMs + item.imageMs,
-    completedAt: 10_000 + item.profileMs + item.imageMs,
+    startedAt: candidateSinceMs + item.profileMs,
+    responseReadyAt: candidateSinceMs + item.profileMs + Math.floor(item.imageMs / 2),
+    decodeReadyAt: candidateSinceMs + item.profileMs + item.imageMs,
+    completedAt: candidateSinceMs + item.profileMs + item.imageMs,
     durationMs: item.imageMs,
     result: 'ready',
     reason: null,
@@ -801,7 +858,7 @@ const createAvatarLatencyInput = (
     host: item.host ?? 'cdn.example',
     pubkey: item.pubkey,
     urlKey: `${item.pubkey}::https://${item.host ?? 'cdn.example'}/${item.pubkey}.png`,
-  }))
+  }})
 
   const input = createBaseInput(runtimeSnapshot)
   input.visibleProfileWarmup = {
@@ -824,18 +881,20 @@ const createAvatarLatencyInput = (
       relayCompletedCount: durations.filter((item) => (item.source ?? 'relay') !== 'profile-cache').length,
       p50RelayMs: null,
       p95RelayMs: null,
-      attempts: durations.map((item) => ({
+      attempts: durations.map((item) => {
+        const attemptedAtMs = item.attemptedAtMs ?? 10_000
+        return {
         pubkey: item.pubkey,
         pubkeyShort: item.pubkey.slice(0, 12),
-        attemptedAtMs: 10_000,
-        ageMs: 10_000,
-        completedAtMs: 10_000 + item.profileMs,
+        attemptedAtMs,
+        ageMs: 20_000 - attemptedAtMs,
+        completedAtMs: attemptedAtMs + item.profileMs,
         durationMs: item.source === 'profile-cache' ? null : item.profileMs,
         source: item.source ?? 'relay',
         status: item.source === 'profile-cache' ? 'cached-before-attempt' : 'ready',
         hasPicture: true,
         profileState: 'ready',
-      })),
+      }}),
     },
   }
   return input
@@ -1065,6 +1124,24 @@ test('runtime inspector exposes renderer diagnostics in the summary', () => {
   assert.equal(snapshot.renderer.tone, 'neutral')
   assert.equal(snapshot.renderer.resumen, 'Sin muestra de renderer')
   assert.ok(snapshot.summary.some((item) => item.id === 'renderer'))
+})
+
+test('runtime inspector treats a plain scene refresh frame as stable renderer work', () => {
+  const input = createBaseInput(createAvatarRuntimeSnapshot())
+  input.avatarRuntimeSnapshot = null
+  const renderer = createRendererDiagnostics()
+  renderer.invalidation.pendingContainerRefreshFrame = true
+  renderer.invalidation.lastInvalidation = {
+    action: 'refresh',
+    atMs: 30_385,
+  }
+  input.rendererDiagnostics = renderer
+
+  const snapshot = buildRuntimeInspectorSnapshot(input)
+
+  assert.equal(snapshot.renderer.tone, 'ok')
+  assert.equal(snapshot.renderer.resumen, 'Renderer estable')
+  assert.equal(snapshot.primary.titulo, 'Sin alerta dominante')
 })
 
 test('runtime inspector flags drag without bounds lock as renderer risk', () => {

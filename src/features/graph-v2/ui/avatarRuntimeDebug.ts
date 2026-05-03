@@ -193,7 +193,7 @@ const buildAvatarRuntimeLatencyDebug = ({
       .slice(0, 120) ?? []
 
   return {
-    scope: 'visible-profile-warmup-to-first-image-paint',
+    scope: 'visible-candidate-to-first-image-paint-with-profile-warmup-context',
     profileWarmup: profileWarmup?.latency ?? null,
     loaderRecentAttempts,
     visiblePaints,

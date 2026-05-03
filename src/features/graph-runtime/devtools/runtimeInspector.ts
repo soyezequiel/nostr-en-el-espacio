@@ -359,6 +359,21 @@ const percentile = (values: number[], percentileValue: number) => {
   return sorted[Math.min(sorted.length - 1, Math.max(0, index))] ?? null
 }
 
+const finiteNumberOrNull = (value: number | null | undefined) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+
+const positiveDeltaOrNull = (
+  end: number | null | undefined,
+  start: number | null | undefined,
+) => {
+  const endValue = finiteNumberOrNull(end)
+  const startValue = finiteNumberOrNull(start)
+  if (endValue === null || startValue === null) {
+    return null
+  }
+  return Math.max(0, endValue - startValue)
+}
+
 const compactPubkey = (value: string) =>
   value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-4)}` : value
 
@@ -1021,30 +1036,51 @@ const buildAvatarLatencySection = (
     overlay?.nodes
       .map((node) => {
         const warmup = warmupByPubkey.get(node.pubkey)
-        if (
-          !warmup ||
-          node.firstImageDrawAtMs === null ||
-          node.firstImageDrawAtMs === undefined
-        ) {
+        const firstImageDrawAtMs = finiteNumberOrNull(node.firstImageDrawAtMs)
+        const candidateSinceMs = finiteNumberOrNull(node.candidateSinceMs)
+        if (!warmup || firstImageDrawAtMs === null || candidateSinceMs === null) {
           return null
         }
-        const durationMs = node.firstImageDrawAtMs - warmup.attemptedAtMs
-        if (!Number.isFinite(durationMs) || durationMs < 0) {
+        const durationMs = positiveDeltaOrNull(firstImageDrawAtMs, candidateSinceMs)
+        if (durationMs === null) {
           return null
         }
         const profileMs = warmup.durationMs
-        const imageAttempt = loaderAttempts
-          .filter(
-            (attempt) =>
-              attempt.pubkey === node.pubkey &&
-              attempt.result === 'ready' &&
-              attempt.path !== 'disk',
-          )
-          .sort((left, right) => right.durationMs - left.durationMs)[0]
+        const profileVisibleWaitMs =
+          warmup.completedAtMs !== null && warmup.completedAtMs > candidateSinceMs
+            ? Math.max(
+                0,
+                Math.min(warmup.completedAtMs, firstImageDrawAtMs) -
+                  candidateSinceMs,
+              )
+            : null
+        const imageAttemptCandidates = loaderAttempts.filter(
+          (attempt) =>
+            attempt.pubkey === node.pubkey &&
+            attempt.result === 'ready' &&
+            attempt.path !== 'disk' &&
+            (node.urlKey === null || attempt.urlKey === node.urlKey),
+        )
+        const imageAttempt =
+          imageAttemptCandidates
+            .filter((attempt) => attempt.completedAt <= firstImageDrawAtMs)
+            .sort((left, right) => right.completedAt - left.completedAt)[0] ??
+          imageAttemptCandidates.sort(
+            (left, right) =>
+              Math.abs(left.completedAt - firstImageDrawAtMs) -
+              Math.abs(right.completedAt - firstImageDrawAtMs),
+          )[0]
         const imageMs = imageAttempt?.durationMs ?? null
+        const waitAfterProfileStart =
+          warmup.completedAtMs !== null
+            ? Math.max(candidateSinceMs, warmup.completedAtMs)
+            : candidateSinceMs
+        const visibleQueueMs = imageAttempt
+          ? positiveDeltaOrNull(imageAttempt.startedAt, waitAfterProfileStart)
+          : null
         const renderMs =
-          profileMs !== null && imageMs !== null
-            ? Math.max(0, durationMs - profileMs - imageMs)
+          imageAttempt !== undefined
+            ? positiveDeltaOrNull(firstImageDrawAtMs, imageAttempt.completedAt)
             : null
         return {
           pubkey: node.pubkey,
@@ -1053,6 +1089,8 @@ const buildAvatarLatencySection = (
           profileSource: warmup.source,
           durationMs,
           profileMs,
+          profileVisibleWaitMs,
+          visibleQueueMs,
           imageMs,
           renderMs,
         }
@@ -1073,6 +1111,12 @@ const buildAvatarLatencySection = (
   const imageDurations = loaderAttempts
     .filter((attempt) => attempt.result === 'ready' && attempt.path !== 'disk')
     .map((attempt) => attempt.durationMs)
+  const visibleQueueDurations = endToEndSamples
+    .map((sample) => sample.visibleQueueMs)
+    .filter((value): value is number => value !== null)
+  const renderDurations = endToEndSamples
+    .map((sample) => sample.renderMs)
+    .filter((value): value is number => value !== null)
 
   const p50EndToEnd = percentile(endToEndDurations, 50)
   const p95EndToEnd = percentile(endToEndDurations, 95)
@@ -1080,6 +1124,10 @@ const buildAvatarLatencySection = (
   const p95Profile = percentile(profileRelayDurations, 95)
   const p50Image = percentile(imageDurations, 50)
   const p95Image = percentile(imageDurations, 95)
+  const p50VisibleQueue = percentile(visibleQueueDurations, 50)
+  const p95VisibleQueue = percentile(visibleQueueDurations, 95)
+  const p50Render = percentile(renderDurations, 50)
+  const p95Render = percentile(renderDurations, 95)
   const schedulerOldestInflightMs =
     snapshot?.scheduler?.inflight.reduce<number | null>((oldest, item) => {
       const ageMs = Math.max(0, sampleNowMs - item.startedAt)
@@ -1137,17 +1185,19 @@ const buildAvatarLatencySection = (
   }
 
   const latencyCases = endToEndSamples
+    .filter((sample) => sample.durationMs > 0)
     .sort((left, right) => right.durationMs - left.durationMs)
     .slice(0, 6)
     .map((sample) => {
       const stages = [
-        { label: 'perfil relay/cache', value: sample.profileMs },
+        { label: 'perfil relay/cache', value: sample.profileVisibleWaitMs },
+        { label: 'cola visible', value: sample.visibleQueueMs },
         { label: 'imagen HTTP/decode', value: sample.imageMs },
         { label: 'render/paint', value: sample.renderMs },
       ].filter((stage): stage is { label: string; value: number } => stage.value !== null)
       const dominant =
         stages.sort((left, right) => right.value - left.value)[0]?.label ??
-        'end-to-end'
+        'candidato->paint'
       return {
         nodo: sample.label,
         host: sample.host,
@@ -1161,13 +1211,13 @@ const buildAvatarLatencySection = (
     tone,
     summary:
       tone === 'bad'
-        ? 'La carga end-to-end de fotos esta venciendo el timeout operativo.'
+        ? 'La carga visible de fotos esta venciendo el timeout operativo.'
         : tone === 'warn'
-          ? 'Hay latencia visible en fotos, separada entre perfil, HTTP/decode y paint.'
+          ? 'Hay latencia visible en fotos, separada entre perfil, cola, HTTP/decode y paint.'
           : null,
     metricas: [
       {
-        label: 'End-to-end p50/p95',
+        label: 'Candidato->paint p50/p95',
         value: `${formatDurationMs(p50EndToEnd)} / ${formatDurationMs(p95EndToEnd)}`,
         tone,
       },
@@ -1182,17 +1232,27 @@ const buildAvatarLatencySection = (
         tone: (p95Image ?? 0) > 2500 ? 'warn' : 'ok',
       },
       {
+        label: 'Cola visible p50/p95',
+        value: `${formatDurationMs(p50VisibleQueue)} / ${formatDurationMs(p95VisibleQueue)}`,
+        tone: (p95VisibleQueue ?? 0) > 2500 ? 'warn' : 'ok',
+      },
+      {
+        label: 'Paint post-decode p50/p95',
+        value: `${formatDurationMs(p50Render)} / ${formatDurationMs(p95Render)}`,
+        tone: (p95Render ?? 0) > 2500 ? 'warn' : 'ok',
+      },
+      {
         label: 'Inflight mas viejo',
         value: formatDurationMs(oldestInflightValue),
         tone: (oldestInflightValue ?? 0) > 4000 ? 'warn' : 'ok',
       },
       {
-        label: 'Cola visible',
+        label: 'Candidatos pendientes',
         value: formatInteger(visibleQueue),
         tone: visibleQueue > 0 ? 'warn' : 'ok',
       },
       {
-        label: 'Muestras end-to-end',
+        label: 'Muestras candidato->paint',
         value: formatInteger(endToEndDurations.length),
         tone: endToEndDurations.length < 3 ? 'neutral' : 'ok',
       },
@@ -1313,13 +1373,13 @@ const buildAvatarSection = (
     tone = latencia.tone
     resumen =
       latencia.tone === 'bad'
-        ? 'Fotos muy lentas end-to-end'
-        : 'Fotos lentas end-to-end'
+        ? 'Fotos muy lentas al pintar'
+        : 'Fotos lentas al pintar'
     quePasaAhora =
       latencia.summary ??
-      'Hay latencia medible entre el warmup de perfil visible y el primer paint de la imagen.'
+      'Hay latencia medible entre la candidatura visible y el primer paint de la imagen.'
     queLeerAhora =
-      'Abre Lentitud de carga para separar si el tiempo esta en perfil Nostr, HTTP/decode o render.'
+      'Abre Lentitud de carga para separar si el tiempo esta en perfil Nostr, cola visible, HTTP/decode o render.'
   }
 
   const reasons = new Map<string, number>()
@@ -2051,9 +2111,10 @@ const buildRendererSection = (
   const boundsLocked = diagnostics.projection.graphBoundsLocked
   const customBBoxActive = diagnostics.projection.customBBox !== null
   const pendingUnlock = diagnostics.invalidation.pendingGraphBoundsUnlockFrame
-  const pendingRenderWork =
+  const pendingSceneRefreshWork =
     diagnostics.invalidation.pendingContainerRefresh ||
-    diagnostics.invalidation.pendingContainerRefreshFrame ||
+    diagnostics.invalidation.pendingContainerRefreshFrame
+  const pendingInteractionRenderWork =
     diagnostics.invalidation.pendingDragFrame ||
     diagnostics.invalidation.pendingPhysicsBridgeFrame ||
     diagnostics.invalidation.pendingFitCameraAfterPhysicsFrame ||
@@ -2181,13 +2242,19 @@ const buildRendererSection = (
       'La posicion renderizada y la posicion de fisica difieren en al menos una muestra.'
     queLeerAhora =
       'Revisar flushPhysicsPositionBridge y el sync puntual de nodos visibles al soltar.'
-  } else if (pendingRenderWork) {
+  } else if (pendingInteractionRenderWork) {
     tone = 'warn'
     resumen = 'Renderer con trabajo pendiente'
     quePasaAhora =
       'Hay invalidaciones pendientes de render, bridge de fisica o desbloqueo de bounds.'
     queLeerAhora =
       'Si el salto aparece mientras estas flags quedan prendidas, el problema esta en la fase de release/settle.'
+  } else if (pendingSceneRefreshWork) {
+    resumen = 'Renderer estable'
+    quePasaAhora =
+      'Hay un refresh de escena ya agendado, pero no hay drag, bridge de fisica, unlock ni salto de coordenadas pendiente.'
+    queLeerAhora =
+      'Tratalo como trabajo normal de escena salvo que se combine con saltos, locks o deltas de proyeccion.'
   } else if (missingSamples) {
     tone = 'warn'
     resumen = 'Sin muestras de nodos'

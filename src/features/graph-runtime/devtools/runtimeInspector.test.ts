@@ -1115,6 +1115,51 @@ test('runtime inspector treats layer-filter-only coverage as non-dominant', () =
   assert.equal(snapshot.primary.abrirAhora, 'performance')
 })
 
+test('runtime inspector distinguishes COUNT estimates from inbound evidence gaps', () => {
+  const input = createBaseInput(createAvatarRuntimeSnapshot())
+  input.sceneState.activeLayer = 'mutuals'
+  input.scene.render.diagnostics.activeLayer = 'mutuals'
+  input.scene.render.diagnostics.nodeCount = 1619
+  input.uiState.rootLoad.status = 'ready'
+  input.uiState.rootLoad.visibleLinkProgress = {
+    visibleLinkCount: 5617,
+    contactListEventCount: 5,
+    inboundCandidateEventCount: 4293,
+    lastRelayUrl: 'wss://relay.utxo.one',
+    updatedAt: 1,
+    following: {
+      status: 'complete',
+      loadedCount: 1800,
+      totalCount: 1800,
+      isTotalKnown: true,
+    },
+    followers: {
+      status: 'complete',
+      loadedCount: 3267,
+      totalCount: 10000,
+      isTotalKnown: false,
+    },
+  }
+  input.graphSummary.nodeCount = 5617
+  input.graphSummary.linkCount = 3237
+  input.graphSummary.maxNodes = 10000
+
+  const snapshot = buildRuntimeInspectorSnapshot(input)
+  const candidateMetric = snapshot.coverage.cadena.find(
+    (item) => item.label === 'Eventos candidatos',
+  )
+  const followerMetric = snapshot.coverage.cadena.find(
+    (item) => item.label === 'Followers en grafo',
+  )
+
+  assert.equal(snapshot.coverage.tone, 'warn')
+  assert.equal(snapshot.coverage.resumen, 'COUNT y evidencia inbound no coinciden')
+  assert.match(snapshot.coverage.quePasaAhora, /solo llegaron 4\.293 eventos candidatos/i)
+  assert.doesNotMatch(snapshot.coverage.quePasaAhora, /La evidencia inbound llego/i)
+  assert.equal(candidateMetric?.tone, 'warn')
+  assert.equal(followerMetric?.tone, 'warn')
+})
+
 test('runtime inspector exposes renderer diagnostics in the summary', () => {
   const input = createBaseInput(createAvatarRuntimeSnapshot())
   input.avatarRuntimeSnapshot = null

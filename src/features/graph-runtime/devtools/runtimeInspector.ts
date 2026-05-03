@@ -760,9 +760,40 @@ const buildCoverageSection = (
     input.sceneState.activeLayer !== 'followers'
   const coverageLooksComplete =
     expectedFollowers !== null && followerCountInGraph >= expectedFollowers
+  const overallCoverageLooksLow =
+    expectedFollowers !== null &&
+    followerCountInGraph < Math.max(5, Math.floor(expectedFollowers * 0.35))
+  const inboundEvidenceLooksLow =
+    expectedFollowers !== null &&
+    inboundCandidateEvents < Math.max(5, Math.floor(expectedFollowers * 0.75))
+  const graphStillTrailsInboundEvidence =
+    inboundCandidateEvents > 0 &&
+    followerCountInGraph < Math.max(5, Math.floor(inboundCandidateEvents * 0.6))
   const visibleNodeCount = input.scene.render.diagnostics.nodeCount
   const activeLayerIsHidingLoadedFollowers =
     activeLayerFiltersFollowers && visibleNodeCount < followerCountInGraph
+  const expectedFollowersLabel =
+    expectedFollowers === null
+      ? 'sin total confirmado'
+      : `${expectedApproximate ? '~' : ''}${formatInteger(expectedFollowers)}`
+  const candidateMetricTone: RuntimeInspectorTone =
+    expectedFollowers !== null && inboundCandidateEvents === 0
+      ? 'bad'
+      : inboundEvidenceLooksLow
+        ? 'warn'
+        : inboundCandidateEvents === 0
+          ? 'warn'
+          : 'ok'
+  const followerMetricTone: RuntimeInspectorTone =
+    inboundCandidateEvents > 0
+      ? graphStillTrailsInboundEvidence
+        ? 'bad'
+        : followerCountInGraph < inboundCandidateEvents
+          ? 'warn'
+          : 'ok'
+      : overallCoverageLooksLow
+        ? 'bad'
+        : 'ok'
 
   let tone: RuntimeInspectorTone = 'ok'
   let resumen = 'Cobertura consistente'
@@ -771,20 +802,41 @@ const buildCoverageSection = (
   let queLeerAhora =
     'Revisa relays si esperabas un numero mayor, o cambia a la capa "Me siguen" para aislar followers.'
 
-  if (
-    expectedFollowers !== null &&
-    followerCountInGraph < Math.max(5, Math.floor(expectedFollowers * 0.35))
-  ) {
-    tone = 'bad'
-    resumen = 'Cobertura incompleta'
-    quePasaAhora =
-      inboundCandidateEvents === 0
-        ? 'COUNT sugiere followers, pero casi no llego evidencia inbound.'
-        : 'La evidencia inbound llego, pero el grafo todavia integra muchos menos followers de los esperados.'
-    queLeerAhora =
-      input.graphSummary.capReached
-        ? 'Abre Relays y revisa tambien el cap de nodos: el runtime puede estar recortando cobertura.'
-        : 'Abre Relays para ver si faltan consultas utiles o si la carga sigue parcial.'
+  if (overallCoverageLooksLow) {
+    if (inboundCandidateEvents === 0) {
+      tone = 'bad'
+      resumen = 'Cobertura incompleta'
+      quePasaAhora =
+        'COUNT sugiere followers, pero casi no llego evidencia inbound.'
+      queLeerAhora =
+        input.graphSummary.capReached
+          ? 'Abre Relays y revisa tambien el cap de nodos: el runtime puede estar recortando cobertura.'
+          : 'Abre Relays para ver si faltan consultas utiles o si la carga sigue parcial.'
+    } else if (expectedApproximate && inboundEvidenceLooksLow) {
+      tone = 'warn'
+      resumen = 'COUNT y evidencia inbound no coinciden'
+      quePasaAhora = `COUNT estima ${expectedFollowersLabel} followers, pero solo llegaron ${formatInteger(inboundCandidateEvents)} eventos candidatos y el grafo hoy integra ${formatInteger(followerCountInGraph)}. El mayor recorte sigue antes de integrar todo al grafo.`
+      queLeerAhora =
+        'Abre Relays para ver si faltan consultas utiles, si COUNT no esta soportado o si la carga quedo corta frente a la estimacion.'
+    } else if (graphStillTrailsInboundEvidence) {
+      tone = 'bad'
+      resumen = 'Integracion inbound incompleta'
+      quePasaAhora = `Llegaron ${formatInteger(inboundCandidateEvents)} eventos candidatos, pero el grafo solo integra ${formatInteger(followerCountInGraph)} followers. El gap ya no parece solo de COUNT: parte de la evidencia inbound todavia no termino de entrar al grafo.`
+      queLeerAhora =
+        input.uiState.rootLoad.status === 'loading' ||
+        input.uiState.rootLoad.status === 'partial'
+          ? 'Abre Carga Root para ver si la integracion sigue abierta o quedo parcial.'
+          : 'Abre Cobertura y Carga Root para revisar el tramo entre evidencia inbound y followers en grafo.'
+    } else {
+      tone = 'bad'
+      resumen = 'Cobertura incompleta'
+      quePasaAhora =
+        'La evidencia inbound llego, pero el grafo todavia integra muchos menos followers de los esperados.'
+      queLeerAhora =
+        input.graphSummary.capReached
+          ? 'Abre Relays y revisa tambien el cap de nodos: el runtime puede estar recortando cobertura.'
+          : 'Abre Relays para ver si faltan consultas utiles o si la carga sigue parcial.'
+    }
   } else if (input.graphSummary.capReached) {
     tone = 'warn'
     resumen = 'Cobertura recortada por cap'
@@ -832,10 +884,7 @@ const buildCoverageSection = (
     cadena: [
       {
         label: 'Esperado inbound',
-        value:
-          expectedFollowers === null
-            ? 'sin total confirmado'
-            : `${expectedApproximate ? '~' : ''}${formatInteger(expectedFollowers)}`,
+        value: expectedFollowersLabel,
         tone:
           expectedFollowers !== null && followerCountInGraph < expectedFollowers
             ? 'warn'
@@ -844,16 +893,12 @@ const buildCoverageSection = (
       {
         label: 'Eventos candidatos',
         value: formatInteger(inboundCandidateEvents),
-        tone: inboundCandidateEvents === 0 ? 'warn' : 'ok',
+        tone: candidateMetricTone,
       },
       {
         label: 'Followers en grafo',
         value: formatInteger(followerCountInGraph),
-        tone:
-          expectedFollowers !== null &&
-          followerCountInGraph < Math.max(5, expectedFollowers * 0.35)
-            ? 'bad'
-            : 'ok',
+        tone: followerMetricTone,
       },
       {
         label: 'Nodos en pantalla',

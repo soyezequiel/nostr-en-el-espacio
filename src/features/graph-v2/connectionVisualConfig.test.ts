@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   DEFAULT_CONNECTION_VISUAL_CONFIG,
+  DEFAULT_MUTUAL_CONNECTION_COLOR,
   normalizeConnectionVisualConfig,
 } from '@/features/graph-v2/connectionVisualConfig'
 
@@ -12,6 +13,7 @@ test('connection visual config defaults match the curated starting look', () => 
     thicknessScale: 0.55,
     colorMode: 'calm',
     focusStyle: 'balanced',
+    mutualColor: DEFAULT_MUTUAL_CONNECTION_COLOR,
   })
 })
 
@@ -28,7 +30,22 @@ test('connection visual config normalizes invalid modes to curated defaults', ()
     thicknessScale: 1.25,
     colorMode: DEFAULT_CONNECTION_VISUAL_CONFIG.colorMode,
     focusStyle: DEFAULT_CONNECTION_VISUAL_CONFIG.focusStyle,
+    mutualColor: DEFAULT_CONNECTION_VISUAL_CONFIG.mutualColor,
   })
+})
+
+test('connection visual config normalizes mutual color to a safe hex value', () => {
+  const config = normalizeConnectionVisualConfig({
+    mutualColor: '  #66F2FF  ',
+  })
+
+  assert.equal(config.mutualColor, '#66f2ff')
+
+  const invalid = normalizeConnectionVisualConfig({
+    mutualColor: 'rgba(255, 255, 255, 0.5)',
+  })
+
+  assert.equal(invalid.mutualColor, DEFAULT_MUTUAL_CONNECTION_COLOR)
 })
 
 test('connection visual config clamps opacity and thickness scale', () => {
@@ -55,6 +72,7 @@ test('connection visual config survives JSON roundtrip with stable normalized va
     thicknessScale: 1.4,
     colorMode: 'calm',
     focusStyle: 'dramatic',
+    mutualColor: '#ff7ab6',
   })
 
   const roundtrip = normalizeConnectionVisualConfig(

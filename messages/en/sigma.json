@@ -367,6 +367,10 @@
         "calm": "Calm",
         "mono": "Monochrome"
       },
+      "mutualColor": "Mutual color",
+      "mutualColorDesc": "Changes the base color for mutual connections. Calm palette mixes it slightly to reduce glare.",
+      "mutualColorPresets": "Mutual color presets",
+      "chooseMutualColor": "Use {color} for mutuals",
       "connectionFocusStyle": "Focus emphasis",
       "connectionFocusStyleDesc": "Controls how dramatic the focused connection feels against the dimmed background.",
       "connectionFocusStyles": {

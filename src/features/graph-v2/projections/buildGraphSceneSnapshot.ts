@@ -12,6 +12,7 @@ import {
 } from '@/features/graph-runtime/debug/perfTrace'
 import { sortAndDedupeDirectedEdges } from '@/features/graph-v2/projections/dedupeEdges'
 import { buildLayerProjection } from '@/features/graph-v2/projections/buildLayerProjection'
+import { DEFAULT_MUTUAL_CONNECTION_COLOR } from '@/features/graph-v2/connectionVisualConfig'
 import {
   DEFAULT_GRAPH_SCENE_NODE_SIZE_CONFIG,
   getGraphSceneNodeSizeConfigSignature,
@@ -35,7 +36,7 @@ const edgeColorByRelation: Record<CanonicalEdge['relation'], string> = {
   inbound: '#ffb86b',
   zap: '#ff5da2',
 }
-const MUTUAL_EDGE_COLOR = '#5fd39d'
+const MUTUAL_EDGE_COLOR = DEFAULT_MUTUAL_CONNECTION_COLOR
 const COMMON_NODE_PALETTE = [
   '#91abc8',
   '#8fb8b1',
@@ -280,6 +281,7 @@ const mapRenderEdge = (
     relation: edge.relation,
     weight: edge.weight,
     opacityScale: resolveEdgeOpacityScale(edge, options),
+    isMutual: options.isMutual,
     isDimmed: false,
     touchesFocus: false,
   }

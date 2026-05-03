@@ -299,15 +299,18 @@ const applyColorOpacity = (color: string, opacity: number) => {
 const resolveConnectionBaseColor = (
   color: string,
   config: ConnectionVisualConfig,
+  isMutual = false,
 ) => {
+  const baseColor = isMutual ? config.mutualColor : color
+
   switch (config.colorMode) {
     case 'calm':
-      return mixColor(color, '#6c7a8d', 0.42)
+      return mixColor(baseColor, '#6c7a8d', 0.42)
     case 'mono':
       return '#7a92bd'
     case 'semantic':
     default:
-      return color
+      return baseColor
   }
 }
 
@@ -1720,13 +1723,14 @@ export class SigmaRendererAdapter implements RendererAdapter {
     this.safeRender()
   }
 
-  public setConnectionVisualConfig(config: ConnectionVisualConfig) {
+  public setConnectionVisualConfig(config: Partial<ConnectionVisualConfig>) {
     const nextConfig = normalizeConnectionVisualConfig(config)
     if (
       this.connectionVisualConfig.opacity === nextConfig.opacity &&
       this.connectionVisualConfig.thicknessScale === nextConfig.thicknessScale &&
       this.connectionVisualConfig.colorMode === nextConfig.colorMode &&
-      this.connectionVisualConfig.focusStyle === nextConfig.focusStyle
+      this.connectionVisualConfig.focusStyle === nextConfig.focusStyle &&
+      this.connectionVisualConfig.mutualColor === nextConfig.mutualColor
     ) {
       return
     }
@@ -4124,7 +4128,11 @@ export class SigmaRendererAdapter implements RendererAdapter {
   ): RenderEdgeAttributes {
     return {
       ...data,
-      color: resolveConnectionBaseColor(data.color, this.connectionVisualConfig),
+      color: resolveConnectionBaseColor(
+        data.color,
+        this.connectionVisualConfig,
+        data.isMutual,
+      ),
       size: resolveConnectionBaseSize(data.size, this.connectionVisualConfig),
     }
   }

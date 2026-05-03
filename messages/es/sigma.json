@@ -367,6 +367,10 @@
         "calm": "Calmada",
         "mono": "Monocromo"
       },
+      "mutualColor": "Color de mutuos",
+      "mutualColorDesc": "Cambia el color base de las conexiones mutuas. En paleta calmada se mezcla un poco para bajar el brillo.",
+      "mutualColorPresets": "Colores predefinidos de mutuos",
+      "chooseMutualColor": "Usar {color} para mutuos",
       "connectionFocusStyle": "Enfasis de foco",
       "connectionFocusStyleDesc": "Decide cuan teatral se ve la conexion enfocada frente al fondo atenuado.",
       "connectionFocusStyles": {

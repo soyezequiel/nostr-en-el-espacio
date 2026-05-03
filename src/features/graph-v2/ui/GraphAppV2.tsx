@@ -59,6 +59,7 @@ import {
   CONNECTION_OPACITY_STEP,
   CONNECTION_THICKNESS_SCALE_STEP,
   DEFAULT_CONNECTION_VISUAL_CONFIG,
+  MUTUAL_CONNECTION_COLOR_PRESETS,
   MAX_CONNECTION_OPACITY,
   MAX_CONNECTION_THICKNESS_SCALE,
   MIN_CONNECTION_OPACITY,
@@ -1941,6 +1942,9 @@ function VisualOptionsPanel({
   onToggleVisibleEdgeCountLabels: () => void
 }) {
   const t = useTranslations('sigma.settings.visuals')
+  const normalizedConnectionVisualConfig = normalizeConnectionVisualConfig(
+    connectionVisualConfig,
+  )
   const connectionColorModes: ConnectionColorMode[] = ['semantic', 'calm', 'mono']
   const connectionFocusStyles: ConnectionFocusStyle[] = ['soft', 'balanced', 'dramatic']
 
@@ -1974,7 +1978,7 @@ function VisualOptionsPanel({
           <div className="sg-slider-row__head">
             <span className="sg-slider-row__lbl">{t('connectionOpacity')}</span>
             <span className="sg-slider-row__val">
-              {Math.round(connectionVisualConfig.opacity * 100)}%
+              {Math.round(normalizedConnectionVisualConfig.opacity * 100)}%
             </span>
           </div>
           <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 4px' }}>
@@ -1986,20 +1990,20 @@ function VisualOptionsPanel({
             min={MIN_CONNECTION_OPACITY}
             onChange={(event) => {
               onConnectionVisualConfigChange({
-                ...connectionVisualConfig,
+                ...normalizedConnectionVisualConfig,
                 opacity: Number.parseFloat(event.target.value),
               })
             }}
             step={CONNECTION_OPACITY_STEP}
             type="range"
-            value={connectionVisualConfig.opacity}
+            value={normalizedConnectionVisualConfig.opacity}
           />
         </div>
         <div className="sg-slider-row">
           <div className="sg-slider-row__head">
             <span className="sg-slider-row__lbl">{t('connectionThickness')}</span>
             <span className="sg-slider-row__val">
-              {connectionVisualConfig.thicknessScale.toFixed(2)}x
+              {normalizedConnectionVisualConfig.thicknessScale.toFixed(2)}x
             </span>
           </div>
           <p style={{ fontSize: 10.5, color: 'var(--sg-fg-faint)', margin: '2px 0 4px' }}>
@@ -2011,13 +2015,13 @@ function VisualOptionsPanel({
             min={MIN_CONNECTION_THICKNESS_SCALE}
             onChange={(event) => {
               onConnectionVisualConfigChange({
-                ...connectionVisualConfig,
+                ...normalizedConnectionVisualConfig,
                 thicknessScale: Number.parseFloat(event.target.value),
               })
             }}
             step={CONNECTION_THICKNESS_SCALE_STEP}
             type="range"
-            value={connectionVisualConfig.thicknessScale}
+            value={normalizedConnectionVisualConfig.thicknessScale}
           />
         </div>
         <div className="sg-setting-stack">
@@ -2030,10 +2034,10 @@ function VisualOptionsPanel({
           >
             {connectionColorModes.map((mode) => (
               <button
-                className={`sg-segmented-control__btn${connectionVisualConfig.colorMode === mode ? ' sg-segmented-control__btn--active' : ''}`}
+                className={`sg-segmented-control__btn${normalizedConnectionVisualConfig.colorMode === mode ? ' sg-segmented-control__btn--active' : ''}`}
                 key={mode}
                 onClick={() => onConnectionVisualConfigChange({
-                  ...connectionVisualConfig,
+                  ...normalizedConnectionVisualConfig,
                   colorMode: mode,
                 })}
                 type="button"
@@ -2041,6 +2045,51 @@ function VisualOptionsPanel({
                 {t(`connectionPaletteModes.${mode}`)}
               </button>
             ))}
+          </div>
+        </div>
+        <div className="sg-setting-stack">
+          <div className="sg-setting-row__lbl">{t('mutualColor')}</div>
+          <div className="sg-setting-row__desc">{t('mutualColorDesc')}</div>
+          <div className="sg-color-control">
+            <label className="sg-color-control__picker">
+              <span
+                aria-hidden="true"
+                className="sg-color-control__preview"
+                style={{ backgroundColor: normalizedConnectionVisualConfig.mutualColor }}
+              />
+              <span className="sg-color-control__value">
+                {normalizedConnectionVisualConfig.mutualColor}
+              </span>
+              <input
+                aria-label={t('mutualColor')}
+                onChange={(event) => onConnectionVisualConfigChange({
+                  ...normalizedConnectionVisualConfig,
+                  mutualColor: event.target.value,
+                })}
+                type="color"
+                value={normalizedConnectionVisualConfig.mutualColor}
+              />
+            </label>
+            <div
+              aria-label={t('mutualColorPresets')}
+              className="sg-color-presets"
+              role="group"
+            >
+              {MUTUAL_CONNECTION_COLOR_PRESETS.map((color) => (
+                <button
+                  aria-label={t('chooseMutualColor', { color })}
+                  className={`sg-color-preset${normalizedConnectionVisualConfig.mutualColor === color ? ' sg-color-preset--active' : ''}`}
+                  key={color}
+                  onClick={() => onConnectionVisualConfigChange({
+                    ...normalizedConnectionVisualConfig,
+                    mutualColor: color,
+                  })}
+                  style={{ backgroundColor: color }}
+                  title={color}
+                  type="button"
+                />
+              ))}
+            </div>
           </div>
         </div>
         <div className="sg-setting-stack">
@@ -2053,10 +2102,10 @@ function VisualOptionsPanel({
           >
             {connectionFocusStyles.map((style) => (
               <button
-                className={`sg-segmented-control__btn${connectionVisualConfig.focusStyle === style ? ' sg-segmented-control__btn--active' : ''}`}
+                className={`sg-segmented-control__btn${normalizedConnectionVisualConfig.focusStyle === style ? ' sg-segmented-control__btn--active' : ''}`}
                 key={style}
                 onClick={() => onConnectionVisualConfigChange({
-                  ...connectionVisualConfig,
+                  ...normalizedConnectionVisualConfig,
                   focusStyle: style,
                 })}
                 type="button"

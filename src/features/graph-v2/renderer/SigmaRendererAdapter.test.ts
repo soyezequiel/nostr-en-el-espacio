@@ -1430,6 +1430,7 @@ type EdgeReducerHarness = {
     thicknessScale: number
     colorMode: 'semantic' | 'calm' | 'mono'
     focusStyle: 'soft' | 'balanced' | 'dramatic'
+    mutualColor?: string
   }) => void
   setHideConnectionsForLowPerformance: (enabled: boolean) => void
   edgeReducer: (
@@ -1441,6 +1442,7 @@ type EdgeReducerHarness = {
       label: string | null
       weight: number
       opacityScale?: number
+      isMutual?: boolean
       isDimmed: boolean
       touchesFocus: boolean
       zIndex: number
@@ -4323,6 +4325,62 @@ test('edge reducer applies curated base visuals to idle connections', async () =
   assert.equal(idleEdge.color, 'rgba(103, 156, 207, 0.175)')
   assert.equal(idleEdge.hidden, false)
   assert.equal(idleEdge.size, 1.5)
+})
+
+test('edge reducer applies the configured mutual color to mutual edges', async () => {
+  const { SigmaRendererAdapter } = await import(
+    '@/features/graph-v2/renderer/SigmaRendererAdapter'
+  )
+
+  const edgeEndpoints = new Map<string, [string, string]>([
+    ['A->B', ['A', 'B']],
+  ])
+  const adapter = new SigmaRendererAdapter() as unknown as EdgeReducerHarness
+  const baseEdge = {
+    size: 1,
+    color: '#5fd39d',
+    hidden: false,
+    label: null,
+    weight: 1,
+    opacityScale: 0.5,
+    isMutual: true,
+    isDimmed: false,
+    touchesFocus: false,
+    zIndex: 1,
+  }
+
+  adapter.sigma = {
+    getGraph: () => ({
+      hasEdge: (edgeId) => edgeEndpoints.has(edgeId),
+      source: (edgeId) => edgeEndpoints.get(edgeId)?.[0] ?? '',
+      target: (edgeId) => edgeEndpoints.get(edgeId)?.[1] ?? '',
+    }),
+  }
+  adapter.draggedNodePubkey = null
+  adapter.draggedNodeFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.currentHoverFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.selectedSceneFocus = {
+    pubkey: null,
+    neighbors: new Set(),
+  }
+  adapter.safeRender = () => {}
+  adapter.setConnectionVisualConfig({
+    opacity: 0.8,
+    thicknessScale: 1,
+    colorMode: 'semantic',
+    focusStyle: 'balanced',
+    mutualColor: '#ff7ab6',
+  })
+
+  const idleEdge = adapter.edgeReducer('A->B', baseEdge)
+
+  assert.equal(idleEdge.color, 'rgba(255, 122, 182, 0.4)')
 })
 
 test('edge reducer keeps focus highlighting fully legible while using the selected focus preset', async () => {

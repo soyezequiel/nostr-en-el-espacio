@@ -1692,6 +1692,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
 
     this.hideAvatarsOnMove = enabled
+    this.avatarOverlay?.invalidateFrameCache()
     this.safeRefresh()
   }
 
@@ -1706,6 +1707,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     } else {
       this.avatarBudget?.disable()
     }
+    this.avatarOverlay?.invalidateFrameCache()
     this.safeRefresh()
   }
 
@@ -1815,6 +1817,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
     }
 
     this.avatarRuntimeOptions = nextOptions
+    this.avatarOverlay?.invalidateFrameCache()
     this.safeRefresh()
   }
 
@@ -3363,6 +3366,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
         cache: this.avatarCache,
         loader: this.avatarLoader,
         onSettled: () => {
+          this.avatarOverlay?.invalidateFrameCache()
           this.scheduleAvatarSettledRefresh()
         },
       })

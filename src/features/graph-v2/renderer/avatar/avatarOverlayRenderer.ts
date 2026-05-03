@@ -26,11 +26,11 @@ import type {
   AvatarScheduler,
 } from '@/features/graph-v2/renderer/avatar/avatarScheduler'
 import {
-  PERF_BUDGET_DOWNGRADE_MS,
   type PerfBudget,
 } from '@/features/graph-v2/renderer/avatar/perfBudget'
 import {
   DEFAULT_AVATAR_RUNTIME_OPTIONS,
+  type AvatarEntry,
   type AvatarBudget,
   type AvatarRuntimeOptions,
   type AvatarUrlKey,
@@ -65,6 +65,7 @@ const HIGH_QUALITY_AVATAR_MAX_BUCKET: ImageLodBucket = 512
 const ALL_VISIBLE_AVATAR_LOAD_CONCURRENCY_FLOOR = 6
 const ALL_VISIBLE_AVATAR_LOAD_CONCURRENCY_CEILING = 8
 const AVATAR_URL_METADATA_CACHE_CAP = 4096
+const AVATAR_FRAME_SIGNATURE_PRECISION = 2
 const EMPTY_SET = new Set<string>()
 interface AvatarDrawSelectionItem {
   pubkey: string
@@ -316,6 +317,95 @@ export const retainAvatarDrawItemsForFrame = <
   return retainedItems
 }
 
+export const selectAvatarLoadItemsForFrame = <
+  T extends AvatarImageSelectionItem,
+>(
+  visibleItems: readonly T[],
+  drawItems: readonly T[],
+  cacheAllVisibleImages: boolean,
+): readonly T[] => (cacheAllVisibleImages ? visibleItems : drawItems)
+
+const roundAvatarFrameSignatureNumber = (value: number) =>
+  Number.isFinite(value)
+    ? Math.round(value * AVATAR_FRAME_SIGNATURE_PRECISION) /
+      AVATAR_FRAME_SIGNATURE_PRECISION
+    : 0
+
+export const createAvatarOverlayFrameSignature = ({
+  cameraSignature,
+  frameViewport,
+  drawItems,
+  focusAuraItems,
+  expansionRingItems,
+  maxImageDrawsPerFrame,
+  globalMotionActive,
+}: {
+  cameraSignature: string
+  frameViewport: Pick<AvatarOverlayFrameViewport, 'width' | 'height'>
+  drawItems: readonly Pick<
+    AvatarDrawItem,
+    | 'pubkey'
+    | 'x'
+    | 'y'
+    | 'r'
+    | 'urlKey'
+    | 'fastMoving'
+    | 'monogramOnly'
+    | 'isPersistentAvatar'
+  >[]
+  focusAuraItems: readonly FocusAuraItem[]
+  expansionRingItems: readonly ExpansionRingItem[]
+  maxImageDrawsPerFrame: number
+  globalMotionActive: boolean
+}) => {
+  const parts = [
+    cameraSignature,
+    `${frameViewport.width}x${frameViewport.height}`,
+    `img:${maxImageDrawsPerFrame}`,
+    `motion:${globalMotionActive ? 1 : 0}`,
+    `draw:${drawItems.length}`,
+  ]
+  for (const item of drawItems) {
+    parts.push(
+      [
+        item.pubkey,
+        roundAvatarFrameSignatureNumber(item.x),
+        roundAvatarFrameSignatureNumber(item.y),
+        roundAvatarFrameSignatureNumber(item.r),
+        item.urlKey ?? '',
+        item.fastMoving ? 1 : 0,
+        item.monogramOnly ? 1 : 0,
+        item.isPersistentAvatar ? 1 : 0,
+      ].join(','),
+    )
+  }
+  parts.push(`focus:${focusAuraItems.length}`)
+  for (const item of focusAuraItems) {
+    parts.push(
+      [
+        item.pubkey,
+        roundAvatarFrameSignatureNumber(item.x),
+        roundAvatarFrameSignatureNumber(item.y),
+        roundAvatarFrameSignatureNumber(item.r),
+        item.color,
+      ].join(','),
+    )
+  }
+  parts.push(`rings:${expansionRingItems.length}`)
+  for (const item of expansionRingItems) {
+    parts.push(
+      [
+        item.pubkey,
+        roundAvatarFrameSignatureNumber(item.x),
+        roundAvatarFrameSignatureNumber(item.y),
+        roundAvatarFrameSignatureNumber(item.r),
+        roundAvatarFrameSignatureNumber(item.progress),
+      ].join(','),
+    )
+  }
+  return parts.join('|')
+}
+
 const withAlpha = (color: string, alpha: number) => {
   const normalized = color.trim()
   const match = normalized.match(/^#([\da-f]{3}|[\da-f]{6})$/i)
@@ -517,16 +607,11 @@ export const resolveAvatarFrameDrawCap = ({
 
 export const resolveEffectiveShowAllVisibleImages = ({
   requestedShowAllVisibleImages,
-  isDegraded,
-  emaFrameMs,
 }: {
   requestedShowAllVisibleImages: boolean
   isDegraded: boolean
   emaFrameMs: number
-}) =>
-  requestedShowAllVisibleImages &&
-  !isDegraded &&
-  (!Number.isFinite(emaFrameMs) || emaFrameMs < PERF_BUDGET_DOWNGRADE_MS)
+}) => requestedShowAllVisibleImages
 
 export const resolveAvatarCacheRetentionMode = ({
   requestedShowAllVisibleImages,
@@ -680,6 +765,9 @@ export class AvatarOverlayRenderer {
   private lastCameraSignature: string | null = null
   private lastVisibleNodePubkeys: string[] = []
   private lastDebugSnapshot: AvatarOverlayDebugSnapshot | null = null
+  private frameCacheCanvas: HTMLCanvasElement | null = null
+  private frameCacheSignature: string | null = null
+  private frameCacheDirty = true
   private lastAvatarTraceSignature: string | null = null
   private lastAvatarTraceAtMs = 0
   private readonly boundAfterRender: () => void
@@ -710,6 +798,8 @@ export class AvatarOverlayRenderer {
       cancelAnimationFrame(this.expansionAnimationFrameId)
       this.expansionAnimationFrameId = null
     }
+    this.frameCacheCanvas = null
+    this.frameCacheSignature = null
   }
 
   public getDebugSnapshot(): AvatarOverlayDebugSnapshot | null {
@@ -718,6 +808,10 @@ export class AvatarOverlayRenderer {
 
   public setDebugDetailsEnabled(enabled: boolean) {
     this.debugDetailsEnabled = enabled
+  }
+
+  public invalidateFrameCache() {
+    this.frameCacheDirty = true
   }
 
   public getVisibleNodePubkeys(): string[] {
@@ -915,8 +1009,8 @@ export class AvatarOverlayRenderer {
     })
     this.lastVisibleNodePubkeys = Array.from(seenNodes)
 
-    this.drawFocusAuras(ctx, focusAuraItems)
     if (!budget.drawAvatars) {
+      this.drawFocusAuras(ctx, focusAuraItems)
       this.drawExpansionRings(ctx, expansionRingItems)
       this.lastDebugSnapshot = {
         generatedAtMs: nowMs,
@@ -1032,7 +1126,7 @@ export class AvatarOverlayRenderer {
     const effectiveLoadConcurrency = resolveAvatarLoadConcurrency({
       baseConcurrency: budget.concurrency,
       visiblePhotoCount,
-      showAllVisibleImages: budget.showAllVisibleImages,
+      showAllVisibleImages: budget.cacheAllVisibleImages,
     })
     const schedulerBudget = {
       ...budget,
@@ -1064,84 +1158,55 @@ export class AvatarOverlayRenderer {
     const selectedForImagePubkeys = new Set(
       orderedDrawItems.map((item) => item.pubkey),
     )
+    const loadDrawItems = selectAvatarLoadItemsForFrame(
+      resolvedDrawItems,
+      orderedDrawItems,
+      budget.cacheAllVisibleImages,
+    )
     const maxImageDrawsPerFrame = resolveAvatarFrameDrawCap({
       baseCap: budget.maxImageDrawsPerFrame,
       visibleCount: visiblePhotoCount,
       showAllVisibleImages: budget.showAllVisibleImages,
     })
-    let nodesWithPictureUrlCount = 0
-    let selectedForImageCount = 0
+    const nodesWithPictureUrlCount = resolvedDrawItems.reduce(
+      (count, item) => count + (item.hasPictureUrl ? 1 : 0),
+      0,
+    )
+    const selectedForImageCount = selectedForImagePubkeys.size
     let pendingCacheMissCount = 0
     let pendingCandidateCount = 0
     let blockedCandidateCount = 0
     let inflightCandidateCount = 0
+    const loadDebugByPubkey = new Map<
+      string,
+      {
+        loadDecision: AvatarVisibleNodeDebugSnapshot['loadDecision']
+        loadSkipReason: string | null
+        requestedBucket: ImageLodBucket | null
+        blocked: boolean
+        blockReason: string | null
+        inflight: boolean
+      }
+    >()
 
-    for (const item of orderedDrawItems) {
+    for (const item of loadDrawItems) {
       const isPersistentAvatar = item.isPersistentAvatar
-      const selectedForImage = selectedForImagePubkeys.has(item.pubkey)
-      const hasVisibleMonogramPart =
-        item.monogramInput.showBackground !== false ||
-        item.monogramInput.showText !== false
       const hasPictureUrl = item.hasPictureUrl
       const hasSafePictureUrl = item.hasSafePictureUrl
       const urlKey = item.urlKey
       const avatarCacheEntry = urlKey !== null ? this.cache.get(urlKey) : null
-      const hasReadyImage = avatarCacheEntry?.state === 'ready'
+      const cacheState = avatarCacheEntry?.state ?? 'missing'
       const blockEntry =
         urlKey !== null ? this.getBlockedAvatar(urlKey) : null
       const inflight = urlKey !== null && this.scheduler.hasInflight(urlKey)
-      const itemGlobalMotionActive = resolveAvatarItemGlobalMotionActive({
-        globalMotionActive,
-        isPersistentAvatar,
-      })
       const itemFastMoving = isPersistentAvatar ? false : item.fastMoving
-      const disableImageReason =
-        hasPictureUrl && !hasSafePictureUrl
-          ? 'unsafe_url'
-          : resolveAvatarImageDisableReason({
-              selectedForImage,
-              globalMotionActive: itemGlobalMotionActive,
-              monogramOnly: item.monogramOnly,
-              fastMoving: itemFastMoving,
-              imageDrawCount,
-              maxImageDrawsPerFrame,
-              hasReadyImage,
-            })
-      const drawResult = this.drawAvatarCircle({
-        ctx: selectAvatarDrawContext(
-          item.pubkey,
-          forcedAvatarPubkeys,
-          ctx,
-          forcedCtx,
-        ),
-        x: item.x,
-        y: item.y,
-        r: item.r,
-        monogram: this.cache.getMonogram(item.pubkey, item.monogramInput),
-        url: item.url,
-        urlKey,
-        disableImageReason,
-        hasVisibleMonogramPart,
-      })
-
-      if (drawResult.kind === 'image') {
-        imageDrawCount += 1
-        drawnImageCount += 1
-      } else if (drawResult.kind === 'monogram') {
-        monogramDrawCount += 1
-        if (hasPictureUrl) {
-          withPictureMonogramDrawCount += 1
-        }
-      }
-
       let loadSkipReason: string | null = null
       let requestedBucket: ImageLodBucket | null = null
+
       if (!hasPictureUrl) {
         loadSkipReason = 'missing_url'
       } else if (itemFastMoving) {
         loadSkipReason = 'fast_moving'
-      } else if (!selectedForImage) {
-        loadSkipReason = 'not_selected_for_image'
       } else if (item.monogramOnly) {
         loadSkipReason = 'monogram_only'
       } else if (!allowZoomedOutImages && cameraRatio > budget.zoomThreshold) {
@@ -1177,23 +1242,13 @@ export class AvatarOverlayRenderer {
         })
       }
 
-      const cacheState = drawResult.cacheState
-      incrementCountMap(byCacheState, cacheState)
-      incrementCountMap(byDisableReason, disableImageReason)
-      incrementCountMap(byLoadSkipReason, loadSkipReason)
-      incrementCountMap(byDrawFallbackReason, drawResult.fallbackReason)
-
       const loadDecision = !hasPictureUrl
         ? 'not_applicable'
         : loadSkipReason === null
           ? 'candidate'
           : 'skipped'
-      if (hasPictureUrl) {
-        nodesWithPictureUrlCount += 1
-      }
-      if (selectedForImage) {
-        selectedForImageCount += 1
-      }
+
+      incrementCountMap(byLoadSkipReason, loadSkipReason)
       if (hasSafePictureUrl && cacheState === 'missing') {
         pendingCacheMissCount += 1
       }
@@ -1209,6 +1264,125 @@ export class AvatarOverlayRenderer {
       if (loadDecision === 'candidate' && inflight) {
         inflightCandidateCount += 1
       }
+
+      loadDebugByPubkey.set(item.pubkey, {
+        loadDecision,
+        loadSkipReason,
+        requestedBucket,
+        blocked: blockEntry !== null,
+        blockReason: blockEntry?.reason ?? null,
+        inflight,
+      })
+    }
+
+    const frameCacheSignature = createAvatarOverlayFrameSignature({
+      cameraSignature,
+      frameViewport,
+      drawItems: orderedDrawItems,
+      focusAuraItems,
+      expansionRingItems,
+      maxImageDrawsPerFrame,
+      globalMotionActive,
+    })
+    const canUseFrameCache =
+      forcedAvatarPubkeys.size === 0 && expansionRingItems.length === 0
+    if (
+      canUseFrameCache &&
+      !this.frameCacheDirty &&
+      this.frameCacheSignature === frameCacheSignature &&
+      this.frameCacheCanvas !== null
+    ) {
+      this.blitFrameCache(ctx)
+      if (this.lastDebugSnapshot) {
+        this.lastDebugSnapshot = {
+          ...this.lastDebugSnapshot,
+          generatedAtMs: nowMs,
+          cameraRatio,
+          moving,
+          globalMotionActive,
+        }
+      }
+      this.pruneMotionSamples(seenNodes)
+      if (globalMotionActive) {
+        this.scheduler.prime(candidates, schedulerBudget)
+        return
+      }
+      this.scheduler.reconcile(candidates, schedulerBudget)
+      return
+    }
+
+    const frameCacheCtx = canUseFrameCache
+      ? this.prepareFrameCacheContext(ctx)
+      : null
+    const drawCtx = frameCacheCtx ?? ctx
+    this.drawFocusAuras(drawCtx, focusAuraItems)
+
+    for (const item of orderedDrawItems) {
+      const isPersistentAvatar = item.isPersistentAvatar
+      const selectedForImage = selectedForImagePubkeys.has(item.pubkey)
+      const hasVisibleMonogramPart =
+        item.monogramInput.showBackground !== false ||
+        item.monogramInput.showText !== false
+      const hasPictureUrl = item.hasPictureUrl
+      const hasSafePictureUrl = item.hasSafePictureUrl
+      const urlKey = item.urlKey
+      const avatarCacheEntry = urlKey !== null ? this.cache.get(urlKey) : null
+      const hasReadyImage = avatarCacheEntry?.state === 'ready'
+      const loadDebug = loadDebugByPubkey.get(item.pubkey) ?? {
+        loadDecision: 'not_applicable' as const,
+        loadSkipReason: null,
+        requestedBucket: null,
+        blocked: false,
+        blockReason: null,
+        inflight: false,
+      }
+      const itemGlobalMotionActive = resolveAvatarItemGlobalMotionActive({
+        globalMotionActive,
+        isPersistentAvatar,
+      })
+      const itemFastMoving = isPersistentAvatar ? false : item.fastMoving
+      const disableImageReason =
+        hasPictureUrl && !hasSafePictureUrl
+          ? 'unsafe_url'
+          : resolveAvatarImageDisableReason({
+              selectedForImage,
+              globalMotionActive: itemGlobalMotionActive,
+              monogramOnly: item.monogramOnly,
+              fastMoving: itemFastMoving,
+              imageDrawCount,
+              maxImageDrawsPerFrame,
+              hasReadyImage,
+            })
+      const drawResult = this.drawAvatarCircle({
+        ctx: selectAvatarDrawContext(
+          item.pubkey,
+          forcedAvatarPubkeys,
+          drawCtx,
+          forcedCtx,
+        ),
+        x: item.x,
+        y: item.y,
+        r: item.r,
+        cacheEntry: avatarCacheEntry,
+        getMonogram: () => this.cache.getMonogram(item.pubkey, item.monogramInput),
+        disableImageReason,
+        hasVisibleMonogramPart,
+      })
+
+      if (drawResult.kind === 'image') {
+        imageDrawCount += 1
+        drawnImageCount += 1
+      } else if (drawResult.kind === 'monogram') {
+        monogramDrawCount += 1
+        if (hasPictureUrl) {
+          withPictureMonogramDrawCount += 1
+        }
+      }
+
+      const cacheState = drawResult.cacheState
+      incrementCountMap(byCacheState, cacheState)
+      incrementCountMap(byDisableReason, disableImageReason)
+      incrementCountMap(byDrawFallbackReason, drawResult.fallbackReason)
 
       if (includeDebugNodes) {
         debugNodes.push({
@@ -1228,21 +1402,21 @@ export class AvatarOverlayRenderer {
           disableImageReason,
           drawResult: drawResult.kind,
           drawFallbackReason: drawResult.fallbackReason,
-          loadDecision,
-          loadSkipReason,
+          loadDecision: loadDebug.loadDecision,
+          loadSkipReason: loadDebug.loadSkipReason,
           cacheState,
           cacheFailureReason: drawResult.cacheFailureReason,
-          blocked: blockEntry !== null,
-          blockReason: blockEntry?.reason ?? null,
-          inflight,
-          requestedBucket,
+          blocked: loadDebug.blocked,
+          blockReason: loadDebug.blockReason,
+          inflight: loadDebug.inflight,
+          requestedBucket: loadDebug.requestedBucket,
           hasPictureUrl,
           hasSafePictureUrl,
         })
       }
     }
 
-    this.drawExpansionRings(ctx, expansionRingItems)
+    this.drawExpansionRings(drawCtx, expansionRingItems)
 
     this.lastDebugSnapshot = {
       generatedAtMs: nowMs,
@@ -1287,6 +1461,12 @@ export class AvatarOverlayRenderer {
       nodes: debugNodes,
     }
     this.traceFrameSummary(nowMs, this.lastDebugSnapshot)
+
+    if (frameCacheCtx && this.frameCacheCanvas) {
+      this.frameCacheSignature = frameCacheSignature
+      this.frameCacheDirty = false
+      this.blitFrameCache(ctx)
+    }
 
     this.pruneMotionSamples(seenNodes)
     if (globalMotionActive) {
@@ -1352,9 +1532,8 @@ export class AvatarOverlayRenderer {
     x,
     y,
     r,
-    monogram,
-    url,
-    urlKey,
+    cacheEntry,
+    getMonogram,
     disableImageReason,
     hasVisibleMonogramPart,
   }: {
@@ -1362,41 +1541,49 @@ export class AvatarOverlayRenderer {
     x: number
     y: number
     r: number
-    monogram: HTMLCanvasElement
-    url: string | null
-    urlKey: AvatarUrlKey | null
+    cacheEntry: AvatarEntry | undefined
+    getMonogram: () => HTMLCanvasElement
     disableImageReason?: string | null
     hasVisibleMonogramPart: boolean
   }): AvatarDrawResult {
-    let drawable: CanvasImageSource = monogram
+    let drawable: CanvasImageSource | null = null
     let isImage = false
     let cacheState: AvatarVisibleNodeDebugSnapshot['cacheState'] = null
     let cacheFailureReason: string | null = null
     let fallbackReason = disableImageReason ?? null
 
-    if (url && urlKey) {
-      const entry = this.cache.get(urlKey)
-      if (entry) {
-        cacheState = entry.state
-        if (entry.state === 'failed') {
-          cacheFailureReason = entry.reason
-        }
-      } else {
-        cacheState = 'missing'
+    if (cacheEntry) {
+      cacheState = cacheEntry.state
+      if (cacheEntry.state === 'failed') {
+        cacheFailureReason = cacheEntry.reason
       }
-      if (!disableImageReason && entry && entry.state === 'ready') {
-        drawable = entry.bitmap
+      if (!disableImageReason && cacheEntry.state === 'ready') {
+        drawable = cacheEntry.bitmap
         isImage = true
       } else if (fallbackReason === null) {
         fallbackReason =
-          entry?.state === 'failed'
-            ? entry.reason ?? 'cache_failed'
-            : entry?.state === 'loading'
+          cacheEntry.state === 'failed'
+            ? cacheEntry.reason ?? 'cache_failed'
+            : cacheEntry.state === 'loading'
               ? 'cache_loading'
               : 'cache_miss'
       }
+    } else {
+      cacheState = 'missing'
+      fallbackReason ??= 'cache_miss'
     }
-    if (!isImage && !hasVisibleMonogramPart) {
+    if (!isImage) {
+      if (!hasVisibleMonogramPart) {
+        return {
+          kind: 'skipped',
+          cacheState,
+          cacheFailureReason,
+          fallbackReason,
+        }
+      }
+      drawable = getMonogram()
+    }
+    if (!drawable) {
       return {
         kind: 'skipped',
         cacheState,
@@ -1416,6 +1603,7 @@ export class AvatarOverlayRenderer {
     } catch {
       if (isImage && hasVisibleMonogramPart) {
         try {
+          const monogram = getMonogram()
           ctx.drawImage(monogram, x - r, y - r, size, size)
         } catch {
           // canvas source may be invalidated; fall back silently
@@ -1641,6 +1829,52 @@ export class AvatarOverlayRenderer {
       return null
     }
     return labels.getContext('2d')
+  }
+
+  private prepareFrameCacheContext(
+    targetCtx: CanvasRenderingContext2D,
+  ): CanvasRenderingContext2D | null {
+    if (typeof document === 'undefined') {
+      return null
+    }
+    const targetCanvas = targetCtx.canvas
+    const targetWidth = targetCanvas.width
+    const targetHeight = targetCanvas.height
+    if (targetWidth <= 0 || targetHeight <= 0) {
+      return null
+    }
+    if (!this.frameCacheCanvas) {
+      this.frameCacheCanvas = document.createElement('canvas')
+      this.frameCacheDirty = true
+    }
+    if (
+      this.frameCacheCanvas.width !== targetWidth ||
+      this.frameCacheCanvas.height !== targetHeight
+    ) {
+      this.frameCacheCanvas.width = targetWidth
+      this.frameCacheCanvas.height = targetHeight
+      this.frameCacheDirty = true
+    }
+    const cacheCtx = this.frameCacheCanvas.getContext('2d')
+    if (!cacheCtx) {
+      return null
+    }
+    cacheCtx.save()
+    cacheCtx.resetTransform()
+    cacheCtx.clearRect(0, 0, targetWidth, targetHeight)
+    cacheCtx.restore()
+    cacheCtx.setTransform(targetCtx.getTransform())
+    return cacheCtx
+  }
+
+  private blitFrameCache(targetCtx: CanvasRenderingContext2D) {
+    if (!this.frameCacheCanvas) {
+      return
+    }
+    targetCtx.save()
+    targetCtx.resetTransform()
+    targetCtx.drawImage(this.frameCacheCanvas, 0, 0)
+    targetCtx.restore()
   }
 
   private getForcedOverlayContext(): CanvasRenderingContext2D | null {

@@ -5,6 +5,7 @@ import {
   DEFAULT_AVATAR_RUNTIME_OPTIONS,
 } from '@/features/graph-v2/renderer/avatar/types'
 import {
+  createAvatarOverlayFrameSignature,
   createAvatarOverlayFrameViewport,
   createAvatarUrlMetadataResolver,
   isAvatarInViewport,
@@ -26,6 +27,7 @@ import {
   scheduleAvatarOverlayRender,
   selectAvatarDrawContext,
   selectAvatarDrawItemsForFrame,
+  selectAvatarLoadItemsForFrame,
   shouldDrawAvatarForRendererFocus,
   shouldDisableAvatarImage,
 } from '@/features/graph-v2/renderer/avatar/avatarOverlayRenderer'
@@ -81,6 +83,68 @@ test('avatar overlay expansion animation requests render without full refresh', 
 
   assert.equal(renderCalls, 1)
   assert.equal(refreshCalls, 0)
+})
+
+test('avatar overlay frame signature stays stable for unchanged draw content', () => {
+  const frame = {
+    cameraSignature: '0.5|0.5|1|0',
+    frameViewport: { width: 1920, height: 945 },
+    drawItems: [
+      {
+        pubkey: 'alice',
+        x: 100.12,
+        y: 200.25,
+        r: 16,
+        urlKey: 'alice:https://example.com/a.png',
+        fastMoving: false,
+        monogramOnly: false,
+        isPersistentAvatar: false,
+      },
+    ],
+    focusAuraItems: [],
+    expansionRingItems: [],
+    maxImageDrawsPerFrame: 1,
+    globalMotionActive: false,
+  }
+
+  assert.equal(
+    createAvatarOverlayFrameSignature(frame),
+    createAvatarOverlayFrameSignature({
+      ...frame,
+      drawItems: [...frame.drawItems],
+    }),
+  )
+})
+
+test('avatar overlay frame signature changes when an avatar moves', () => {
+  const frame = {
+    cameraSignature: '0.5|0.5|1|0',
+    frameViewport: { width: 1920, height: 945 },
+    drawItems: [
+      {
+        pubkey: 'alice',
+        x: 100,
+        y: 200,
+        r: 16,
+        urlKey: 'alice:https://example.com/a.png',
+        fastMoving: false,
+        monogramOnly: false,
+        isPersistentAvatar: false,
+      },
+    ],
+    focusAuraItems: [],
+    expansionRingItems: [],
+    maxImageDrawsPerFrame: 1,
+    globalMotionActive: false,
+  }
+
+  assert.notEqual(
+    createAvatarOverlayFrameSignature(frame),
+    createAvatarOverlayFrameSignature({
+      ...frame,
+      drawItems: [{ ...frame.drawItems[0]!, x: 101 }],
+    }),
+  )
 })
 
 test('avatar URL metadata resolver caches and caps parsed URL metadata', () => {
@@ -607,6 +671,38 @@ test('all visible photos mode lifts frame draw caps to the visible count', () =>
   )
 })
 
+test('all visible photos mode keeps load selection broader than degraded draw selection', () => {
+  const visibleItems = Array.from({ length: 4 }, (_, index) => ({
+    pubkey: `node-${index}`,
+    url: `https://example.com/node-${index}.png`,
+    urlKey: `node-${index}::https://example.com/node-${index}.png`,
+    priority: index,
+    r: 12,
+  }))
+  const drawItems = selectAvatarDrawItemsForFrame(
+    visibleItems,
+    resolveAvatarFrameDrawCap({
+      baseCap: 2,
+      visibleCount: visibleItems.length,
+      showAllVisibleImages: false,
+    }),
+    new Set(),
+  )
+
+  assert.deepEqual(
+    selectAvatarLoadItemsForFrame(visibleItems, drawItems, true).map(
+      (item) => item.pubkey,
+    ),
+    ['node-0', 'node-1', 'node-2', 'node-3'],
+  )
+  assert.deepEqual(
+    selectAvatarLoadItemsForFrame(visibleItems, drawItems, false).map(
+      (item) => item.pubkey,
+    ),
+    ['node-0', 'node-1'],
+  )
+})
+
 test('all visible photos mode stays effective while the performance budget is healthy', () => {
   assert.equal(
     resolveEffectiveShowAllVisibleImages({
@@ -618,14 +714,14 @@ test('all visible photos mode stays effective while the performance budget is he
   )
 })
 
-test('all visible photos mode is disabled while the performance budget is constrained', () => {
+test('all visible photos mode stays active while the performance budget is constrained', () => {
   assert.equal(
     resolveEffectiveShowAllVisibleImages({
       requestedShowAllVisibleImages: true,
       isDegraded: true,
       emaFrameMs: 18,
     }),
-    false,
+    true,
   )
   assert.equal(
     resolveEffectiveShowAllVisibleImages({
@@ -633,7 +729,7 @@ test('all visible photos mode is disabled while the performance budget is constr
       isDegraded: false,
       emaFrameMs: 40,
     }),
-    false,
+    true,
   )
   assert.equal(
     resolveEffectiveShowAllVisibleImages({
@@ -645,7 +741,7 @@ test('all visible photos mode is disabled while the performance budget is constr
   )
 })
 
-test('degraded effective mode respects the base frame draw cap', () => {
+test('degraded effective mode keeps all visible photos in the draw set', () => {
   const effectiveShowAllVisibleImages = resolveEffectiveShowAllVisibleImages({
     requestedShowAllVisibleImages: true,
     isDegraded: true,
@@ -658,11 +754,11 @@ test('degraded effective mode respects the base frame draw cap', () => {
       visibleCount: 94,
       showAllVisibleImages: effectiveShowAllVisibleImages,
     }),
-    32,
+    94,
   )
 })
 
-test('degraded effective mode keeps load bounded without shrinking all-visible cache', () => {
+test('degraded effective mode keeps all-visible loading active without shrinking cache', () => {
   const effectiveShowAllVisibleImages = resolveEffectiveShowAllVisibleImages({
     requestedShowAllVisibleImages: true,
     isDegraded: false,
@@ -677,9 +773,9 @@ test('degraded effective mode keeps load bounded without shrinking all-visible c
     resolveAvatarLoadConcurrency({
       baseConcurrency: 1,
       visiblePhotoCount: 94,
-      showAllVisibleImages: effectiveShowAllVisibleImages,
+      showAllVisibleImages: cacheAllVisibleImages,
     }),
-    1,
+    6,
   )
   assert.equal(
     resolveAvatarCacheCap({

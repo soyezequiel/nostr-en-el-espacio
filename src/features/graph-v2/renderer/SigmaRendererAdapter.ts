@@ -3383,8 +3383,7 @@ export class SigmaRendererAdapter implements RendererAdapter {
         isCameraMoving: () => this.cameraMotionActive || this.touchGestureActive,
         getBlockedAvatar: (urlKey) => this.avatarLoader?.getBlockedEntry(urlKey) ?? null,
         getHoveredNodePubkey: () => this.resolveRendererFocus().pubkey,
-        getForcedAvatarPubkey: () =>
-          this.draggedNodePubkey ?? this.resolveRendererFocus().pubkey,
+        getForcedAvatarPubkey: () => this.draggedNodePubkey,
         getHoveredNeighborPubkeys: () => this.resolveRendererFocus().neighbors,
         getRuntimeOptions: () => this.avatarRuntimeOptions,
       })

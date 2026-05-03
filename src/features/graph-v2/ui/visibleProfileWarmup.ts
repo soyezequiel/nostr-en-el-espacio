@@ -33,6 +33,7 @@ export interface VisibleProfileWarmupDebugSnapshot
   inflightCount: number
   profileStates: ProfileWarmupStateCounts
   viewportProfileStates: ProfileWarmupStateCounts
+  latency: VisibleProfileWarmupLatencySnapshot
 }
 
 interface ProfileWarmupStateCounts {
@@ -43,6 +44,45 @@ interface ProfileWarmupStateCounts {
   missing: number
   unknown: number
 }
+
+export type VisibleProfileWarmupLatencySource =
+  | 'relay'
+  | 'primal-cache'
+  | 'profile-cache'
+  | 'unknown'
+
+export type VisibleProfileWarmupLatencyStatus =
+  | 'ready'
+  | 'inflight'
+  | 'missing'
+  | 'pending'
+  | 'cached-before-attempt'
+
+export interface VisibleProfileWarmupLatencyAttempt {
+  pubkey: string
+  pubkeyShort: string
+  attemptedAtMs: number
+  ageMs: number
+  completedAtMs: number | null
+  durationMs: number | null
+  source: VisibleProfileWarmupLatencySource
+  status: VisibleProfileWarmupLatencyStatus
+  hasPicture: boolean
+  profileState: CanonicalNode['profileState'] | 'unknown'
+}
+
+export interface VisibleProfileWarmupLatencySnapshot {
+  inflightOldestAgeMs: number | null
+  completedCount: number
+  inflightCount: number
+  relayCompletedCount: number
+  p50RelayMs: number | null
+  p95RelayMs: number | null
+  attempts: VisibleProfileWarmupLatencyAttempt[]
+}
+
+const MAX_VISIBLE_PROFILE_LATENCY_ATTEMPTS = 80
+const PROFILE_CACHE_BEFORE_ATTEMPT_GRACE_MS = 250
 
 export const hasUsableCanonicalProfile = (
   node: CanonicalNode | null | undefined,
@@ -146,7 +186,133 @@ export const buildVisibleProfileWarmupDebugSnapshot = (
       input.viewportPubkeys,
       input.nodesByPubkey,
     ),
+    latency: buildVisibleProfileWarmupLatencySnapshot(input),
   }
+}
+
+const buildVisibleProfileWarmupLatencySnapshot = ({
+  attemptedAtByPubkey,
+  inflightPubkeys,
+  nodesByPubkey,
+  now,
+}: VisibleProfileWarmupSelectionInput): VisibleProfileWarmupLatencySnapshot => {
+  const attempts: VisibleProfileWarmupLatencyAttempt[] = Array.from(
+    attemptedAtByPubkey.entries(),
+  )
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, MAX_VISIBLE_PROFILE_LATENCY_ATTEMPTS)
+    .map(([pubkey, attemptedAtMs]) => {
+      const node = nodesByPubkey[pubkey]
+      const profileState = node?.profileState ?? 'unknown'
+      const fetchedAt = node?.profileFetchedAt ?? null
+      const hasPicture = Boolean(node?.picture?.trim())
+      const ageMs = Math.max(0, now - attemptedAtMs)
+      const source = normalizeWarmupLatencySource(node?.profileSource)
+
+      if (
+        profileState === 'ready' &&
+        typeof fetchedAt === 'number' &&
+        fetchedAt < attemptedAtMs - PROFILE_CACHE_BEFORE_ATTEMPT_GRACE_MS
+      ) {
+        return {
+          pubkey,
+          pubkeyShort: pubkey.slice(0, 12),
+          attemptedAtMs,
+          ageMs,
+          completedAtMs: fetchedAt,
+          durationMs: null,
+          source: 'profile-cache',
+          status: 'cached-before-attempt',
+          hasPicture,
+          profileState,
+        }
+      }
+
+      if (profileState === 'ready' && typeof fetchedAt === 'number') {
+        return {
+          pubkey,
+          pubkeyShort: pubkey.slice(0, 12),
+          attemptedAtMs,
+          ageMs,
+          completedAtMs: fetchedAt,
+          durationMs: Math.max(0, fetchedAt - attemptedAtMs),
+          source,
+          status: 'ready',
+          hasPicture,
+          profileState,
+        }
+      }
+
+      if (inflightPubkeys.has(pubkey)) {
+        return {
+          pubkey,
+          pubkeyShort: pubkey.slice(0, 12),
+          attemptedAtMs,
+          ageMs,
+          completedAtMs: null,
+          durationMs: null,
+          source,
+          status: 'inflight',
+          hasPicture,
+          profileState,
+        }
+      }
+
+      return {
+        pubkey,
+        pubkeyShort: pubkey.slice(0, 12),
+        attemptedAtMs,
+        ageMs,
+        completedAtMs: null,
+        durationMs: null,
+        source,
+        status: profileState === 'missing' ? 'missing' : 'pending',
+        hasPicture,
+        profileState,
+      }
+    })
+
+  const relayDurations = attempts
+    .filter(
+      (attempt) =>
+        attempt.status === 'ready' &&
+        attempt.durationMs !== null &&
+        (attempt.source === 'relay' || attempt.source === 'primal-cache'),
+    )
+    .map((attempt) => attempt.durationMs!)
+
+  const inflightAges = attempts
+    .filter((attempt) => attempt.status === 'inflight')
+    .map((attempt) => attempt.ageMs)
+
+  return {
+    inflightOldestAgeMs:
+      inflightAges.length > 0 ? Math.max(...inflightAges) : null,
+    completedCount: attempts.filter((attempt) => attempt.status === 'ready').length,
+    inflightCount: attempts.filter((attempt) => attempt.status === 'inflight').length,
+    relayCompletedCount: relayDurations.length,
+    p50RelayMs: percentile(relayDurations, 50),
+    p95RelayMs: percentile(relayDurations, 95),
+    attempts,
+  }
+}
+
+const normalizeWarmupLatencySource = (
+  source: string | null | undefined,
+): VisibleProfileWarmupLatencySource => {
+  if (source === 'relay' || source === 'primal-cache' || source === 'profile-cache') {
+    return source
+  }
+  return 'unknown'
+}
+
+const percentile = (values: number[], percentileValue: number) => {
+  if (values.length === 0) {
+    return null
+  }
+  const sorted = [...values].sort((left, right) => left - right)
+  const index = Math.ceil((percentileValue / 100) * sorted.length) - 1
+  return sorted[Math.min(sorted.length - 1, Math.max(0, index))] ?? null
 }
 
 const countProfileStates = (

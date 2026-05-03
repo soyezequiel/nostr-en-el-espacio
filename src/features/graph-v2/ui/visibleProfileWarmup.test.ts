@@ -122,3 +122,48 @@ test('debug snapshot reports visible warmup counters', () => {
     unknown: 1,
   })
 })
+
+test('debug snapshot reports bounded profile latency without counting old cache as relay', () => {
+  const nodesByPubkey = {
+    relay: makeNode('relay', {
+      profileState: 'ready',
+      profileFetchedAt: 11_500,
+      profileSource: 'relay',
+      picture: 'https://x.test/relay.jpg',
+    }),
+    cached: makeNode('cached', {
+      profileState: 'ready',
+      profileFetchedAt: 8_000,
+      profileSource: 'relay',
+      picture: 'https://x.test/cached.jpg',
+    }),
+    inflight: makeNode('inflight', { profileState: 'loading' }),
+  }
+
+  const snapshot = buildVisibleProfileWarmupDebugSnapshot({
+    viewportPubkeys: ['relay', 'cached', 'inflight'],
+    scenePubkeys: [],
+    nodesByPubkey,
+    attemptedAtByPubkey: new Map([
+      ['relay', 10_000],
+      ['cached', 10_000],
+      ['inflight', 9_000],
+    ]),
+    inflightPubkeys: new Set(['inflight']),
+    now: 12_000,
+    batchSize: 8,
+    cooldownMs: 1_000,
+  })
+
+  assert.equal(snapshot.latency.completedCount, 1)
+  assert.equal(snapshot.latency.inflightOldestAgeMs, 3_000)
+  assert.equal(snapshot.latency.p50RelayMs, 1_500)
+  assert.equal(
+    snapshot.latency.attempts.find((attempt) => attempt.pubkey === 'cached')?.status,
+    'cached-before-attempt',
+  )
+  assert.equal(
+    snapshot.latency.attempts.find((attempt) => attempt.pubkey === 'relay')?.hasPicture,
+    true,
+  )
+})

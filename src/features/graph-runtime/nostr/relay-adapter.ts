@@ -39,6 +39,7 @@ const INTERACTIVE_VERIFICATION_BATCH_DELAY_MS = 8
 const BACKGROUND_VERIFICATION_BATCH_DELAY_MS = 32
 const MAX_VERIFICATION_BATCH_EVENTS = 64
 const HEALTH_PUBLISH_DELAY_MS = 100
+const DEFAULT_MAX_ACTIVE_SUBSCRIPTIONS_PER_RELAY = 2
 
 const COUNT_UNSUPPORTED_PATTERNS = [
   'unknown cmd',
@@ -52,6 +53,13 @@ const sharedRelayHealth = new Map<string, RelayHealthSnapshot>()
 const sharedHealthListeners = new Set<() => void>()
 let sharedHealthPublishHandle: ReturnType<typeof setTimeout> | null = null
 
+interface SharedRelaySubscriptionGate {
+  active: number
+  waiters: Array<() => void>
+}
+
+const sharedRelaySubscriptionGates = new Map<string, SharedRelaySubscriptionGate>()
+
 type TerminalKind = 'eose' | 'timeout' | 'closed' | 'cancelled'
 
 interface ActiveRelayAttempt {
@@ -61,6 +69,7 @@ interface ActiveRelayAttempt {
   subscription?: RelaySubscriptionHandle
   pageTimeoutHandle?: ReturnType<typeof setTimeout>
   graceTimeoutHandle?: ReturnType<typeof setTimeout>
+  releaseSubscriptionSlot?: () => void
   finished: boolean
 }
 
@@ -95,6 +104,7 @@ export class RelayPoolAdapter {
   private readonly retryCount: number
   private readonly stragglerGraceMs: number
   private readonly maxAuthorsPerFilter: number
+  private readonly maxActiveSubscriptionsPerRelay: number
   private readonly connections = new Map<string, ConnectionEntry>()
 
   constructor(options: RelayAdapterOptions) {
@@ -119,6 +129,13 @@ export class RelayPoolAdapter {
       options.stragglerGraceMs ?? DEFAULT_STRAGGLER_GRACE_MS
     this.maxAuthorsPerFilter =
       options.maxAuthorsPerFilter ?? DEFAULT_MAX_AUTHORS_PER_FILTER
+    this.maxActiveSubscriptionsPerRelay = Math.max(
+      1,
+      Math.floor(
+        options.maxActiveSubscriptionsPerRelay ??
+          DEFAULT_MAX_ACTIVE_SUBSCRIPTIONS_PER_RELAY,
+      ),
+    )
 
     for (const url of this.relayUrls) {
       ensureSharedRelayHealth(url, this.clock.now())
@@ -570,6 +587,16 @@ export class RelayPoolAdapter {
       finalize()
     }
 
+    const releaseRelaySlot = (attempt: ActiveRelayAttempt) => {
+      const release = attempt.releaseSubscriptionSlot
+      if (!release) {
+        return
+      }
+
+      attempt.releaseSubscriptionSlot = undefined
+      release()
+    }
+
     const settleRelay = (
       attempt: ActiveRelayAttempt,
       terminalKind: TerminalKind,
@@ -586,8 +613,9 @@ export class RelayPoolAdapter {
         this.clock.clearTimeout(attempt.graceTimeoutHandle)
       }
 
-        attempt.finished = true
-        this.decrementActiveSubscriptions(attempt.url)
+      attempt.finished = true
+      releaseRelaySlot(attempt)
+      this.decrementActiveSubscriptions(attempt.url)
 
       if (cancelled) {
         finishRelay(attempt.url)
@@ -684,6 +712,17 @@ export class RelayPoolAdapter {
       let connection: RelayConnection
 
       try {
+        activeAttempt.releaseSubscriptionSlot =
+          await acquireSharedRelaySubscriptionSlot(
+            url,
+            this.maxActiveSubscriptionsPerRelay,
+          )
+        if (cancelled) {
+          releaseRelaySlot(activeAttempt)
+          finishRelay(url)
+          return
+        }
+
         connection = await this.withTimeout(
           this.getOrCreateConnection(url),
           this.connectTimeoutMs,
@@ -718,9 +757,10 @@ export class RelayPoolAdapter {
                 ? (relayError.code as RelayHealthSnapshot['lastErrorCode'])
                 : 'RELAY_CONNECT_FAILED',
             lastCloseReason: relayError.message,
-          }))
+        }))
 
         if (attemptNumber <= this.retryCount && !cancelled) {
+          releaseRelaySlot(activeAttempt)
           this.evictConnection(url)
           await new Promise<void>((resolve) =>
             this.clock.setTimeout(resolve, 500 * attemptNumber),
@@ -732,6 +772,7 @@ export class RelayPoolAdapter {
         }
 
         this.evictConnection(url)
+        releaseRelaySlot(activeAttempt)
 
         const shouldEmitError =
           !completed &&
@@ -750,6 +791,7 @@ export class RelayPoolAdapter {
       }
 
       if (cancelled) {
+        releaseRelaySlot(activeAttempt)
         finishRelay(url)
         return
       }
@@ -853,6 +895,7 @@ export class RelayPoolAdapter {
           }))
 
         if (attemptNumber <= this.retryCount && !cancelled) {
+          releaseRelaySlot(activeAttempt)
           this.evictConnection(url)
           await new Promise<void>((resolve) =>
             this.clock.setTimeout(resolve, 500 * attemptNumber),
@@ -864,6 +907,7 @@ export class RelayPoolAdapter {
         }
 
         this.evictConnection(url)
+        releaseRelaySlot(activeAttempt)
 
         const shouldEmitError =
           !completed &&
@@ -918,6 +962,7 @@ export class RelayPoolAdapter {
           this.clock.clearTimeout(attempt.graceTimeoutHandle)
         }
         attempt.finished = true
+        releaseRelaySlot(attempt)
         this.decrementActiveSubscriptions(attempt.url)
         attempt.subscription?.close('cancelled')
       }
@@ -1175,6 +1220,54 @@ function publishSharedHealth(): void {
       listener()
     }
   }, HEALTH_PUBLISH_DELAY_MS)
+}
+
+function acquireSharedRelaySubscriptionSlot(
+  url: string,
+  maxActiveSubscriptions: number,
+): Promise<() => void> {
+  let gate = sharedRelaySubscriptionGates.get(url)
+  if (!gate) {
+    gate = { active: 0, waiters: [] }
+    sharedRelaySubscriptionGates.set(url, gate)
+  }
+
+  const release = createSharedRelaySubscriptionRelease(url, gate)
+  if (gate.active < maxActiveSubscriptions) {
+    gate.active += 1
+    return Promise.resolve(release)
+  }
+
+  return new Promise((resolve) => {
+    gate.waiters.push(() => {
+      gate.active += 1
+      resolve(release)
+    })
+  })
+}
+
+function createSharedRelaySubscriptionRelease(
+  url: string,
+  gate: SharedRelaySubscriptionGate,
+): () => void {
+  let released = false
+  return () => {
+    if (released) {
+      return
+    }
+
+    released = true
+    gate.active = Math.max(0, gate.active - 1)
+    const next = gate.waiters.shift()
+    if (next) {
+      queueMicrotask(next)
+      return
+    }
+
+    if (gate.active === 0) {
+      sharedRelaySubscriptionGates.delete(url)
+    }
+  }
 }
 
 function batchFilters(filters: Filter[], maxAuthorsPerFilter: number): Filter[] {

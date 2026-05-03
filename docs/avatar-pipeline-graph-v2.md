@@ -20,7 +20,9 @@ current 50-500 node target.
   with configurable TTL. Timeouts are treated as failures so they do not spin
   in a retry loop. If the CORS fetch path fails, it falls back to
   `HTMLImageElement` loading so avatars from image hosts without CORS can still
-  render.
+  render. The debug snapshot keeps a bounded recent-attempt ring for `disk`,
+  `direct`, `proxy`, and `image-element`, including response/decode timing and
+  result.
 - `avatarScheduler.ts` - Accepts a visible-candidate list per frame. Enforces
   concurrency cap. Aborts in-flight loads for pubkeys that left the viewport.
   Marks `failed` and blocklists on error. Signals the adapter when a load
@@ -35,6 +37,8 @@ current 50-500 node target.
   It uses Sigma's
   `framedGraphToViewport` and `scaleSize` APIs so the avatar center and radius
   match the WebGL node, with a 1px inset to avoid bleeding outside the node.
+  The debug snapshot also keeps bounded paint milestones per visible `urlKey`:
+  candidate start, first image paint, last image paint, and draw count.
 - `deviceTier.ts` - Classifies `low | mid | high` from
   `hardwareConcurrency`, `deviceMemory`, `connection.effectiveType`,
   `saveData`, and UA.
@@ -83,6 +87,25 @@ low/mid/high`), plus the frame EMA, load concurrency, max image bucket, and LRU
 cap currently applied by `PerfBudget`. It also shows the avatar/photo draw caps
 that protect the frame loop when many profile images are already cached, plus
 the effective radius/zoom thresholds after adaptive limits are applied.
+
+## Runtime Inspector latency
+
+The Runtime Inspector's `Avatares` section includes `Lentitud de carga`, an
+end-to-end measurement from visible profile warmup to first image paint. The
+relay does not download image bytes: it only returns the Nostr `kind:0` profile
+with `picture`. The inspector keeps those stages separate:
+
+- profile relay/cache latency from visible warmup to `kind:0`/profile cache
+  completion;
+- image HTTP/decode latency from the loader attempt (`direct`, `proxy`,
+  `image-element`; `disk` is reported separately as cache);
+- render/paint latency from decoded/ready image to the first canvas draw.
+
+The debug export schema is now `schemaVersion: 3`. It preserves the existing
+runtime/cache/scheduler/overlay payload and adds `latency` with summarized
+visible warmup latency, bounded raw loader attempts, and bounded visible paint
+milestones for postmortems. The buffers are intentionally capped so `/labs/sigma`
+does not collect heavy telemetry during normal dev sessions.
 
 ## Performance strategy
 
@@ -142,7 +165,12 @@ Covered:
 - `deviceTier`: 6 scenarios across low/mid/high + missing navigator.
 - `perfBudget`: init, downgrade, upgrade, brief spike, disable/enable, NaN.
 - `avatarLoader`: blocklist lifecycle, TTL, unblock, rejection of unsafe URLs.
+- `avatarLoader`: bounded recent attempts for direct, proxy, disk, and
+  image-element paths.
 - `avatarBitmapCache`: bitmap close-on-evict and bounded monogram LRU.
+- `runtimeInspector`: end-to-end avatar latency, relay/image/render stage split,
+  cached-profile exclusion from fresh relay latency, and isolated-case
+  suppression.
 
 Not covered with unit tests because they depend on Sigma/browser rendering:
 `avatarScheduler` and `avatarOverlayRenderer`. These require manual browser

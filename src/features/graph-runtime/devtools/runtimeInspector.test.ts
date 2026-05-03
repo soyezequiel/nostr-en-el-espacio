@@ -182,6 +182,7 @@ const createAvatarRuntimeSnapshot = (): AvatarRuntimeStateDebugSnapshot => ({
   loader: {
     blockedCount: 0,
     blocked: [],
+    recentAttempts: [],
   },
   scheduler: {
     inflightCount: 0,
@@ -421,6 +422,69 @@ test('runtime inspector does not label cache misses as reusable avatar failures'
   ])
 })
 
+test('runtime inspector reports end-to-end avatar latency and warns by p95', () => {
+  const snapshot = buildRuntimeInspectorSnapshot(
+    createAvatarLatencyInput([
+      { pubkey: 'lat-a', profileMs: 300, imageMs: 400, firstPaintMs: 900 },
+      { pubkey: 'lat-b', profileMs: 400, imageMs: 600, firstPaintMs: 1600 },
+      { pubkey: 'lat-c', profileMs: 500, imageMs: 900, firstPaintMs: 3200 },
+    ]),
+  )
+
+  assert.equal(snapshot.avatars.tone, 'warn')
+  assert.equal(snapshot.avatars.resumen, 'Fotos lentas end-to-end')
+  assert.deepEqual(snapshot.avatars.latencia.metricas[0], {
+    label: 'End-to-end p50/p95',
+    value: '1.6 s / 3.2 s',
+    tone: 'warn',
+  })
+})
+
+test('runtime inspector separates relay, image, and render dominant stages', () => {
+  const snapshot = buildRuntimeInspectorSnapshot(
+    createAvatarLatencyInput([
+      { pubkey: 'relay-slow', profileMs: 2500, imageMs: 100, firstPaintMs: 2700 },
+      { pubkey: 'image-slow', profileMs: 100, imageMs: 2600, firstPaintMs: 2800 },
+      { pubkey: 'render-slow', profileMs: 100, imageMs: 100, firstPaintMs: 2900 },
+    ]),
+  )
+  const byNode = new Map(
+    snapshot.avatars.latencia.casos.map((item) => [item.nodo, item]),
+  )
+
+  assert.equal(byNode.get('Node 0')?.etapaDominante, 'perfil relay/cache')
+  assert.equal(byNode.get('Node 1')?.etapaDominante, 'imagen HTTP/decode')
+  assert.equal(byNode.get('Node 2')?.etapaDominante, 'render/paint')
+})
+
+test('runtime inspector does not count cached profiles as fresh relay latency', () => {
+  const snapshot = buildRuntimeInspectorSnapshot(
+    createAvatarLatencyInput([
+      {
+        pubkey: 'cached',
+        profileMs: 20,
+        imageMs: 100,
+        firstPaintMs: 300,
+        source: 'profile-cache',
+      },
+    ]),
+  )
+
+  assert.equal(snapshot.avatars.latencia.metricas[1]?.value, 'sin dato / sin dato')
+  assert.equal(snapshot.avatars.tone, 'ok')
+})
+
+test('runtime inspector keeps isolated avatar latency out of the dominant alert', () => {
+  const snapshot = buildRuntimeInspectorSnapshot(
+    createAvatarLatencyInput([
+      { pubkey: 'isolated', profileMs: 100, imageMs: 100, firstPaintMs: 9000 },
+    ]),
+  )
+
+  assert.equal(snapshot.avatars.tone, 'ok')
+  assert.equal(snapshot.avatars.latencia.metricas[0]?.tone, 'ok')
+})
+
 test('runtime inspector counts failed and blocked visible avatars once', () => {
   const runtimeSnapshot = createAvatarRuntimeSnapshot()
   const brokenNode = runtimeSnapshot.overlay?.nodes.find(
@@ -654,6 +718,221 @@ test('runtime inspector does not call bad FPS stable or blame modest avatar work
   assert.notEqual(snapshot.primary.titulo, 'Rendimiento estable')
   assert.equal(avatarResource?.tone, 'ok')
   assert.equal(avatarResource?.intensidad, 'baja')
+})
+
+const createAvatarLatencyInput = (
+  durations: Array<{
+    pubkey: string
+    profileMs: number
+    imageMs: number
+    firstPaintMs: number
+    source?: 'relay' | 'primal-cache' | 'profile-cache'
+    host?: string
+  }>,
+) => {
+  const runtimeSnapshot = createAvatarRuntimeSnapshot()
+  assert.ok(runtimeSnapshot.overlay)
+  assert.ok(runtimeSnapshot.cache)
+  assert.ok(runtimeSnapshot.loader)
+  runtimeSnapshot.cache.byState = { loading: 0, ready: durations.length, failed: 0 }
+  runtimeSnapshot.cache.entries = []
+  runtimeSnapshot.overlay.generatedAtMs = 20_000
+  runtimeSnapshot.overlay.counts = {
+    ...runtimeSnapshot.overlay.counts,
+    visibleNodes: durations.length,
+    nodesWithPictureUrl: durations.length,
+    nodesWithSafePictureUrl: durations.length,
+    selectedForImage: durations.length,
+    loadCandidates: 0,
+    pendingCacheMiss: 0,
+    pendingCandidates: 0,
+    blockedCandidates: 0,
+    inflightCandidates: 0,
+    drawnImages: durations.length,
+    monogramDraws: 0,
+    withPictureMonogramDraws: 0,
+  }
+  runtimeSnapshot.overlay.byDrawFallbackReason = {}
+  runtimeSnapshot.overlay.byCacheState = { ready: durations.length }
+  runtimeSnapshot.overlay.nodes = durations.map((item, index) => ({
+    pubkey: item.pubkey,
+    label: `Node ${index}`,
+    url: `https://${item.host ?? 'cdn.example'}/${item.pubkey}.png`,
+    host: item.host ?? 'cdn.example',
+    urlKey: `${item.pubkey}::https://${item.host ?? 'cdn.example'}/${item.pubkey}.png`,
+    radiusPx: 16,
+    priority: index,
+    selectedForImage: true,
+    isPersistentAvatar: false,
+    zoomedOutMonogram: false,
+    monogramOnly: false,
+    fastMoving: false,
+    globalMotionActive: false,
+    disableImageReason: null,
+    drawResult: 'image',
+    drawFallbackReason: null,
+    loadDecision: 'candidate',
+    loadSkipReason: null,
+    cacheState: 'ready',
+    cacheFailureReason: null,
+    blocked: false,
+    blockReason: null,
+    inflight: false,
+    requestedBucket: 64,
+    hasPictureUrl: true,
+    hasSafePictureUrl: true,
+    candidateSinceMs: 10_000,
+    firstImageDrawAtMs: 10_000 + item.firstPaintMs,
+    lastImageDrawAtMs: 10_000 + item.firstPaintMs,
+    imageDrawCount: 1,
+  }))
+  runtimeSnapshot.loader.recentAttempts = durations.map((item) => ({
+    path: 'direct',
+    stage: 'primary',
+    policy: 'direct-first',
+    startedAt: 10_000 + item.profileMs,
+    responseReadyAt: 10_000 + item.profileMs + Math.floor(item.imageMs / 2),
+    decodeReadyAt: 10_000 + item.profileMs + item.imageMs,
+    completedAt: 10_000 + item.profileMs + item.imageMs,
+    durationMs: item.imageMs,
+    result: 'ready',
+    reason: null,
+    bytes: 4096,
+    host: item.host ?? 'cdn.example',
+    pubkey: item.pubkey,
+    urlKey: `${item.pubkey}::https://${item.host ?? 'cdn.example'}/${item.pubkey}.png`,
+  }))
+
+  const input = createBaseInput(runtimeSnapshot)
+  input.visibleProfileWarmup = {
+    pubkeys: [],
+    viewportPubkeyCount: durations.length,
+    scenePubkeyCount: durations.length,
+    orderedPubkeyCount: durations.length,
+    eligibleCount: 0,
+    skipped: { missingNode: 0, alreadyUsable: durations.length, inflight: 0, cooldown: 0 },
+    generatedAtMs: 20_000,
+    selectedSamples: [],
+    attemptedCount: durations.length,
+    inflightCount: 0,
+    profileStates: { idle: 0, loading: 0, readyUsable: durations.length, readyEmpty: 0, missing: 0, unknown: 0 },
+    viewportProfileStates: { idle: 0, loading: 0, readyUsable: durations.length, readyEmpty: 0, missing: 0, unknown: 0 },
+    latency: {
+      inflightOldestAgeMs: null,
+      completedCount: durations.length,
+      inflightCount: 0,
+      relayCompletedCount: durations.filter((item) => (item.source ?? 'relay') !== 'profile-cache').length,
+      p50RelayMs: null,
+      p95RelayMs: null,
+      attempts: durations.map((item) => ({
+        pubkey: item.pubkey,
+        pubkeyShort: item.pubkey.slice(0, 12),
+        attemptedAtMs: 10_000,
+        ageMs: 10_000,
+        completedAtMs: 10_000 + item.profileMs,
+        durationMs: item.source === 'profile-cache' ? null : item.profileMs,
+        source: item.source ?? 'relay',
+        status: item.source === 'profile-cache' ? 'cached-before-attempt' : 'ready',
+        hasPicture: true,
+        profileState: 'ready',
+      })),
+    },
+  }
+  return input
+}
+
+test('runtime inspector does not blame cached avatar frame reuse as source draws', () => {
+  const runtimeSnapshot = createAvatarRuntimeSnapshot()
+  if (!runtimeSnapshot.overlay) {
+    throw new Error('Expected avatar overlay fixture.')
+  }
+  runtimeSnapshot.overlay.counts.drawnImages = 726
+  runtimeSnapshot.overlay.counts.sourceImageDraws = 0
+  runtimeSnapshot.overlay.counts.frameCacheHit = 1
+  runtimeSnapshot.overlay.counts.frameCacheBlits = 1
+  runtimeSnapshot.overlay.counts.loadCandidates = 12
+  runtimeSnapshot.overlay.counts.pendingCandidates = 0
+  runtimeSnapshot.overlay.counts.pendingCacheMiss = 0
+  runtimeSnapshot.overlay.resolvedBudget.maxBucket = 32
+  runtimeSnapshot.cache!.byState.ready = 732
+  runtimeSnapshot.cache!.byState.failed = 0
+  runtimeSnapshot.cache!.entries = []
+  runtimeSnapshot.cache!.totalBytes = 4.2 * 1024 * 1024
+
+  const input = createBaseInput(runtimeSnapshot)
+  input.avatarPerfSnapshot = {
+    baseTier: 'mid',
+    tier: 'low',
+    isDegraded: true,
+    emaFrameMs: 64.1,
+    budget: DEFAULT_BUDGETS.low,
+  }
+  input.physicsEnabled = true
+  input.scene.render.diagnostics.nodeCount = 1617
+  input.scene.render.diagnostics.visibleEdgeCount = 3233
+  input.scene.physics.diagnostics.nodeCount = 1617
+  input.scene.physics.diagnostics.edgeCount = 3233
+  input.sceneUpdatesPerMinute = 2
+  input.uiUpdatesPerMinute = 2
+
+  const snapshot = buildRuntimeInspectorSnapshot(input)
+  const avatarResource = snapshot.resourceTop.find((row) => row.id === 'avatars')
+
+  assert.equal(snapshot.performance.resumen, 'FPS bajo por escena densa')
+  assert.doesNotMatch(snapshot.performance.quePasaAhora, /dibujando mucho/)
+  assert.match(snapshot.performance.quePasaAhora, /muchos nodos, aristas y fotos cacheadas/)
+  assert.ok(snapshot.performance.sospechosos.includes('Escena visible densa'))
+  assert.equal(
+    snapshot.performance.metricas.find(
+      (metric) => metric.label === 'Avatar source draws/frame',
+    )?.value,
+    '0 (cache frame)',
+  )
+  assert.match(avatarResource?.valor ?? '', /cache/)
+})
+
+test('runtime inspector does not call cooldown-held profile backlog active hydration', () => {
+  const input = createBaseInput(createAvatarRuntimeSnapshot())
+  input.visibleNodePubkeys = [
+    'ready-1',
+    'ready-2',
+    'ready-3',
+    'ready-4',
+    'ready-5',
+    'ready-6',
+    'ready-7',
+    'empty-1',
+  ]
+  input.visibleProfileWarmup = {
+    pubkeys: [],
+    viewportPubkeyCount: 8,
+    scenePubkeyCount: 8,
+    orderedPubkeyCount: 8,
+    eligibleCount: 1,
+    skipped: { missingNode: 0, alreadyUsable: 7, inflight: 0, cooldown: 1 },
+    generatedAtMs: 20_000,
+    selectedSamples: [],
+    attemptedCount: 0,
+    inflightCount: 0,
+    profileStates: { idle: 0, loading: 0, readyUsable: 7, readyEmpty: 1, missing: 0, unknown: 0 },
+    viewportProfileStates: { idle: 0, loading: 0, readyUsable: 7, readyEmpty: 1, missing: 0, unknown: 0 },
+    latency: {
+      inflightOldestAgeMs: null,
+      completedCount: 0,
+      inflightCount: 0,
+      relayCompletedCount: 0,
+      p50RelayMs: null,
+      p95RelayMs: null,
+      attempts: [],
+    },
+  }
+
+  const snapshot = buildRuntimeInspectorSnapshot(input)
+
+  assert.equal(snapshot.profiles.tone, 'warn')
+  assert.equal(snapshot.profiles.resumen, 'Perfiles incompletos en espera')
+  assert.match(snapshot.profiles.quePasaAhora, /No hay hidratacion visible activa/)
+  assert.doesNotMatch(snapshot.profiles.quePasaAhora, /sigue corriendo/)
 })
 
 test('runtime inspector does not surface layer-filter coverage as the primary issue', () => {

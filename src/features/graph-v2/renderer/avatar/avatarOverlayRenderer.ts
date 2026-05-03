@@ -200,6 +200,13 @@ interface AvatarDrawResult {
   fallbackReason: string | null
 }
 
+interface AvatarPaintMilestone {
+  candidateSinceMs: number
+  firstImageDrawAtMs: number | null
+  lastImageDrawAtMs: number | null
+  imageDrawCount: number
+}
+
 export interface AvatarOverlayRendererDeps {
   sigma: Sigma<RenderNodeAttributes, RenderEdgeAttributes>
   cache: AvatarBitmapCache
@@ -745,6 +752,8 @@ const incrementCountMap = (map: Record<string, number>, key: string | null) => {
   map[key] = (map[key] ?? 0) + 1
 }
 
+const MAX_AVATAR_PAINT_MILESTONES = 512
+
 export class AvatarOverlayRenderer {
   private readonly sigma: Sigma<RenderNodeAttributes, RenderEdgeAttributes>
   private readonly cache: AvatarBitmapCache
@@ -760,6 +769,7 @@ export class AvatarOverlayRenderer {
   private readonly avatarUrlMetadata = createAvatarUrlMetadataResolver()
   private readonly lastBucketByUrl = new Map<string, ImageLodBucket>()
   private readonly lastMotionByNode = new Map<string, AvatarNodeMotionSample>()
+  private readonly paintMilestones = new Map<string, AvatarPaintMilestone>()
   private expansionAnimationFrameId: number | null = null
   private lastFrameTs = 0
   private lastCameraSignature: string | null = null
@@ -800,6 +810,7 @@ export class AvatarOverlayRenderer {
     }
     this.frameCacheCanvas = null
     this.frameCacheSignature = null
+    this.paintMilestones.clear()
   }
 
   public getDebugSnapshot(): AvatarOverlayDebugSnapshot | null {
@@ -829,11 +840,53 @@ export class AvatarOverlayRenderer {
     return this.lastVisibleNodePubkeys.length
   }
 
+  private ensurePaintMilestone(
+    urlKey: AvatarUrlKey,
+    nowMs: number,
+  ): AvatarPaintMilestone {
+    const existing = this.paintMilestones.get(urlKey)
+    if (existing) {
+      return existing
+    }
+
+    const milestone: AvatarPaintMilestone = {
+      candidateSinceMs: nowMs,
+      firstImageDrawAtMs: null,
+      lastImageDrawAtMs: null,
+      imageDrawCount: 0,
+    }
+    this.paintMilestones.set(urlKey, milestone)
+    return milestone
+  }
+
+  private prunePaintMilestones(items: readonly AvatarDrawItem[]) {
+    const visibleKeys = new Set(
+      items
+        .map((item) => item.urlKey)
+        .filter((urlKey): urlKey is AvatarUrlKey => urlKey !== null),
+    )
+
+    for (const urlKey of this.paintMilestones.keys()) {
+      if (!visibleKeys.has(urlKey)) {
+        this.paintMilestones.delete(urlKey)
+      }
+    }
+
+    while (this.paintMilestones.size > MAX_AVATAR_PAINT_MILESTONES) {
+      const oldest = this.paintMilestones.keys().next().value
+      if (!oldest) {
+        break
+      }
+      this.paintMilestones.delete(oldest)
+    }
+  }
+
   private onAfterRender() {
     if (this.disposed) {
       return
     }
     const nowMs = performance.now()
+    const debugNowMs = Date.now()
     if (this.lastFrameTs > 0) {
       this.budget.recordFrame(nowMs - this.lastFrameTs)
     }
@@ -1013,7 +1066,7 @@ export class AvatarOverlayRenderer {
       this.drawFocusAuras(ctx, focusAuraItems)
       this.drawExpansionRings(ctx, expansionRingItems)
       this.lastDebugSnapshot = {
-        generatedAtMs: nowMs,
+        generatedAtMs: debugNowMs,
         cameraRatio,
         moving,
         globalMotionActive: resolveAvatarGlobalMotionActive({
@@ -1048,6 +1101,10 @@ export class AvatarOverlayRenderer {
           blockedCandidates: 0,
           inflightCandidates: 0,
           drawnImages: 0,
+          sourceImageDraws: 0,
+          sourceMonogramDraws: 0,
+          frameCacheHit: 0,
+          frameCacheBlits: 0,
           monogramDraws: 0,
           withPictureMonogramDraws: 0,
         },
@@ -1172,6 +1229,7 @@ export class AvatarOverlayRenderer {
       (count, item) => count + (item.hasPictureUrl ? 1 : 0),
       0,
     )
+    this.prunePaintMilestones(resolvedDrawItems)
     const selectedForImageCount = selectedForImagePubkeys.size
     let pendingCacheMissCount = 0
     let pendingCandidateCount = 0
@@ -1296,10 +1354,17 @@ export class AvatarOverlayRenderer {
       if (this.lastDebugSnapshot) {
         this.lastDebugSnapshot = {
           ...this.lastDebugSnapshot,
-          generatedAtMs: nowMs,
+          generatedAtMs: debugNowMs,
           cameraRatio,
           moving,
           globalMotionActive,
+          counts: {
+            ...this.lastDebugSnapshot.counts,
+            sourceImageDraws: 0,
+            sourceMonogramDraws: 0,
+            frameCacheHit: 1,
+            frameCacheBlits: 1,
+          },
         }
       }
       this.pruneMotionSamples(seenNodes)
@@ -1326,6 +1391,10 @@ export class AvatarOverlayRenderer {
       const hasPictureUrl = item.hasPictureUrl
       const hasSafePictureUrl = item.hasSafePictureUrl
       const urlKey = item.urlKey
+      const paintMilestone =
+        hasPictureUrl && urlKey
+          ? this.ensurePaintMilestone(urlKey, debugNowMs)
+          : null
       const avatarCacheEntry = urlKey !== null ? this.cache.get(urlKey) : null
       const hasReadyImage = avatarCacheEntry?.state === 'ready'
       const loadDebug = loadDebugByPubkey.get(item.pubkey) ?? {
@@ -1372,6 +1441,13 @@ export class AvatarOverlayRenderer {
       if (drawResult.kind === 'image') {
         imageDrawCount += 1
         drawnImageCount += 1
+        if (paintMilestone) {
+          if (paintMilestone.firstImageDrawAtMs === null) {
+            paintMilestone.firstImageDrawAtMs = debugNowMs
+          }
+          paintMilestone.lastImageDrawAtMs = debugNowMs
+          paintMilestone.imageDrawCount += 1
+        }
       } else if (drawResult.kind === 'monogram') {
         monogramDrawCount += 1
         if (hasPictureUrl) {
@@ -1412,6 +1488,10 @@ export class AvatarOverlayRenderer {
           requestedBucket: loadDebug.requestedBucket,
           hasPictureUrl,
           hasSafePictureUrl,
+          candidateSinceMs: paintMilestone?.candidateSinceMs ?? null,
+          firstImageDrawAtMs: paintMilestone?.firstImageDrawAtMs ?? null,
+          lastImageDrawAtMs: paintMilestone?.lastImageDrawAtMs ?? null,
+          imageDrawCount: paintMilestone?.imageDrawCount ?? 0,
         })
       }
     }
@@ -1419,7 +1499,7 @@ export class AvatarOverlayRenderer {
     this.drawExpansionRings(drawCtx, expansionRingItems)
 
     this.lastDebugSnapshot = {
-      generatedAtMs: nowMs,
+      generatedAtMs: debugNowMs,
       cameraRatio,
       moving,
       globalMotionActive,
@@ -1451,6 +1531,10 @@ export class AvatarOverlayRenderer {
         blockedCandidates: blockedCandidateCount,
         inflightCandidates: inflightCandidateCount,
         drawnImages: drawnImageCount,
+        sourceImageDraws: drawnImageCount,
+        sourceMonogramDraws: monogramDrawCount,
+        frameCacheHit: 0,
+        frameCacheBlits: 0,
         monogramDraws: monogramDrawCount,
         withPictureMonogramDraws: withPictureMonogramDrawCount,
       },

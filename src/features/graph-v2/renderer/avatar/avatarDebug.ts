@@ -53,9 +53,41 @@ export interface AvatarLoaderBlockDebugEntry {
   reason: string | null
 }
 
+export type AvatarLoaderDebugPath =
+  | 'disk'
+  | 'direct'
+  | 'proxy'
+  | 'image-element'
+
+export type AvatarLoaderDebugStage =
+  | 'cache'
+  | 'primary'
+  | 'fallback'
+  | 'recovery'
+
+export type AvatarLoaderDebugResult = 'ready' | 'failed' | 'aborted' | 'miss'
+
+export interface AvatarLoaderAttemptDebugSnapshot {
+  path: AvatarLoaderDebugPath
+  stage: AvatarLoaderDebugStage
+  policy: string | null
+  startedAt: number
+  responseReadyAt: number | null
+  decodeReadyAt: number | null
+  completedAt: number
+  durationMs: number
+  result: AvatarLoaderDebugResult
+  reason: string | null
+  bytes: number | null
+  host: string | null
+  pubkey: string | null
+  urlKey: AvatarUrlKey | null
+}
+
 export interface AvatarLoaderDebugSnapshot {
   blockedCount: number
   blocked: AvatarLoaderBlockDebugEntry[]
+  recentAttempts: AvatarLoaderAttemptDebugSnapshot[]
 }
 
 export interface AvatarSchedulerInflightDebugSnapshot {
@@ -123,6 +155,10 @@ export interface AvatarVisibleNodeDebugSnapshot {
   requestedBucket: ImageLodBucket | null
   hasPictureUrl: boolean
   hasSafePictureUrl: boolean
+  candidateSinceMs?: number | null
+  firstImageDrawAtMs?: number | null
+  lastImageDrawAtMs?: number | null
+  imageDrawCount?: number
 }
 
 export interface AvatarOverlayDebugSnapshot {
@@ -158,6 +194,10 @@ export interface AvatarOverlayDebugSnapshot {
     blockedCandidates: number
     inflightCandidates: number
     drawnImages: number
+    sourceImageDraws?: number
+    sourceMonogramDraws?: number
+    frameCacheHit?: number
+    frameCacheBlits?: number
     monogramDraws: number
     withPictureMonogramDraws: number
   }

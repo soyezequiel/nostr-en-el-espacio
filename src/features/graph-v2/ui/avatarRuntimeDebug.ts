@@ -82,8 +82,13 @@ export const buildAvatarRuntimeDebugPayload = ({
     ).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0])),
   )
 
+  const latency = buildAvatarRuntimeLatencyDebug({
+    state,
+    profileWarmup,
+  })
+
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     type: 'sigma-avatar-runtime-debug',
     generatedAt,
     environment: {
@@ -114,6 +119,10 @@ export const buildAvatarRuntimeDebugPayload = ({
       blockedCandidates: overlay?.counts.blockedCandidates ?? null,
       inflightCandidates: overlay?.counts.inflightCandidates ?? null,
       drawnImages: overlay?.counts.drawnImages ?? null,
+      sourceImageDraws: overlay?.counts.sourceImageDraws ?? null,
+      sourceMonogramDraws: overlay?.counts.sourceMonogramDraws ?? null,
+      frameCacheHit: overlay?.counts.frameCacheHit ?? null,
+      frameCacheBlits: overlay?.counts.frameCacheBlits ?? null,
       monogramDraws: overlay?.counts.monogramDraws ?? null,
       withPictureMonogramDraws: overlay?.counts.withPictureMonogramDraws ?? null,
       visualConcurrency:
@@ -141,6 +150,7 @@ export const buildAvatarRuntimeDebugPayload = ({
       readyLossSummary,
       recentReadyLosses: readyLossEvents.slice(-20),
     },
+    latency,
     profileWarmup: profileWarmup ?? null,
     runtime: {
       options: state.runtimeOptions,
@@ -150,6 +160,43 @@ export const buildAvatarRuntimeDebugPayload = ({
       scheduler: scheduler ?? null,
       overlay: overlay ?? null,
     },
+  }
+}
+
+const buildAvatarRuntimeLatencyDebug = ({
+  state,
+  profileWarmup,
+}: Pick<AvatarRuntimeDebugPayloadInput, 'state' | 'profileWarmup'>) => {
+  const loaderRecentAttempts = state.loader?.recentAttempts?.slice(-120) ?? []
+  const visiblePaints =
+    state.overlay?.nodes
+      .filter(
+        (node) =>
+          node.hasPictureUrl &&
+          (node.candidateSinceMs !== undefined ||
+            node.firstImageDrawAtMs !== undefined ||
+            node.lastImageDrawAtMs !== undefined),
+      )
+      .map((node) => ({
+        pubkey: node.pubkey,
+        label: node.label,
+        host: node.host,
+        urlKey: node.urlKey,
+        candidateSinceMs: node.candidateSinceMs ?? null,
+        firstImageDrawAtMs: node.firstImageDrawAtMs ?? null,
+        lastImageDrawAtMs: node.lastImageDrawAtMs ?? null,
+        imageDrawCount: node.imageDrawCount ?? 0,
+        drawResult: node.drawResult,
+        cacheState: node.cacheState,
+        inflight: node.inflight,
+      }))
+      .slice(0, 120) ?? []
+
+  return {
+    scope: 'visible-profile-warmup-to-first-image-paint',
+    profileWarmup: profileWarmup?.latency ?? null,
+    loaderRecentAttempts,
+    visiblePaints,
   }
 }
 

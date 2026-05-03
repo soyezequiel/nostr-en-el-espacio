@@ -160,6 +160,24 @@ test('avatar runtime debug payload separates draw, cache, scheduler, and blocked
             reason: 'timeout',
           },
         ],
+        recentAttempts: [
+          {
+            path: 'direct',
+            stage: 'primary',
+            policy: 'direct-first',
+            startedAt: 100,
+            responseReadyAt: 150,
+            decodeReadyAt: 180,
+            completedAt: 180,
+            durationMs: 80,
+            result: 'ready',
+            reason: null,
+            bytes: 4096,
+            host: 'example.com',
+            pubkey: 'alice',
+            urlKey: 'alice::https://example.com/alice.png',
+          },
+        ],
       },
       scheduler: {
         inflightCount: 1,
@@ -219,7 +237,76 @@ test('avatar runtime debug payload separates draw, cache, scheduler, and blocked
           failed: 1,
           loading: 2,
         },
-        nodes: [],
+        nodes: [
+          {
+            pubkey: 'alice',
+            label: 'Alice',
+            url: 'https://example.com/alice.png',
+            host: 'example.com',
+            urlKey: 'alice::https://example.com/alice.png',
+            radiusPx: 24,
+            priority: 1,
+            selectedForImage: true,
+            isPersistentAvatar: false,
+            zoomedOutMonogram: false,
+            monogramOnly: false,
+            fastMoving: false,
+            globalMotionActive: false,
+            disableImageReason: null,
+            drawResult: 'image',
+            drawFallbackReason: null,
+            loadDecision: 'candidate',
+            loadSkipReason: null,
+            cacheState: 'ready',
+            cacheFailureReason: null,
+            blocked: false,
+            blockReason: null,
+            inflight: false,
+            requestedBucket: 128,
+            hasPictureUrl: true,
+            hasSafePictureUrl: true,
+            candidateSinceMs: 100,
+            firstImageDrawAtMs: 220,
+            lastImageDrawAtMs: 240,
+            imageDrawCount: 2,
+          },
+        ],
+      },
+    },
+    profileWarmup: {
+      pubkeys: [],
+      viewportPubkeyCount: 1,
+      scenePubkeyCount: 1,
+      orderedPubkeyCount: 1,
+      eligibleCount: 0,
+      skipped: { missingNode: 0, alreadyUsable: 1, inflight: 0, cooldown: 0 },
+      generatedAtMs: 250,
+      selectedSamples: [],
+      attemptedCount: 1,
+      inflightCount: 0,
+      profileStates: { idle: 0, loading: 0, readyUsable: 1, readyEmpty: 0, missing: 0, unknown: 0 },
+      viewportProfileStates: { idle: 0, loading: 0, readyUsable: 1, readyEmpty: 0, missing: 0, unknown: 0 },
+      latency: {
+        inflightOldestAgeMs: null,
+        completedCount: 1,
+        inflightCount: 0,
+        relayCompletedCount: 1,
+        p50RelayMs: 40,
+        p95RelayMs: 40,
+        attempts: [
+          {
+            pubkey: 'alice',
+            pubkeyShort: 'alice',
+            attemptedAtMs: 80,
+            ageMs: 170,
+            completedAtMs: 120,
+            durationMs: 40,
+            source: 'relay',
+            status: 'ready',
+            hasPicture: true,
+            profileState: 'ready',
+          },
+        ],
       },
     },
     browser: {
@@ -238,7 +325,7 @@ test('avatar runtime debug payload separates draw, cache, scheduler, and blocked
   })
 
   assert.equal(payload.counts.visibleNodes, 12)
-  assert.equal(payload.schemaVersion, 2)
+  assert.equal(payload.schemaVersion, 3)
   assert.equal(payload.counts.drawnImages, 6)
   assert.equal(payload.counts.cacheFailed, 1)
   assert.equal(payload.counts.loaderBlocked, 2)
@@ -260,6 +347,9 @@ test('avatar runtime debug payload separates draw, cache, scheduler, and blocked
     timeout: 1,
   })
   assert.equal(payload.transitions.readyLossCount, 1)
+  assert.equal(payload.latency.profileWarmup?.relayCompletedCount, 1)
+  assert.equal(payload.latency.loaderRecentAttempts[0]?.path, 'direct')
+  assert.equal(payload.latency.visiblePaints[0]?.firstImageDrawAtMs, 220)
   assert.deepEqual(payload.transitions.readyLossSummary, {
     'mark_loading:none': 1,
   })

@@ -5,7 +5,12 @@
 import type {
   AvatarLoaderBlockDebugEntry,
   AvatarLoaderDebugSnapshot,
+  AvatarLoaderAttemptDebugSnapshot,
+  AvatarLoaderDebugPath,
+  AvatarLoaderDebugResult,
+  AvatarLoaderDebugStage,
 } from '@/features/graph-v2/renderer/avatar/avatarDebug'
+import { readAvatarDebugHost } from '@/features/graph-v2/renderer/avatar/avatarDebug'
 import type { AvatarBitmap, AvatarUrlKey } from '@/features/graph-v2/renderer/avatar/types'
 import {
   getDefaultAvatarDiskCache,
@@ -19,6 +24,7 @@ import { buildSocialAvatarProxyUrl } from '@/features/graph-v2/renderer/socialAv
 
 const FETCH_TIMEOUT_MS = 8000
 const BULK_DECODE_CONCURRENCY = 16
+const MAX_RECENT_AVATAR_LOADER_ATTEMPTS = 120
 const AVATAR_PROXY_FIRST_HOSTS = new Set([
   'cdn.nostr.build',
   'nostr.build',
@@ -29,6 +35,11 @@ type AvatarFetchPolicy = 'direct-first' | 'proxy-first'
 type AvatarNetworkPath = 'direct' | 'proxy'
 type AvatarAttemptStage = 'primary' | 'fallback' | 'recovery'
 
+interface AvatarLoaderDebugContext {
+  pubkey?: string | null
+  urlKey?: AvatarUrlKey | null
+}
+
 export interface LoadedAvatar {
   bitmap: AvatarBitmap
   bytes: number
@@ -36,6 +47,8 @@ export interface LoadedAvatar {
   mimeType?: string | null
   diskCacheBlob?: Blob
   diskCacheMimeType?: string | null
+  responseReadyAt?: number | null
+  decodeReadyAt?: number | null
 }
 
 export interface AvatarLoaderDeps {
@@ -169,6 +182,7 @@ export class AvatarLoader {
   private readonly now: () => number
   private readonly proxyOrigin: string | null
   private readonly diskCache: AvatarDiskCache | null
+  private readonly recentAttempts: AvatarLoaderAttemptDebugSnapshot[] = []
 
   constructor(deps: AvatarLoaderDeps = {}) {
     this.fetchImpl =
@@ -247,6 +261,7 @@ export class AvatarLoader {
     return {
       blockedCount: blocked.length,
       blocked,
+      recentAttempts: this.recentAttempts.slice(),
     }
   }
 
@@ -271,12 +286,13 @@ export class AvatarLoader {
     url: string,
     bucket: ImageLodBucket,
     signal: AbortSignal,
+    debugContext: AvatarLoaderDebugContext = {},
   ): Promise<LoadedAvatar | null> {
     if (!isSafeAvatarUrl(url)) {
       return null
     }
 
-    return this.loadFromDiskCache(url, bucket, signal)
+    return this.loadFromDiskCache(url, bucket, signal, debugContext)
   }
 
   public async loadManyDiskCached(
@@ -376,13 +392,15 @@ export class AvatarLoader {
     options: {
       useImageElementFallback?: boolean
       useProxyFallback?: boolean
+      debugContext?: AvatarLoaderDebugContext
     } = {},
   ): Promise<LoadedAvatar> {
     if (!isSafeAvatarUrl(url)) {
       throw new Error('unsafe_url')
     }
 
-    const cached = await this.loadFromDiskCache(url, bucket, signal)
+    const debugContext = options.debugContext ?? {}
+    const cached = await this.loadFromDiskCache(url, bucket, signal, debugContext)
     if (cached) {
       return cached
     }
@@ -408,6 +426,7 @@ export class AvatarLoader {
           path: 'proxy',
           stage: 'primary',
           policy: fetchPolicy,
+          debugContext,
         })
       } catch (err) {
         if (signal.aborted || isAbortError(err)) {
@@ -421,6 +440,7 @@ export class AvatarLoader {
           path: 'direct',
           stage: 'recovery',
           policy: fetchPolicy,
+          debugContext,
         })
       } catch (err) {
         if (signal.aborted || isAbortError(err)) {
@@ -434,6 +454,7 @@ export class AvatarLoader {
           path: 'direct',
           stage: 'primary',
           policy: fetchPolicy,
+          debugContext,
         })
       } catch (err) {
         if (signal.aborted || isAbortError(err)) {
@@ -460,6 +481,7 @@ export class AvatarLoader {
             path: 'proxy',
             stage: 'fallback',
             policy: fetchPolicy,
+            debugContext,
           })
         } catch (err) {
           if (signal.aborted || isAbortError(err)) {
@@ -517,8 +539,24 @@ export class AvatarLoader {
       bucket,
       preservedReason: extractAvatarLoadFailureReason(fetchError),
     }))
+    const imageElementStartedAt = this.now()
     try {
       const loaded = await this.loadViaImageElement(url, bucket, signal)
+      const imageElementCompletedAt = this.now()
+      this.recordAttempt({
+        path: 'image-element',
+        stage: 'fallback',
+        policy: fetchPolicy,
+        startedAt: imageElementStartedAt,
+        responseReadyAt: imageElementCompletedAt,
+        decodeReadyAt: imageElementCompletedAt,
+        completedAt: imageElementCompletedAt,
+        result: 'ready',
+        reason: null,
+        bytes: loaded.bytes,
+        url,
+        debugContext,
+      })
       void this.writeDiskCache(url, bucket, loaded, 'image-element')
       traceAvatarFlow('renderer.avatarLoader.imageElementFallback.ready', () => ({
         url: summarizeAvatarUrl(url),
@@ -527,6 +565,21 @@ export class AvatarLoader {
       }))
       return loaded
     } catch (fallbackErr) {
+      const completedAt = this.now()
+      this.recordAttempt({
+        path: 'image-element',
+        stage: 'fallback',
+        policy: fetchPolicy,
+        startedAt: imageElementStartedAt,
+        responseReadyAt: null,
+        decodeReadyAt: null,
+        completedAt,
+        result: signal.aborted || isAbortError(fallbackErr) ? 'aborted' : 'failed',
+        reason: extractAvatarLoadFailureReason(fallbackErr),
+        bytes: null,
+        url,
+        debugContext,
+      })
       if (signal.aborted || isAbortError(fallbackErr)) {
         throw fallbackErr
       }
@@ -558,12 +611,15 @@ export class AvatarLoader {
       path,
       stage,
       policy,
+      debugContext,
     }: {
       path: AvatarNetworkPath
       stage: AvatarAttemptStage
       policy: AvatarFetchPolicy
+      debugContext?: AvatarLoaderDebugContext
     },
   ): Promise<LoadedAvatar> {
+    const startedAt = this.now()
     traceAvatarFlow('renderer.avatarLoader.fetchAttempt.start', () => ({
       sourceUrl: summarizeAvatarUrl(sourceUrl),
       requestUrl: summarizeAvatarUrl(requestUrl),
@@ -575,6 +631,21 @@ export class AvatarLoader {
 
     try {
       const loaded = await this.loadViaFetch(requestUrl, bucket, signal)
+      const completedAt = this.now()
+      this.recordAttempt({
+        path,
+        stage,
+        policy,
+        startedAt,
+        responseReadyAt: loaded.responseReadyAt ?? null,
+        decodeReadyAt: loaded.decodeReadyAt ?? completedAt,
+        completedAt,
+        result: 'ready',
+        reason: null,
+        bytes: loaded.bytes,
+        url: sourceUrl,
+        debugContext,
+      })
       void this.writeDiskCache(sourceUrl, bucket, loaded, path)
       traceAvatarFlow('renderer.avatarLoader.fetchAttempt.ready', () => ({
         sourceUrl: summarizeAvatarUrl(sourceUrl),
@@ -595,6 +666,21 @@ export class AvatarLoader {
       }
       return loaded
     } catch (err) {
+      const completedAt = this.now()
+      this.recordAttempt({
+        path,
+        stage,
+        policy,
+        startedAt,
+        responseReadyAt: null,
+        decodeReadyAt: null,
+        completedAt,
+        result: signal.aborted || isAbortError(err) ? 'aborted' : 'failed',
+        reason: extractAvatarLoadFailureReason(err),
+        bytes: null,
+        url: sourceUrl,
+        debugContext,
+      })
       if (signal.aborted || isAbortError(err)) {
         throw err
       }
@@ -627,6 +713,7 @@ export class AvatarLoader {
         referrerPolicy: 'no-referrer',
         mode: 'cors',
       })
+      const responseReadyAt = this.now()
       if (!response.ok) {
         const proxyReason = response.headers.get('x-avatar-proxy-reason')
         const reasonTag = proxyReason ? `_${proxyReason}` : ''
@@ -640,10 +727,13 @@ export class AvatarLoader {
         throw new DOMException('aborted', 'AbortError')
       }
       const loaded = await this.loadViaBlob(blob, bucket, signal)
+      const decodeReadyAt = this.now()
       return {
         ...loaded,
         blob,
         mimeType: blob.type || response.headers.get('content-type'),
+        responseReadyAt,
+        decodeReadyAt,
       }
     } catch (err) {
       if (timeoutCtrl.signal.aborted && !signal.aborted) {
@@ -669,18 +759,50 @@ export class AvatarLoader {
     url: string,
     bucket: ImageLodBucket,
     signal: AbortSignal,
+    debugContext: AvatarLoaderDebugContext = {},
   ): Promise<LoadedAvatar | null> {
     if (!this.diskCache || signal.aborted) {
       return null
     }
 
+    const startedAt = this.now()
     try {
       const cached = await this.diskCache.get(url, bucket, this.now())
       if (!cached || signal.aborted) {
+        const completedAt = this.now()
+        this.recordAttempt({
+          path: 'disk',
+          stage: 'cache',
+          policy: null,
+          startedAt,
+          responseReadyAt: completedAt,
+          decodeReadyAt: null,
+          completedAt,
+          result: signal.aborted ? 'aborted' : 'miss',
+          reason: signal.aborted ? 'aborted' : 'disk_cache_miss',
+          bytes: null,
+          url,
+          debugContext,
+        })
         return null
       }
 
       const loaded = await this.loadViaBlob(cached.blob, bucket, signal, { skipCircularCompose: true })
+      const completedAt = this.now()
+      this.recordAttempt({
+        path: 'disk',
+        stage: 'cache',
+        policy: null,
+        startedAt,
+        responseReadyAt: completedAt,
+        decodeReadyAt: completedAt,
+        completedAt,
+        result: 'ready',
+        reason: null,
+        bytes: loaded.bytes,
+        url,
+        debugContext,
+      })
       traceAvatarFlow('renderer.avatarLoader.diskCache.ready', () => ({
         url: summarizeAvatarUrl(url),
         bucket,
@@ -690,6 +812,21 @@ export class AvatarLoader {
       }))
       return loaded
     } catch (err) {
+      const completedAt = this.now()
+      this.recordAttempt({
+        path: 'disk',
+        stage: 'cache',
+        policy: null,
+        startedAt,
+        responseReadyAt: null,
+        decodeReadyAt: null,
+        completedAt,
+        result: signal.aborted || isAbortError(err) ? 'aborted' : 'failed',
+        reason: extractAvatarLoadFailureReason(err),
+        bytes: null,
+        url,
+        debugContext,
+      })
       await this.deleteDiskCacheEntry(url, bucket)
       traceAvatarFlow('renderer.avatarLoader.diskCache.failed', () => ({
         url: summarizeAvatarUrl(url),
@@ -791,6 +928,58 @@ export class AvatarLoader {
     }
     const bitmap = await composeCircularBitmap(raw, bucket)
     return { bitmap, bytes: bucket * bucket * 4 }
+  }
+
+  private recordAttempt({
+    path,
+    stage,
+    policy,
+    startedAt,
+    responseReadyAt,
+    decodeReadyAt,
+    completedAt,
+    result,
+    reason,
+    bytes,
+    url,
+    debugContext,
+  }: {
+    path: AvatarLoaderDebugPath
+    stage: AvatarLoaderDebugStage
+    policy: string | null
+    startedAt: number
+    responseReadyAt: number | null
+    decodeReadyAt: number | null
+    completedAt: number
+    result: AvatarLoaderDebugResult
+    reason: string | null
+    bytes: number | null
+    url: string
+    debugContext?: AvatarLoaderDebugContext
+  }) {
+    this.recentAttempts.push({
+      path,
+      stage,
+      policy,
+      startedAt,
+      responseReadyAt,
+      decodeReadyAt,
+      completedAt,
+      durationMs: Math.max(0, completedAt - startedAt),
+      result,
+      reason,
+      bytes,
+      host: readAvatarDebugHost(url),
+      pubkey: debugContext?.pubkey ?? null,
+      urlKey: debugContext?.urlKey ?? null,
+    })
+
+    if (this.recentAttempts.length > MAX_RECENT_AVATAR_LOADER_ATTEMPTS) {
+      this.recentAttempts.splice(
+        0,
+        this.recentAttempts.length - MAX_RECENT_AVATAR_LOADER_ATTEMPTS,
+      )
+    }
   }
 }
 

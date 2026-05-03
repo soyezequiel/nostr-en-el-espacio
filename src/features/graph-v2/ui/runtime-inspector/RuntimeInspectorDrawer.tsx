@@ -903,6 +903,35 @@ export function RuntimeInspectorDrawer({
               section={snapshot.avatars}
             >
               {renderMetricList(snapshot.avatars.metricas)}
+              <div className="sg-runtime__subsection">Lentitud de carga</div>
+              {renderMetricList(snapshot.avatars.latencia.metricas)}
+              {snapshot.avatars.latencia.hosts.length > 0 ? (
+                <>
+                  <div className="sg-runtime__subsection">Hosts lentos</div>
+                  {renderMetricList(snapshot.avatars.latencia.hosts)}
+                </>
+              ) : null}
+              {snapshot.avatars.latencia.casos.length > 0 ? (
+                <div className="sg-runtime__rows">
+                  {snapshot.avatars.latencia.casos.map((item) => (
+                    <div
+                      className="sg-runtime__row"
+                      key={`${item.nodo}:${item.host}:${item.duracion}`}
+                    >
+                      <span className="sg-runtime__row-title">{item.nodo}</span>
+                      <span className="sg-runtime__row-state">{item.duracion}</span>
+                      <span className="sg-runtime__row-detail">
+                        {item.host} | perfil {item.fuentePerfil} | dominante{' '}
+                        {item.etapaDominante}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="sg-runtime__empty">
+                  Sin muestras end-to-end suficientes en este frame.
+                </div>
+              )}
               <div className="sg-runtime__subsection">Razones dominantes</div>
               {snapshot.avatars.razones.length > 0 ? (
                 renderMetricList(snapshot.avatars.razones)

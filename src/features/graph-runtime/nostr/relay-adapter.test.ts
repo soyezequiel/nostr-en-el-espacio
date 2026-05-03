@@ -243,6 +243,70 @@ class BurstTransport implements RelayTransport {
   }
 }
 
+class QueuedConnection implements RelayConnection {
+  private readonly noticeListeners = new Set<(message: string) => void>()
+  private readonly closeListeners = new Set<() => void>()
+  public readonly handlers: RelaySubscribeHandlers[] = []
+  public subscribeCalls = 0
+  private open = true
+
+  constructor(readonly url: string) {}
+
+  subscribe(_filters: Filter[], handlers: RelaySubscribeHandlers) {
+    this.subscribeCalls += 1
+    this.handlers.push(handlers)
+
+    return {
+      close: () => {},
+    }
+  }
+
+  async count() {
+    return 0
+  }
+
+  onNotice(listener: (message: string) => void) {
+    this.noticeListeners.add(listener)
+    return () => {
+      this.noticeListeners.delete(listener)
+    }
+  }
+
+  onClose(listener: () => void) {
+    this.closeListeners.add(listener)
+    return () => {
+      this.closeListeners.delete(listener)
+    }
+  }
+
+  isOpen() {
+    return this.open
+  }
+
+  close() {
+    this.open = false
+    for (const listener of this.closeListeners) {
+      listener()
+    }
+  }
+}
+
+class QueuedTransport implements RelayTransport {
+  public readonly connection: QueuedConnection
+
+  constructor(relayUrl: string) {
+    this.connection = new QueuedConnection(relayUrl)
+  }
+
+  async connect(): Promise<RelayConnection> {
+    return this.connection
+  }
+}
+
+const flushMicrotasks = async () => {
+  await new Promise<void>((resolve) => queueMicrotask(resolve))
+}
+
 test('shares circuit breaker state across adapter instances', async () => {
   const transport = new FailingTransport()
   const adapterA = createRelayPoolAdapter({
@@ -378,4 +442,45 @@ test('verify-worker subscriptions batch relay events before publishing', async (
     globalVerifyPool.terminate()
     restore()
   }
+})
+
+test('limits active subscriptions per relay across simultaneous callers', async () => {
+  const relayUrl = 'wss://relay-queue.example'
+  const transport = new QueuedTransport(relayUrl)
+  const adapter = createRelayPoolAdapter({
+    relayUrls: [relayUrl],
+    maxActiveSubscriptionsPerRelay: 1,
+    retryCount: 0,
+    stragglerGraceMs: 0,
+    transport,
+  })
+  const completions: string[] = []
+
+  adapter
+    .subscribe([{ kinds: [3] }], { verificationMode: 'trusted-relay' })
+    .subscribe({
+      complete: () => completions.push('first'),
+    })
+  adapter
+    .subscribe([{ kinds: [0] }], { verificationMode: 'trusted-relay' })
+    .subscribe({
+      complete: () => completions.push('second'),
+    })
+
+  await flushMicrotasks()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(transport.connection.subscribeCalls, 1)
+
+  transport.connection.handlers[0]?.onEose()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flushMicrotasks()
+
+  assert.deepEqual(completions, ['first'])
+  assert.equal(transport.connection.subscribeCalls, 2)
+
+  transport.connection.handlers[1]?.onEose()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flushMicrotasks()
+
+  assert.deepEqual(completions, ['first', 'second'])
 })

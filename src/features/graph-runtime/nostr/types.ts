@@ -148,6 +148,7 @@ export interface RelayAdapterOptions extends RelayUrlValidationOptions {
   retryCount?: number
   stragglerGraceMs?: number
   maxAuthorsPerFilter?: number
+  maxActiveSubscriptionsPerRelay?: number
   clock?: RelayClock
   transport?: RelayTransport
 }

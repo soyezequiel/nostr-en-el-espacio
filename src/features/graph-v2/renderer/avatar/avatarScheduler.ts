@@ -540,8 +540,16 @@ export class AvatarScheduler {
     }
 
     const loadPromise = options.diskCacheOnly
-      ? this.loader.loadDiskCached(candidate.url, targetBucket, controller.signal)
-      : this.loader.load(candidate.url, targetBucket, controller.signal)
+      ? this.loader.loadDiskCached(candidate.url, targetBucket, controller.signal, {
+          pubkey: candidate.pubkey,
+          urlKey: candidate.urlKey,
+        })
+      : this.loader.load(candidate.url, targetBucket, controller.signal, {
+          debugContext: {
+            pubkey: candidate.pubkey,
+            urlKey: candidate.urlKey,
+          },
+        })
 
     loadPromise
       .then((loaded) => {

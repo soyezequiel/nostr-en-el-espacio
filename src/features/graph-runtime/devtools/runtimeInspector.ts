@@ -114,6 +114,17 @@ export interface RuntimeInspectorProfilesSection
 export interface RuntimeInspectorAvatarsSection
   extends RuntimeInspectorSectionBase {
   metricas: RuntimeInspectorMetric[]
+  latencia: {
+    metricas: RuntimeInspectorMetric[]
+    hosts: RuntimeInspectorMetric[]
+    casos: Array<{
+      nodo: string
+      host: string
+      fuentePerfil: string
+      etapaDominante: string
+      duracion: string
+    }>
+  }
   razones: RuntimeInspectorMetric[]
   casos: Array<{
     nodo: string
@@ -327,6 +338,25 @@ const formatBytes = (value: number | null | undefined) => {
     return `${formatDecimal(value / 1024, 1)} KB`
   }
   return `${formatDecimal(value / (1024 * 1024), 1)} MB`
+}
+
+const formatDurationMs = (value: number | null | undefined) => {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return 'sin dato'
+  }
+  if (value >= 1000) {
+    return `${formatDecimal(value / 1000, 1)} s`
+  }
+  return `${formatInteger(Math.round(value))} ms`
+}
+
+const percentile = (values: number[], percentileValue: number) => {
+  if (values.length === 0) {
+    return null
+  }
+  const sorted = [...values].sort((left, right) => left - right)
+  const index = Math.ceil((percentileValue / 100) * sorted.length) - 1
+  return sorted[Math.min(sorted.length - 1, Math.max(0, index))] ?? null
 }
 
 const compactPubkey = (value: string) =>
@@ -857,6 +887,11 @@ const buildProfilesSection = (
   const idleCount = viewportCounts.idle
   const incompleteCount =
     visibleCount - readyUsable - viewportCounts.unknown
+  const activeProfileWork =
+    viewportCounts.loading > 0 || (input.visibleProfileWarmup?.inflightCount ?? 0) > 0
+  const cooldownHeldBacklog =
+    viewportCounts.readyEmpty + viewportCounts.missing > 0 ||
+    (input.visibleProfileWarmup?.skipped.cooldown ?? 0) > 0
 
   let tone: RuntimeInspectorTone = 'ok'
   let resumen = 'Perfiles visibles estables'
@@ -876,11 +911,25 @@ const buildProfilesSection = (
       'Abre Perfiles para revisar warmup visible, cooldown e inflight. Si al abrir detalle se arreglan, el cuello esta en hidratacion general.'
   } else if (incompleteCount > 0) {
     tone = 'warn'
-    resumen = 'Todavia hay perfiles pendientes'
-    quePasaAhora =
-      'La hidratacion visible sigue corriendo y todavia quedan nodos en loading, empty o missing.'
-    queLeerAhora =
-      'Abre Perfiles para ver si el backlog viene de cooldown, batch limit o faltantes reales.'
+    if (activeProfileWork) {
+      resumen = 'Todavia hay perfiles pendientes'
+      quePasaAhora =
+        'La hidratacion visible sigue corriendo y todavia quedan nodos en loading o inflight.'
+      queLeerAhora =
+        'Abre Perfiles para ver si el backlog viene de batch limit, inflight lento o faltantes reales.'
+    } else if (cooldownHeldBacklog) {
+      resumen = 'Perfiles incompletos en espera'
+      quePasaAhora =
+        'No hay hidratacion visible activa ahora; los pendientes vienen de perfiles vacios, missing o cooldown.'
+      queLeerAhora =
+        'Abre Perfiles para distinguir cooldown de faltantes reales antes de culpar al fetch activo.'
+    } else {
+      resumen = 'Perfiles incompletos sin trabajo activo'
+      quePasaAhora =
+        'Hay perfiles incompletos, pero el snapshot no muestra loading ni inflight en este momento.'
+      queLeerAhora =
+        'Abre Perfiles para revisar estados por nodo y confirmar si falta reintento o si son datos vacios reales.'
+    }
   }
 
   return {
@@ -951,6 +1000,212 @@ const collectAvatarSamples = (
   }))
 }
 
+const OPERATIONAL_AVATAR_TIMEOUT_MS = 8000
+
+const buildAvatarLatencySection = (
+  input: RuntimeInspectorBuildInput,
+): RuntimeInspectorAvatarsSection['latencia'] & {
+  tone: RuntimeInspectorTone
+  summary: string | null
+} => {
+  const snapshot = input.avatarRuntimeSnapshot
+  const overlay = snapshot?.overlay
+  const loaderAttempts = snapshot?.loader?.recentAttempts ?? []
+  const warmupLatency = input.visibleProfileWarmup?.latency ?? null
+  const warmupByPubkey = new Map(
+    (warmupLatency?.attempts ?? []).map((attempt) => [attempt.pubkey, attempt]),
+  )
+  const sampleNowMs = overlay?.generatedAtMs ?? Date.now()
+
+  const endToEndSamples =
+    overlay?.nodes
+      .map((node) => {
+        const warmup = warmupByPubkey.get(node.pubkey)
+        if (
+          !warmup ||
+          node.firstImageDrawAtMs === null ||
+          node.firstImageDrawAtMs === undefined
+        ) {
+          return null
+        }
+        const durationMs = node.firstImageDrawAtMs - warmup.attemptedAtMs
+        if (!Number.isFinite(durationMs) || durationMs < 0) {
+          return null
+        }
+        const profileMs = warmup.durationMs
+        const imageAttempt = loaderAttempts
+          .filter(
+            (attempt) =>
+              attempt.pubkey === node.pubkey &&
+              attempt.result === 'ready' &&
+              attempt.path !== 'disk',
+          )
+          .sort((left, right) => right.durationMs - left.durationMs)[0]
+        const imageMs = imageAttempt?.durationMs ?? null
+        const renderMs =
+          profileMs !== null && imageMs !== null
+            ? Math.max(0, durationMs - profileMs - imageMs)
+            : null
+        return {
+          pubkey: node.pubkey,
+          label: node.label?.trim() || compactPubkey(node.pubkey),
+          host: node.host ?? imageAttempt?.host ?? 'sin host',
+          profileSource: warmup.source,
+          durationMs,
+          profileMs,
+          imageMs,
+          renderMs,
+        }
+      })
+      .filter((sample): sample is NonNullable<typeof sample> => sample !== null) ??
+    []
+
+  const endToEndDurations = endToEndSamples.map((sample) => sample.durationMs)
+  const profileRelayDurations =
+    warmupLatency?.attempts
+      .filter(
+        (attempt) =>
+          attempt.status === 'ready' &&
+          attempt.durationMs !== null &&
+          (attempt.source === 'relay' || attempt.source === 'primal-cache'),
+      )
+      .map((attempt) => attempt.durationMs!) ?? []
+  const imageDurations = loaderAttempts
+    .filter((attempt) => attempt.result === 'ready' && attempt.path !== 'disk')
+    .map((attempt) => attempt.durationMs)
+
+  const p50EndToEnd = percentile(endToEndDurations, 50)
+  const p95EndToEnd = percentile(endToEndDurations, 95)
+  const p50Profile = percentile(profileRelayDurations, 50)
+  const p95Profile = percentile(profileRelayDurations, 95)
+  const p50Image = percentile(imageDurations, 50)
+  const p95Image = percentile(imageDurations, 95)
+  const schedulerOldestInflightMs =
+    snapshot?.scheduler?.inflight.reduce<number | null>((oldest, item) => {
+      const ageMs = Math.max(0, sampleNowMs - item.startedAt)
+      return oldest === null ? ageMs : Math.max(oldest, ageMs)
+    }, null) ?? null
+  const oldestInflightMs = Math.max(
+    warmupLatency?.inflightOldestAgeMs ?? 0,
+    schedulerOldestInflightMs ?? 0,
+  )
+  const oldestInflightValue = oldestInflightMs > 0 ? oldestInflightMs : null
+  const visibleQueue =
+    (overlay?.counts.pendingCandidates ?? 0) + (overlay?.counts.inflightCandidates ?? 0)
+
+  const hostGroups = new Map<string, number[]>()
+  for (const attempt of loaderAttempts) {
+    if (attempt.result !== 'ready' || attempt.path === 'disk' || !attempt.host) {
+      continue
+    }
+    const values = hostGroups.get(attempt.host) ?? []
+    values.push(attempt.durationMs)
+    hostGroups.set(attempt.host, values)
+  }
+
+  const slowHosts = [...hostGroups.entries()]
+    .map(([host, values]) => ({
+      host,
+      count: values.length,
+      p95: percentile(values, 95) ?? 0,
+    }))
+    .sort((left, right) => right.p95 - left.p95 || right.count - left.count)
+    .slice(0, 4)
+
+  const badInflightCount =
+    (warmupLatency?.attempts.filter(
+      (attempt) =>
+        attempt.status === 'inflight' &&
+        attempt.ageMs >= OPERATIONAL_AVATAR_TIMEOUT_MS,
+    ).length ?? 0) +
+    (snapshot?.scheduler?.inflight.filter(
+      (item) => Math.max(0, sampleNowMs - item.startedAt) >= OPERATIONAL_AVATAR_TIMEOUT_MS,
+    ).length ?? 0)
+
+  const hasEnoughEndToEndSamples = endToEndDurations.length >= 3
+  let tone: RuntimeInspectorTone = 'ok'
+  if (
+    (hasEnoughEndToEndSamples && (p95EndToEnd ?? 0) > OPERATIONAL_AVATAR_TIMEOUT_MS) ||
+    badInflightCount >= 3
+  ) {
+    tone = 'bad'
+  } else if (
+    (hasEnoughEndToEndSamples && (p95EndToEnd ?? 0) > 2500) ||
+    (oldestInflightValue ?? 0) > 4000
+  ) {
+    tone = 'warn'
+  }
+
+  const latencyCases = endToEndSamples
+    .sort((left, right) => right.durationMs - left.durationMs)
+    .slice(0, 6)
+    .map((sample) => {
+      const stages = [
+        { label: 'perfil relay/cache', value: sample.profileMs },
+        { label: 'imagen HTTP/decode', value: sample.imageMs },
+        { label: 'render/paint', value: sample.renderMs },
+      ].filter((stage): stage is { label: string; value: number } => stage.value !== null)
+      const dominant =
+        stages.sort((left, right) => right.value - left.value)[0]?.label ??
+        'end-to-end'
+      return {
+        nodo: sample.label,
+        host: sample.host,
+        fuentePerfil: sample.profileSource,
+        etapaDominante: dominant,
+        duracion: formatDurationMs(sample.durationMs),
+      }
+    })
+
+  return {
+    tone,
+    summary:
+      tone === 'bad'
+        ? 'La carga end-to-end de fotos esta venciendo el timeout operativo.'
+        : tone === 'warn'
+          ? 'Hay latencia visible en fotos, separada entre perfil, HTTP/decode y paint.'
+          : null,
+    metricas: [
+      {
+        label: 'End-to-end p50/p95',
+        value: `${formatDurationMs(p50EndToEnd)} / ${formatDurationMs(p95EndToEnd)}`,
+        tone,
+      },
+      {
+        label: 'Perfil relay p50/p95',
+        value: `${formatDurationMs(p50Profile)} / ${formatDurationMs(p95Profile)}`,
+        tone: (p95Profile ?? 0) > 2500 ? 'warn' : 'ok',
+      },
+      {
+        label: 'Imagen HTTP/decode p50/p95',
+        value: `${formatDurationMs(p50Image)} / ${formatDurationMs(p95Image)}`,
+        tone: (p95Image ?? 0) > 2500 ? 'warn' : 'ok',
+      },
+      {
+        label: 'Inflight mas viejo',
+        value: formatDurationMs(oldestInflightValue),
+        tone: (oldestInflightValue ?? 0) > 4000 ? 'warn' : 'ok',
+      },
+      {
+        label: 'Cola visible',
+        value: formatInteger(visibleQueue),
+        tone: visibleQueue > 0 ? 'warn' : 'ok',
+      },
+      {
+        label: 'Muestras end-to-end',
+        value: formatInteger(endToEndDurations.length),
+        tone: endToEndDurations.length < 3 ? 'neutral' : 'ok',
+      },
+    ],
+    hosts: slowHosts.map((host) => ({
+      label: host.host,
+      value: `${formatDurationMs(host.p95)} p95 (${formatInteger(host.count)})`,
+      tone: host.p95 > 2500 ? 'warn' : 'ok',
+    })),
+    casos: latencyCases,
+  }
+}
+
 const buildAvatarSection = (
   input: RuntimeInspectorBuildInput,
 ): RuntimeInspectorAvatarsSection => {
@@ -961,6 +1216,9 @@ const buildAvatarSection = (
   const failedCount = cache?.byState.failed ?? 0
   const blockedCount = loader?.blockedCount ?? 0
   const withPictureMonograms = overlay?.counts.withPictureMonogramDraws ?? 0
+  const drawnImages = overlay?.counts.drawnImages ?? 0
+  const sourceImageDraws = overlay?.counts.sourceImageDraws ?? drawnImages
+  const frameCacheHit = (overlay?.counts.frameCacheHit ?? 0) > 0
   const visibleFailedNodes =
     overlay?.nodes.filter(
       (node) => node.hasPictureUrl && node.cacheState === 'failed',
@@ -987,6 +1245,7 @@ const buildAvatarSection = (
     (cache?.byState.failed ?? 0)
   const globalFailureIsHigh =
     failedCount > Math.max(8, Math.floor(cacheEntryCount * 0.08))
+  const latencia = buildAvatarLatencySection(input)
 
   let tone: RuntimeInspectorTone = 'ok'
   let resumen = 'Avatares estables'
@@ -1050,6 +1309,19 @@ const buildAvatarSection = (
       'Abre Avatares para ver si la causa es movimiento, zoom, tamano o fallback de draw.'
   }
 
+  if (tone === 'ok' && latencia.tone !== 'ok') {
+    tone = latencia.tone
+    resumen =
+      latencia.tone === 'bad'
+        ? 'Fotos muy lentas end-to-end'
+        : 'Fotos lentas end-to-end'
+    quePasaAhora =
+      latencia.summary ??
+      'Hay latencia medible entre el warmup de perfil visible y el primer paint de la imagen.'
+    queLeerAhora =
+      'Abre Lentitud de carga para separar si el tiempo esta en perfil Nostr, HTTP/decode o render.'
+  }
+
   const reasons = new Map<string, number>()
   pushReasonCounts(
     reasons,
@@ -1087,7 +1359,14 @@ const buildAvatarSection = (
     quePasaAhora,
     queLeerAhora,
     metricas: [
-      { label: 'Fotos dibujadas', value: formatInteger(overlay?.counts.drawnImages ?? 0), tone: 'ok' },
+      { label: 'Fotos dibujadas', value: formatInteger(drawnImages), tone: 'ok' },
+      {
+        label: 'Draws reales',
+        value: frameCacheHit
+          ? `${formatInteger(sourceImageDraws)} (cache frame)`
+          : formatInteger(sourceImageDraws),
+        tone: sourceImageDraws > 60 ? 'warn' : 'ok',
+      },
       { label: 'Monogramas con foto', value: formatInteger(withPictureMonograms), tone: withPictureMonograms > 0 ? 'warn' : 'ok' },
       { label: 'Cache ready', value: formatInteger(cache?.byState.ready ?? 0), tone: 'ok' },
       { label: 'Cache failed', value: formatInteger(failedCount), tone: visiblePipelineFailedCount > 0 ? 'bad' : failedCount > 0 ? 'warn' : 'ok' },
@@ -1102,6 +1381,7 @@ const buildAvatarSection = (
             : 'ok',
       },
     ],
+    latencia,
     razones: rankReasons(reasons),
     casos: collectAvatarSamples(snapshot),
   }
@@ -1278,7 +1558,9 @@ const buildResourceTop = (
         ? 'warn'
         : 'ok'
 
-  const drawnImages = avatarCounts?.drawnImages ?? 0
+  const visibleAvatarImages = avatarCounts?.drawnImages ?? 0
+  const sourceImageDraws = avatarCounts?.sourceImageDraws ?? visibleAvatarImages
+  const frameCacheHit = (avatarCounts?.frameCacheHit ?? 0) > 0
   const loadCandidates = avatarCounts?.loadCandidates ?? 0
   const pendingCandidates = avatarCounts?.pendingCandidates ?? 0
   const avatarBucket = avatarBudget?.maxBucket ?? input.avatarPerfSnapshot?.budget.maxBucket ?? 0
@@ -1291,7 +1573,7 @@ const buildResourceTop = (
           ? 180
           : 70
   const avatarScore =
-    drawnImages * 18 +
+    sourceImageDraws * 18 +
     loadCandidates * 7 +
     pendingCandidates * 10 +
     avatarBucket * 2 +
@@ -1299,9 +1581,9 @@ const buildResourceTop = (
     (avatarBudget?.showAllVisibleImages ? 360 : 0) +
     imageQualityWeight
   const avatarTone: RuntimeInspectorTone =
-    drawnImages > 90 || avatarBucket >= 512
+    sourceImageDraws > 90 || avatarBucket >= 512
       ? 'bad'
-      : drawnImages > 45 || loadCandidates > 120 || pendingCandidates > 40
+      : sourceImageDraws > 45 || loadCandidates > 120 || pendingCandidates > 40
         ? 'warn'
         : avatarScore > 0
           ? 'ok'
@@ -1388,7 +1670,9 @@ const buildResourceTop = (
       id: 'avatars' as const,
       score: avatarScore,
       titulo: 'Fotos y avatares',
-      valor: `${formatInteger(drawnImages)} fotos/frame`,
+      valor: frameCacheHit
+        ? `${formatInteger(visibleAvatarImages)} fotos visibles / cache`
+        : `${formatInteger(sourceImageDraws)} draws/frame`,
       detalle: `Modo ${translateImageQualityMode(input.imageQualityMode)}, bucket ${avatarBucket || 'sin dato'} px, cache ${formatBytes(cacheBytes)}.`,
       tone: avatarTone,
     },
@@ -1448,8 +1732,19 @@ const buildPerformanceSection = (
   input: RuntimeInspectorBuildInput,
 ): RuntimeInspectorPerformanceSection => {
   const frameMs = input.avatarPerfSnapshot?.emaFrameMs ?? null
-  const avatarDraws = input.avatarRuntimeSnapshot?.overlay?.counts.drawnImages ?? 0
+  const visibleNodeCount =
+    input.scene.render.diagnostics.nodeCount || input.scene.render.nodes.length
+  const visibleEdgeCount =
+    input.scene.render.diagnostics.visibleEdgeCount ||
+    input.scene.render.visibleEdges.length
+  const avatarCounts = input.avatarRuntimeSnapshot?.overlay?.counts
+  const visibleAvatarImages = avatarCounts?.drawnImages ?? 0
+  const avatarSourceDraws = avatarCounts?.sourceImageDraws ?? visibleAvatarImages
+  const frameCacheHit = (avatarCounts?.frameCacheHit ?? 0) > 0
+  const pendingAvatarCandidates = avatarCounts?.pendingCandidates ?? 0
+  const pendingCacheMiss = avatarCounts?.pendingCacheMiss ?? 0
   const overlapCount = input.physicsDiagnostics?.approximateOverlapCount ?? 0
+  const denseVisibleScene = visibleNodeCount > 1200 || visibleEdgeCount > 2400
   const suspects: string[] = []
 
   let tone: RuntimeInspectorTone = 'ok'
@@ -1463,20 +1758,34 @@ const buildPerformanceSection = (
     tone = 'bad'
     resumen = 'FPS bajo'
     suspects.push('FPS bajo')
-    if (avatarDraws > 60) {
+    if (avatarSourceDraws > 60) {
       suspects.push('Avatar overlay cargado')
+    } else if (pendingAvatarCandidates > 80 || pendingCacheMiss > 200) {
+      suspects.push('Carga de avatares activa')
     }
     if (input.sceneUpdatesPerMinute > input.uiUpdatesPerMinute + 10) {
       suspects.push('La escena invalida seguido')
     }
-    if (avatarDraws > 60) {
+    if (denseVisibleScene) {
+      suspects.push('Escena visible densa')
+    }
+    if (avatarSourceDraws > 60) {
       resumen = 'Avatar overlay cargado'
       quePasaAhora =
         'El frame promedio esta alto y el overlay de avatares esta dibujando mucho por frame.'
+    } else if (pendingAvatarCandidates > 80 || pendingCacheMiss > 200) {
+      resumen = 'Avatares todavia cargando'
+      quePasaAhora = frameCacheHit
+        ? 'El frame promedio sigue alto, pero el overlay esta reutilizando el frame cacheado; el costo visible viene mas de carga/cache pendiente que de redibujar fotos.'
+        : 'El frame promedio sigue alto mientras muchas fotos visibles todavia estan entrando a cache.'
     } else if (input.sceneUpdatesPerMinute > input.uiUpdatesPerMinute + 10) {
       resumen = 'FPS bajo por churn de escena'
       quePasaAhora =
         'El frame promedio esta alto y la escena invalida mucho mas que la UI.'
+    } else if (denseVisibleScene) {
+      resumen = 'FPS bajo por escena densa'
+      quePasaAhora =
+        'El frame promedio esta alto sin churn de UI, churn de escena ni redraw de avatares. El costo visible viene de sostener muchos nodos, aristas y fotos cacheadas en el renderer.'
     } else if (input.physicsEnabled && overlapCount > 0) {
       resumen = 'FPS bajo con fisica activa'
       quePasaAhora =
@@ -1486,7 +1795,9 @@ const buildPerformanceSection = (
         'El frame promedio esta alto, pero el snapshot no muestra churn de UI, churn de escena ni overlay de avatares como causa unica.'
     }
     queLeerAhora =
-      'Abre Rendimiento y Avatares para separar si el cuello esta en draw, escena o fisica.'
+      denseVisibleScene
+        ? 'Abre Rendimiento para probar capas mas livianas, pausar fisica o bajar fotos; si el FPS sube, el cuello esta en volumen visible.'
+        : 'Abre Rendimiento y Avatares para separar si el cuello esta en draw, escena o fisica.'
   } else if (input.uiUpdatesPerMinute > Math.max(16, input.sceneUpdatesPerMinute * 1.3)) {
     tone = 'warn'
     resumen = 'Churn de UI elevado'
@@ -1535,9 +1846,16 @@ const buildPerformanceSection = (
         tone: input.uiUpdatesPerMinute > 30 ? 'warn' : 'ok',
       },
       {
-        label: 'Avatar draws/frame',
-        value: formatInteger(avatarDraws),
-        tone: avatarDraws > 60 ? 'warn' : 'ok',
+        label: 'Avatar source draws/frame',
+        value: frameCacheHit
+          ? `${formatInteger(avatarSourceDraws)} (cache frame)`
+          : formatInteger(avatarSourceDraws),
+        tone: avatarSourceDraws > 60 ? 'warn' : 'ok',
+      },
+      {
+        label: 'Fotos visibles',
+        value: formatInteger(visibleAvatarImages),
+        tone: visibleAvatarImages > 0 ? 'ok' : 'neutral',
       },
       {
         label: 'Fisica',

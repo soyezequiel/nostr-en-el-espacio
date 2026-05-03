@@ -128,6 +128,10 @@ test('AvatarLoader.load falls back to img when fetch is blocked by CORS', async 
 
     assert.equal(loaded.bytes, 64 * 64 * 4)
     assert.ok(loaded.bitmap)
+    const attempt = loader.getDebugSnapshot().recentAttempts.at(-1)
+    assert.equal(attempt?.path, 'image-element')
+    assert.equal(attempt?.result, 'ready')
+    assert.equal(typeof attempt?.durationMs, 'number')
   } finally {
     Object.defineProperty(globalThis, 'document', {
       configurable: true,
@@ -285,6 +289,16 @@ test('AvatarLoader.load falls back to the same-origin proxy when direct browser 
     assert.equal(
       proxyUrl.searchParams.get('url'),
       'https://images.example/avatar.png',
+    )
+    assert.deepEqual(
+      loader.getDebugSnapshot().recentAttempts.map((attempt) => [
+        attempt.path,
+        attempt.result,
+      ]),
+      [
+        ['direct', 'failed'],
+        ['proxy', 'ready'],
+      ],
     )
   } finally {
     Object.defineProperty(globalThis, 'document', {
@@ -642,6 +656,10 @@ test('AvatarLoader.load reads avatar blobs from IndexedDB disk cache before fetc
     assert.ok(loaded.bitmap)
     assert.equal(fetchCount, 0)
     assert.deepEqual(deletedKey, [])
+    const attempt = loader.getDebugSnapshot().recentAttempts.at(-1)
+    assert.equal(attempt?.path, 'disk')
+    assert.equal(attempt?.result, 'ready')
+    assert.equal(attempt?.bytes, 64 * 64 * 4)
   } finally {
     Object.defineProperty(globalThis, 'document', {
       configurable: true,

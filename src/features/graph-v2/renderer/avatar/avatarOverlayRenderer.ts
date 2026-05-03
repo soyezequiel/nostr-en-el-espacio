@@ -1252,7 +1252,7 @@ export class AvatarOverlayRenderer {
       const hasPictureUrl = item.hasPictureUrl
       const hasSafePictureUrl = item.hasSafePictureUrl
       const urlKey = item.urlKey
-      const avatarCacheEntry = urlKey !== null ? this.cache.get(urlKey) : null
+      const avatarCacheEntry = urlKey !== null ? this.cache.get(urlKey) : undefined
       const cacheState = avatarCacheEntry?.state ?? 'missing'
       const blockEntry =
         urlKey !== null ? this.getBlockedAvatar(urlKey) : null
@@ -1395,7 +1395,7 @@ export class AvatarOverlayRenderer {
         hasPictureUrl && urlKey
           ? this.ensurePaintMilestone(urlKey, debugNowMs)
           : null
-      const avatarCacheEntry = urlKey !== null ? this.cache.get(urlKey) : null
+      const avatarCacheEntry = urlKey !== null ? this.cache.get(urlKey) : undefined
       const hasReadyImage = avatarCacheEntry?.state === 'ready'
       const loadDebug = loadDebugByPubkey.get(item.pubkey) ?? {
         loadDecision: 'not_applicable' as const,
